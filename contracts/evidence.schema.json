@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wireclaw.local/schemas/evidence.schema.json",
+  "title": "Wireclaw Evidence Item",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "category",
+    "epistemic_class",
+    "source",
+    "scope",
+    "value",
+    "summary",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "id": {"type": "string", "minLength": 1},
+    "category": {"type": "string", "minLength": 1},
+    "epistemic_class": {
+      "type": "string",
+      "enum": ["observed", "derived"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "tool", "version"],
+      "properties": {
+        "capability": {"type": "string", "minLength": 1},
+        "tool": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capture": {"type": "boolean"},
+        "src_ip": {"type": "string"},
+        "dst_ip": {"type": "string"},
+        "src_port": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "dst_port": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "protocol": {"type": "string"},
+        "tcp_stream": {"type": "integer", "minimum": 0},
+        "udp_stream": {"type": "integer", "minimum": 0},
+        "transaction_id": {"type": "string"},
+        "start_frame": {"type": "integer", "minimum": 1},
+        "end_frame": {"type": "integer", "minimum": 1}
+      }
+    },
+    "value": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "summary": {"type": "string", "minLength": 1},
+    "display_filter": {
+      "oneOf": [
+        {"type": "string"},
+        {"type": "null"}
+      ]
+    },
+    "frame_refs": {
+      "type": "array",
+      "items": {"type": "integer", "minimum": 1},
+      "uniqueItems": true
+    },
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}
