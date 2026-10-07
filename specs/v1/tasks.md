@@ -13,9 +13,9 @@ Goal: establish product contract before implementation.
 - [x] G0.3 Create V1 requirements.
 - [x] G0.4 Create V1 solution design.
 - [x] G0.5 Add project-level agent instructions.
-- [ ] G0.6 Add architecture/security/deployment/testing reference docs.
-- [ ] G0.7 Add initial shared JSON schema contracts.
-- [ ] G0.8 Add ADRs for local Docker architecture and deterministic-analysis-first design.
+- [x] G0.6 Add architecture/security/deployment/testing reference docs.
+- [x] G0.7 Add initial shared JSON schema contracts.
+- [x] G0.8 Add ADRs for local Docker architecture and deterministic-analysis-first design.
 
 Exit criteria:
 - product behavior and non-goals are explicit
