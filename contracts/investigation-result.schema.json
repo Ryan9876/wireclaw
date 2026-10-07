@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wireclaw.local/schemas/investigation-result.schema.json",
+  "title": "Wireclaw Investigation Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "status",
+    "symptom",
+    "capture_quality",
+    "conclusion",
+    "findings",
+    "limitations",
+    "analyzer_versions"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial", "failed"]
+    },
+    "symptom": {
+      "type": "string"
+    },
+    "capture_quality": {
+      "$ref": "#/$defs/captureQuality"
+    },
+    "conclusion": {
+      "$ref": "#/$defs/conclusion"
+    },
+    "time_attribution": {
+      "oneOf": [
+        {"$ref": "#/$defs/timeAttribution"},
+        {"type": "null"}
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    },
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "recommended_next_evidence": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "analyzer_versions": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "captureQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "evidence_ids", "limitations"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["good", "limited", "insufficient"]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "conclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "statement", "confidence", "fault_domains", "evidence_ids"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["supported_finding", "insufficient_evidence"]
+        },
+        "statement": {"type": "string"},
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "fault_domains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "client",
+              "local_network",
+              "network_path",
+              "server_application",
+              "dns",
+              "capture_observability",
+              "unknown"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "category",
+        "confidence",
+        "statement",
+        "evidence_ids",
+        "alternate_explanations",
+        "limitations",
+        "recommended_validation",
+        "wireshark"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "statement": {"type": "string", "minLength": 1},
+        "affected_scope": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "alternate_explanations": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "recommended_validation": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "wireshark": {
+          "$ref": "#/$defs/wiresharkActions"
+        }
+      }
+    },
+    "wiresharkActions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicable", "full_capture", "evidence_capture", "copy_filter", "show_packet_evidence"],
+      "properties": {
+        "applicable": {"type": "boolean"},
+        "full_capture": {"type": "boolean"},
+        "evidence_capture": {"type": "boolean"},
+        "copy_filter": {"type": "boolean"},
+        "show_packet_evidence": {"type": "boolean"},
+        "display_filter": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "null"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"applicable": {"const": true}},
+            "required": ["applicable"]
+          },
+          "then": {
+            "properties": {
+              "full_capture": {"const": true},
+              "evidence_capture": {"const": true},
+              "copy_filter": {"const": true},
+              "show_packet_evidence": {"const": true}
+            }
+          }
+        }
+      ]
+    },
+    "timeAttribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_ms", "segments", "limitations"],
+      "properties": {
+        "total_ms": {"type": "number", "minimum": 0},
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "duration_ms", "measurement_class", "evidence_ids"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "enum": [
+                  "dns",
+                  "tcp_establishment",
+                  "tls_establishment",
+                  "request_transmit",
+                  "server_application_wait",
+                  "response_transfer",
+                  "combined_or_unknown"
+                ]
+              },
+              "duration_ms": {"type": "number", "minimum": 0},
+              "measurement_class": {
+                "type": "string",
+                "enum": ["observed", "derived", "inferred"]
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "uniqueItems": true
+              }
+            }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}
