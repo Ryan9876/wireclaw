@@ -1,7 +1,16 @@
-# Golden Expectations
+# Gate 1 normalized golden evidence
 
-Store expected normalized evidence and investigation outcomes paired with fixture captures.
+Ten JSON files hold the complete semantic evidence for accepted generated fixtures.
+`tests/integration/test_baseline.py` compares every value, stable ID, scope, summary,
+limitation, calculation and capability/tool name, while excluding only host-specific
+tool version fields. Tool versions remain required in the actual evidence and case
+record. Reference toolchain: TShark/capinfos 4.2.2; fixture format revision 1.
 
-Golden data should validate stable product contracts rather than raw analyzer stdout formatting.
+Tests separately assert independently known frame/byte/duration/protocol counts,
+quality flags and frame references so the analyzer is not its own sole oracle.
+There are no generated timestamps, temporary paths or random identifiers in goldens.
 
-When analyzer versions change, review golden differences explicitly and record whether the change is an intentional semantic improvement, expected tool-version drift, or a regression.
+Do not automatically regenerate goldens when tests fail. Review differences against
+fixture construction and recorded analyzer versions. Analyzer upgrades require
+explicit review of semantic changes. Malformed inputs have rejection assertions,
+not successful-evidence golden files.

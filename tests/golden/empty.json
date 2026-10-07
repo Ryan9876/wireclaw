@@ -1,0 +1,161 @@
+[
+  {
+    "category": "get_capture_metadata",
+    "epistemic_class": "observed",
+    "id": "ev_acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8_get_capture_metadata",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "get_capture_metadata",
+      "tool": "capinfos"
+    },
+    "summary": "get capture metadata",
+    "value": {
+      "capture_drops": null,
+      "capture_sha256": "acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8",
+      "duration_seconds": 0.0,
+      "encapsulation": "ether",
+      "file_bytes": 24,
+      "format": "pcap",
+      "packet_count": 0,
+      "snaplen": 65535,
+      "wire_bytes": 0
+    }
+  },
+  {
+    "category": "assess_capture_quality",
+    "epistemic_class": "derived",
+    "id": "ev_acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8_assess_capture_quality",
+    "limitations": [
+      "capture_drops",
+      "duplicate_capture_artifacts"
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "assess_capture_quality",
+      "tool": "tshark"
+    },
+    "summary": "assess capture quality",
+    "value": {
+      "calculation": "Insufficient for empty capture; limited for observed quality indicators; good means no baseline indicator observed, not complete visibility.",
+      "capture_sha256": "acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8",
+      "checks": {
+        "capture_drops": {
+          "count": null,
+          "frame_refs": [],
+          "state": "unknown"
+        },
+        "checksum_anomalies": {
+          "frame_refs": [],
+          "note": "Checksum validation enabled. Offload, corruption and capture artifacts cannot be distinguished here.",
+          "offload_cause": "unknown",
+          "state": "not_observed"
+        },
+        "duplicate_capture_artifacts": {
+          "frame_refs": [],
+          "note": "Repeated transport packets alone do not prove duplicate capture.",
+          "state": "unknown"
+        },
+        "incomplete_handshakes": {
+          "frame_refs": [],
+          "state": "not_observed"
+        },
+        "malformed_packets": {
+          "frame_refs": [],
+          "state": "not_observed"
+        },
+        "midstream_indicators": {
+          "frame_refs": [],
+          "note": "Initial SYN not visible; handshake cannot be assessed.",
+          "state": "not_observed"
+        },
+        "one_sided_conversations": {
+          "count": 0,
+          "frame_refs": [],
+          "note": "One observed direction may be normal; asymmetric capture is not proven.",
+          "state": "not_observed"
+        },
+        "timestamp_regressions": {
+          "frame_refs": [],
+          "state": "not_observed"
+        },
+        "truncation": {
+          "frame_refs": [],
+          "state": "not_observed"
+        }
+      },
+      "limitations": [
+        "capture_drops",
+        "duplicate_capture_artifacts"
+      ],
+      "state": "insufficient"
+    }
+  },
+  {
+    "category": "list_protocols",
+    "epistemic_class": "derived",
+    "id": "ev_acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8_list_protocols",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "list_protocols",
+      "tool": "tshark"
+    },
+    "summary": "list protocols",
+    "value": {
+      "calculation": "Count each protocol at most once per frame; layers overlap.",
+      "capture_sha256": "acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8",
+      "protocols": []
+    }
+  },
+  {
+    "category": "list_endpoints",
+    "epistemic_class": "derived",
+    "id": "ev_acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8_list_endpoints",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "list_endpoints",
+      "tool": "tshark"
+    },
+    "summary": "list endpoints",
+    "value": {
+      "calculation": "Sum frame wire lengths per observed IP endpoint and direction.",
+      "capture_sha256": "acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8",
+      "endpoints": [],
+      "excluded_non_ip_packets": 0
+    }
+  },
+  {
+    "category": "list_conversations",
+    "epistemic_class": "derived",
+    "id": "ev_acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8_list_conversations",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "list_conversations",
+      "tool": "tshark"
+    },
+    "summary": "list conversations",
+    "value": {
+      "calculation": "Group bidirectional endpoint pairs by transport and tool stream ID; sum wire lengths; duration=max(time)-min(time).",
+      "capture_sha256": "acc530668c8bc60b2d229281130b1899bfc81d70fdada5c34b3236c628f739c8",
+      "conversations": []
+    }
+  }
+]

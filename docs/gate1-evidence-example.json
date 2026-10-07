@@ -1,0 +1,396 @@
+{
+  "analyzer_version": "0.1.0",
+  "capture_sha256": "4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35",
+  "configuration": {
+    "checksum_validation": true,
+    "fields": [
+      "frame.number",
+      "frame.time_epoch",
+      "frame.len",
+      "frame.cap_len",
+      "frame.protocols",
+      "ip.src",
+      "ip.dst",
+      "ipv6.src",
+      "ipv6.dst",
+      "tcp.srcport",
+      "tcp.dstport",
+      "udp.srcport",
+      "udp.dstport",
+      "tcp.stream",
+      "udp.stream",
+      "tcp.flags.syn",
+      "tcp.flags.ack",
+      "tcp.checksum.status",
+      "udp.checksum.status",
+      "ip.checksum.status",
+      "_ws.malformed",
+      "tcp.seq_raw",
+      "tcp.ack_raw"
+    ],
+    "max_capture_bytes": 67108864,
+    "max_output_bytes": 16777216,
+    "max_packets": 100000,
+    "name_resolution": false,
+    "timeout_seconds": 30
+  },
+  "evidence": [
+    {
+      "category": "get_capture_metadata",
+      "epistemic_class": "observed",
+      "id": "ev_4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35_get_capture_metadata",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "get_capture_metadata",
+        "tool": "capinfos",
+        "version": "4.2.2"
+      },
+      "summary": "get capture metadata",
+      "value": {
+        "capture_drops": null,
+        "capture_sha256": "4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35",
+        "duration_seconds": 0.6,
+        "encapsulation": "ether",
+        "file_bytes": 605,
+        "format": "pcap",
+        "packet_count": 7,
+        "snaplen": 65535,
+        "wire_bytes": 469
+      }
+    },
+    {
+      "category": "assess_capture_quality",
+      "epistemic_class": "derived",
+      "id": "ev_4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35_assess_capture_quality",
+      "limitations": [
+        "capture_drops",
+        "duplicate_capture_artifacts"
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "assess_capture_quality",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "assess capture quality",
+      "value": {
+        "calculation": "Insufficient for empty capture; limited for observed quality indicators; good means no baseline indicator observed, not complete visibility.",
+        "capture_sha256": "4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35",
+        "checks": {
+          "capture_drops": {
+            "count": null,
+            "frame_refs": [],
+            "state": "unknown"
+          },
+          "checksum_anomalies": {
+            "frame_refs": [],
+            "note": "Checksum validation enabled. Offload, corruption and capture artifacts cannot be distinguished here.",
+            "offload_cause": "unknown",
+            "state": "not_observed"
+          },
+          "duplicate_capture_artifacts": {
+            "frame_refs": [],
+            "note": "Repeated transport packets alone do not prove duplicate capture.",
+            "state": "unknown"
+          },
+          "incomplete_handshakes": {
+            "frame_refs": [],
+            "state": "not_observed"
+          },
+          "malformed_packets": {
+            "frame_refs": [],
+            "state": "not_observed"
+          },
+          "midstream_indicators": {
+            "frame_refs": [],
+            "note": "Initial SYN not visible; handshake cannot be assessed.",
+            "state": "not_observed"
+          },
+          "one_sided_conversations": {
+            "count": 0,
+            "frame_refs": [],
+            "note": "One observed direction may be normal; asymmetric capture is not proven.",
+            "state": "not_observed"
+          },
+          "timestamp_regressions": {
+            "frame_refs": [],
+            "state": "not_observed"
+          },
+          "truncation": {
+            "frame_refs": [],
+            "state": "not_observed"
+          }
+        },
+        "limitations": [
+          "capture_drops",
+          "duplicate_capture_artifacts"
+        ],
+        "state": "good"
+      }
+    },
+    {
+      "category": "list_protocols",
+      "epistemic_class": "derived",
+      "id": "ev_4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35_list_protocols",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "list_protocols",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "list protocols",
+      "value": {
+        "calculation": "Count each protocol at most once per frame; layers overlap.",
+        "capture_sha256": "4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35",
+        "protocols": [
+          {
+            "packets": 2,
+            "protocol": "data"
+          },
+          {
+            "packets": 2,
+            "protocol": "dns"
+          },
+          {
+            "packets": 7,
+            "protocol": "eth"
+          },
+          {
+            "packets": 7,
+            "protocol": "ethertype"
+          },
+          {
+            "packets": 5,
+            "protocol": "ip"
+          },
+          {
+            "packets": 2,
+            "protocol": "ipv6"
+          },
+          {
+            "packets": 3,
+            "protocol": "tcp"
+          },
+          {
+            "packets": 4,
+            "protocol": "udp"
+          }
+        ]
+      }
+    },
+    {
+      "category": "list_endpoints",
+      "epistemic_class": "derived",
+      "id": "ev_4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35_list_endpoints",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "list_endpoints",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "list endpoints",
+      "value": {
+        "calculation": "Sum frame wire lengths per observed IP endpoint and direction.",
+        "capture_sha256": "4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35",
+        "endpoints": [
+          {
+            "address": "192.0.2.1",
+            "address_family": "ipv4",
+            "ports": [
+              {
+                "port": 50000,
+                "transport": "tcp"
+              },
+              {
+                "port": 53000,
+                "transport": "udp"
+              }
+            ],
+            "received_packets": 2,
+            "received_wire_bytes": 145,
+            "sent_packets": 3,
+            "sent_wire_bytes": 183
+          },
+          {
+            "address": "192.0.2.2",
+            "address_family": "ipv4",
+            "ports": [
+              {
+                "port": 443,
+                "transport": "tcp"
+              }
+            ],
+            "received_packets": 2,
+            "received_wire_bytes": 108,
+            "sent_packets": 1,
+            "sent_wire_bytes": 54
+          },
+          {
+            "address": "192.0.2.53",
+            "address_family": "ipv4",
+            "ports": [
+              {
+                "port": 53,
+                "transport": "udp"
+              }
+            ],
+            "received_packets": 1,
+            "received_wire_bytes": 75,
+            "sent_packets": 1,
+            "sent_wire_bytes": 91
+          },
+          {
+            "address": "2001:db8::1",
+            "address_family": "ipv6",
+            "ports": [
+              {
+                "port": 40000,
+                "transport": "udp"
+              }
+            ],
+            "received_packets": 1,
+            "received_wire_bytes": 70,
+            "sent_packets": 1,
+            "sent_wire_bytes": 71
+          },
+          {
+            "address": "2001:db8::2",
+            "address_family": "ipv6",
+            "ports": [
+              {
+                "port": 40001,
+                "transport": "udp"
+              }
+            ],
+            "received_packets": 1,
+            "received_wire_bytes": 71,
+            "sent_packets": 1,
+            "sent_wire_bytes": 70
+          }
+        ],
+        "excluded_non_ip_packets": 0
+      }
+    },
+    {
+      "category": "list_conversations",
+      "epistemic_class": "derived",
+      "id": "ev_4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35_list_conversations",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "list_conversations",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "list conversations",
+      "value": {
+        "calculation": "Group bidirectional endpoint pairs by transport and tool stream ID; sum wire lengths; duration=max(time)-min(time).",
+        "capture_sha256": "4550e2554f2cb82dcf67b4493581cc9aac9f97fc118305c9ee6dbee721d92f35",
+        "conversations": [
+          {
+            "a": {
+              "address": "192.0.2.1",
+              "port": 50000
+            },
+            "a_to_b_packets": 2,
+            "b": {
+              "address": "192.0.2.2",
+              "port": 443
+            },
+            "b_to_a_packets": 1,
+            "display_filter": "tcp.stream == 0",
+            "duration_seconds": 0.2,
+            "frame_refs": [
+              1,
+              2,
+              3
+            ],
+            "stream": 0,
+            "transport": "tcp",
+            "wire_bytes": 162
+          },
+          {
+            "a": {
+              "address": "192.0.2.1",
+              "port": 53000
+            },
+            "a_to_b_packets": 1,
+            "b": {
+              "address": "192.0.2.53",
+              "port": 53
+            },
+            "b_to_a_packets": 1,
+            "display_filter": "udp.stream == 0",
+            "duration_seconds": 0.1,
+            "frame_refs": [
+              4,
+              5
+            ],
+            "stream": 0,
+            "transport": "udp",
+            "wire_bytes": 166
+          },
+          {
+            "a": {
+              "address": "2001:db8::1",
+              "port": 40000
+            },
+            "a_to_b_packets": 1,
+            "b": {
+              "address": "2001:db8::2",
+              "port": 40001
+            },
+            "b_to_a_packets": 1,
+            "display_filter": "udp.stream == 1",
+            "duration_seconds": 0.1,
+            "frame_refs": [
+              6,
+              7
+            ],
+            "stream": 1,
+            "transport": "udp",
+            "wire_bytes": 141
+          }
+        ]
+      }
+    }
+  ],
+  "schema_version": "1.0",
+  "tool_versions": {
+    "capinfos": {
+      "available": true,
+      "version": "4.2.2"
+    },
+    "tshark": {
+      "available": true,
+      "version": "4.2.2"
+    },
+    "zeek": {
+      "available": false,
+      "error": {
+        "capability": "zeek_version",
+        "code": "tool_unavailable",
+        "tool": "zeek"
+      },
+      "version": null
+    }
+  }
+}
