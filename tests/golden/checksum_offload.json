@@ -1,0 +1,236 @@
+[
+  {
+    "category": "get_capture_metadata",
+    "epistemic_class": "observed",
+    "id": "ev_1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928_get_capture_metadata",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "get_capture_metadata",
+      "tool": "capinfos"
+    },
+    "summary": "get capture metadata",
+    "value": {
+      "capture_drops": null,
+      "capture_sha256": "1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928",
+      "duration_seconds": 0.2,
+      "encapsulation": "ether",
+      "file_bytes": 234,
+      "format": "pcap",
+      "packet_count": 3,
+      "snaplen": 65535,
+      "wire_bytes": 162
+    }
+  },
+  {
+    "category": "assess_capture_quality",
+    "epistemic_class": "derived",
+    "id": "ev_1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928_assess_capture_quality",
+    "limitations": [
+      "checksum_anomalies",
+      "capture_drops",
+      "duplicate_capture_artifacts"
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "assess_capture_quality",
+      "tool": "tshark"
+    },
+    "summary": "assess capture quality",
+    "value": {
+      "calculation": "Insufficient for empty capture; limited for observed quality indicators; good means no baseline indicator observed, not complete visibility.",
+      "capture_sha256": "1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928",
+      "checks": {
+        "capture_drops": {
+          "count": null,
+          "frame_refs": [],
+          "state": "unknown"
+        },
+        "checksum_anomalies": {
+          "frame_refs": [
+            1,
+            2,
+            3
+          ],
+          "note": "Checksum validation enabled. Offload, corruption and capture artifacts cannot be distinguished here.",
+          "offload_cause": "unknown",
+          "state": "observed"
+        },
+        "duplicate_capture_artifacts": {
+          "frame_refs": [],
+          "note": "Repeated transport packets alone do not prove duplicate capture.",
+          "state": "unknown"
+        },
+        "incomplete_handshakes": {
+          "frame_refs": [],
+          "state": "not_observed"
+        },
+        "malformed_packets": {
+          "frame_refs": [],
+          "state": "not_observed"
+        },
+        "midstream_indicators": {
+          "frame_refs": [],
+          "note": "Initial SYN not visible; handshake cannot be assessed.",
+          "state": "not_observed"
+        },
+        "one_sided_conversations": {
+          "count": 0,
+          "frame_refs": [],
+          "note": "One observed direction may be normal; asymmetric capture is not proven.",
+          "state": "not_observed"
+        },
+        "timestamp_regressions": {
+          "frame_refs": [],
+          "state": "not_observed"
+        },
+        "truncation": {
+          "frame_refs": [],
+          "state": "not_observed"
+        }
+      },
+      "limitations": [
+        "checksum_anomalies",
+        "capture_drops",
+        "duplicate_capture_artifacts"
+      ],
+      "state": "limited"
+    }
+  },
+  {
+    "category": "list_protocols",
+    "epistemic_class": "derived",
+    "id": "ev_1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928_list_protocols",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "list_protocols",
+      "tool": "tshark"
+    },
+    "summary": "list protocols",
+    "value": {
+      "calculation": "Count each protocol at most once per frame; layers overlap.",
+      "capture_sha256": "1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928",
+      "protocols": [
+        {
+          "packets": 3,
+          "protocol": "eth"
+        },
+        {
+          "packets": 3,
+          "protocol": "ethertype"
+        },
+        {
+          "packets": 3,
+          "protocol": "ip"
+        },
+        {
+          "packets": 3,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  {
+    "category": "list_endpoints",
+    "epistemic_class": "derived",
+    "id": "ev_1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928_list_endpoints",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "list_endpoints",
+      "tool": "tshark"
+    },
+    "summary": "list endpoints",
+    "value": {
+      "calculation": "Sum frame wire lengths per observed IP endpoint and direction.",
+      "capture_sha256": "1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928",
+      "endpoints": [
+        {
+          "address": "192.0.2.1",
+          "address_family": "ipv4",
+          "ports": [
+            {
+              "port": 50000,
+              "transport": "tcp"
+            }
+          ],
+          "received_packets": 1,
+          "received_wire_bytes": 54,
+          "sent_packets": 2,
+          "sent_wire_bytes": 108
+        },
+        {
+          "address": "192.0.2.2",
+          "address_family": "ipv4",
+          "ports": [
+            {
+              "port": 443,
+              "transport": "tcp"
+            }
+          ],
+          "received_packets": 2,
+          "received_wire_bytes": 108,
+          "sent_packets": 1,
+          "sent_wire_bytes": 54
+        }
+      ],
+      "excluded_non_ip_packets": 0
+    }
+  },
+  {
+    "category": "list_conversations",
+    "epistemic_class": "derived",
+    "id": "ev_1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928_list_conversations",
+    "limitations": [],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "list_conversations",
+      "tool": "tshark"
+    },
+    "summary": "list conversations",
+    "value": {
+      "calculation": "Group bidirectional endpoint pairs by transport and tool stream ID; sum wire lengths; duration=max(time)-min(time).",
+      "capture_sha256": "1bbc0bedff416e7ee2952c11b366f139ebb6971f5dc4f630470d06d93e1c5928",
+      "conversations": [
+        {
+          "a": {
+            "address": "192.0.2.1",
+            "port": 50000
+          },
+          "a_to_b_packets": 2,
+          "b": {
+            "address": "192.0.2.2",
+            "port": 443
+          },
+          "b_to_a_packets": 1,
+          "display_filter": "tcp.stream == 0",
+          "duration_seconds": 0.2,
+          "frame_refs": [
+            1,
+            2,
+            3
+          ],
+          "stream": 0,
+          "transport": "tcp",
+          "wire_bytes": 162
+        }
+      ]
+    }
+  }
+]

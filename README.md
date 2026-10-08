@@ -87,3 +87,7 @@ The analyzer and web application are containerized. A small optional host bridge
 ## Current status
 
 **Specification/bootstrap phase.** Implementation should not begin by inventing behavior that conflicts with the V1 specification. Start with `specs/v1/constitution.md`, then `requirements.md`, `solution.md`, and `tasks.md`.
+
+## Gate 1 analyzer
+
+The deterministic Python analyzer is implemented. See [developer instructions](services/analyzer/README.md) and [Gate 1 verification](docs/gate1-verification.md). No API, UI, LLM, host bridge or Docker packaging is implemented yet.

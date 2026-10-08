@@ -30,18 +30,18 @@ Requirements: R-F001, R-F003, R-F004, R-F025, R-N001, R-N004.
 
 Tasks:
 
-- [ ] G1.1 Create Python analyzer package structure.
-- [ ] G1.2 Implement safe subprocess runner with no shell and enforced timeouts.
-- [ ] G1.3 Detect and record TShark/capinfos/Zeek versions.
-- [ ] G1.4 Implement immutable capture ingest and SHA-256 hashing.
-- [ ] G1.5 Implement `get_capture_metadata`.
-- [ ] G1.6 Implement `assess_capture_quality` baseline.
-- [ ] G1.7 Implement protocol inventory.
-- [ ] G1.8 Implement endpoint inventory.
-- [ ] G1.9 Implement conversation inventory.
-- [ ] G1.10 Normalize outputs into shared evidence contracts.
-- [ ] G1.11 Add malformed capture, truncation, midstream, and checksum-offload fixtures.
-- [ ] G1.12 Add golden normalization tests.
+- [x] G1.1 Create Python analyzer package structure.
+- [x] G1.2 Implement safe subprocess runner with no shell and enforced timeouts.
+- [x] G1.3 Detect and record TShark/capinfos/Zeek versions.
+- [x] G1.4 Implement immutable capture ingest and SHA-256 hashing.
+- [x] G1.5 Implement `get_capture_metadata`.
+- [x] G1.6 Implement `assess_capture_quality` baseline.
+- [x] G1.7 Implement protocol inventory.
+- [x] G1.8 Implement endpoint inventory.
+- [x] G1.9 Implement conversation inventory.
+- [x] G1.10 Normalize outputs into shared evidence contracts.
+- [x] G1.11 Add malformed capture, truncation, midstream, and checksum-offload fixtures.
+- [x] G1.12 Add golden normalization tests.
 
 Exit criteria:
 - same capture produces stable normalized evidence with recorded tool versions
