@@ -7,6 +7,7 @@ import threading
 from enum import Enum
 from pathlib import Path
 
+from .diagnostic_fields import EXTRA_FIELDS
 from .errors import AnalyzerError
 from .storage import Store
 
@@ -45,6 +46,7 @@ class Operation(Enum):
     ZEEK_VERSION = "zeek_version"
     METADATA = "get_capture_metadata"
     PACKETS = "baseline_packet_fields"
+    DIAGNOSTICS = "diagnostic_packet_fields"
 
 
 class Runner:
@@ -56,13 +58,15 @@ class Runner:
     def run(self, operation: Operation, capture: Path | None = None) -> str:
         if not isinstance(operation, Operation):
             raise AnalyzerError("invalid_operation")
-        tool = {Operation.METADATA: "capinfos", Operation.PACKETS: "tshark"}.get(
-            operation, operation.value.split("_")[0]
-        )
+        tool = {
+            Operation.METADATA: "capinfos",
+            Operation.PACKETS: "tshark",
+            Operation.DIAGNOSTICS: "tshark",
+        }.get(operation, operation.value.split("_")[0])
         executable = self._tools[tool]
         if executable is None:
             raise AnalyzerError("tool_unavailable", operation.value, tool)
-        if operation in (Operation.METADATA, Operation.PACKETS):
+        if operation in (Operation.METADATA, Operation.PACKETS, Operation.DIAGNOSTICS):
             if capture is None:
                 raise AnalyzerError("capture_required")
             capture = self.store.confined(capture)
@@ -72,7 +76,7 @@ class Runner:
             raise AnalyzerError("unexpected_parameter")
         if operation is Operation.METADATA:
             args = [executable, "-M", "-t", "-E", "-c", "-s", "-d", "-l", "-u", "-I", str(capture)]
-        elif operation is Operation.PACKETS:
+        elif operation in (Operation.PACKETS, Operation.DIAGNOSTICS):
             args = [
                 executable,
                 "-n",
@@ -91,7 +95,25 @@ class Runner:
                 "-E",
                 "occurrence=f",
             ]
-            for field in FIELDS:
+            fields = FIELDS
+            if operation is Operation.DIAGNOSTICS:
+                # Two passes permit forward DNS references; numeric repeated fields are retained.
+                args[args.index("occurrence=f")] = "occurrence=a"
+                args.extend(
+                    [
+                        "-2",
+                        "-o",
+                        "tcp.analyze_sequence_numbers:TRUE",
+                        "-o",
+                        "tcp.relative_sequence_numbers:FALSE",
+                        "-o",
+                        "tcp.desegment_tcp_streams:TRUE",
+                        "-o",
+                        "tls.keylog_file:",
+                    ]
+                )
+                fields = FIELDS + EXTRA_FIELDS
+            for field in fields:
                 args.extend(["-e", field])
         else:
             args = [executable, "--version"]

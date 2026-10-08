@@ -41,7 +41,7 @@ def test_golden_and_reproducibility(tmp_path, name):
     )
     assert result["tool_versions"]["tshark"]["available"]
     assert result["tool_versions"]["capinfos"]["available"]
-    assert result["analyzer_version"] == "0.1.0"
+    assert result["analyzer_version"] == "0.2.0"
     for item in result["evidence"]:
         analyzer.validator.validate(item)
     # All evidence values, IDs, scope, limitations and summaries compared. Only host

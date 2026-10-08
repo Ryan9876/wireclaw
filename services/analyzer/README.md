@@ -1,4 +1,4 @@
-# Deterministic analyzer — Gate 1
+# Deterministic analyzer — Gates 1 and 2
 
 The Python package is in `src/wireclaw_analyzer`. It runs without the future API,
 UI, model provider, Docker image, or host bridge. It does not diagnose root cause.
@@ -19,8 +19,8 @@ Activate `.venv` using your platform's normal activation command, then:
 ```sh
 python -m pip install -e '.[test]'
 python -m pytest -q
-python -m ruff check services/analyzer/src tests/unit tests/integration/test_baseline.py tests/fixtures/generate.py
-python -m ruff format --check services/analyzer/src tests/unit tests/integration/test_baseline.py tests/fixtures/generate.py
+python -m ruff check services/analyzer/src tests/unit tests/integration tests/fixtures
+python -m ruff format --check services/analyzer/src tests/unit tests/integration tests/fixtures
 ```
 
 Real-tool integration tests explicitly skip if TShark or capinfos is missing.
@@ -133,3 +133,109 @@ than fall back to overwriting. Post-publication failures roll back owned origina
 and staging/identity artifacts. Persistent filesystem denial during rollback is
 reported explicitly as `capture_cleanup_failure`, never as successful intake. Windows/macOS native execution has not been smoke-tested
 in this Linux development environment. Docker packaging is intentionally deferred.
+
+## Gate 2 deterministic diagnostics
+
+Version 0.2.0 adds directly callable diagnostics; `analyze()` remains the Gate 1
+baseline and its eleven semantic goldens are unchanged. `diagnose()` runs/persists
+that baseline first, then one additional fixed, bounded two-pass TShark operation.
+Its numeric fields are isolated in `diagnostic_fields.py`; pure indexed calculations
+are in `diagnostics.py`. No API, RCA/report, UI, host bridge, model or packaging is added.
+
+```python
+from wireclaw_analyzer import Capability, DiagnosticLimits, DiagnosticRequest
+
+result = analyzer.diagnose(capture_id)
+rtt = analyzer.run_diagnostic(
+    DiagnosticRequest(capture_id, Capability.RTT, tcp_stream=0)
+)
+```
+
+`DiagnosticRequest` accepts only a validated capture hash, `Capability` enum and
+optional nonnegative integer TCP stream. DNS, fragmentation and PMTUD requests are
+capture-scoped; other capabilities can select a TCP stream. Unknown streams fail
+explicitly. It accepts no command, executable, flags, expression or display filter.
+All extraction is capture-bounded; selecting a stream bounds normalization scope,
+not the underlying full-capture dissector pass. No caching/orchestrator is added.
+
+| Capability enum / source name | Evidence |
+| --- | --- |
+| DNS / `analyze_dns` | Reciprocal query/response frame links, transaction ID, resolver/client, query types, elapsed time, rcode, repeated queries, unanswered-in-capture and ambiguous state |
+| ESTABLISHMENT / `analyze_tcp_establishment` | Sequence-validated SYN/SYN-ACK/final ACK, initial attempt interval, repeated SYNs, incomplete/reset/midstream state |
+| HEALTH / `analyze_tcp_health` | Each TShark expert class, exact frames, retransmission-class union, packet/data counts, bytes-in-flight samples |
+| RTT / `analyze_rtt` | Eligible ACK RTT samples with ACK/segment frames, direction, min/median/nearest-rank p95/max; rejected ACK frames |
+| WINDOW / `analyze_window_behavior` | Advertiser, scaled-window observations, extrema with frames, scaling options, zero-window/probe/window-full labels, observed zero-window intervals |
+| RESETS / `analyze_tcp_resets` | Sender/receiver and RST/ACK flags from capture perspective, exact frame, lifecycle timing and phase |
+| THROUGHPUT / `analyze_throughput` | Wire/captured/payload bytes, expert-marked retransmitted bytes, sequence-union/ACK-covered payload approximations and explicit rate formulas |
+| MSS / `analyze_mss` | Advertised MSS per packet/stream/direction |
+| FRAGMENTATION / `analyze_fragmentation` | IPv4 MF/offset and IPv6 fragment-header ID/offset/M flag, including atomic headers |
+| PMTUD / `analyze_pmtud_signals` | ICMP type 3/code 4 and ICMPv6 type 2 with advertised MTU, directional IP-size ranges/DF counts |
+| TLS / `analyze_tls_handshakes` | Visible messages and contributing reassembly frames, TCP-to-ClientHello and ClientHello-to-ServerHello timing, repeated ClientHello and observed alerts |
+
+Run the developer CLI using a predefined switch:
+
+```sh
+python tests/fixtures/generate_gate2.py data/incoming
+wireclaw-analyze --data-root data --diagnostics incoming/tls_delay.capture
+```
+
+The result is persisted atomically as `normalized/diagnostics.json` after integrity
+and unchanged shared evidence-schema validation. On diagnostic failure, the original
+and baseline remain available; the failed run does not overwrite prior diagnostics.
+A previous successful artifact is historical, not evidence of success for a failed
+rerun. The caller receives a safe `AnalyzerError`; failure records/lifecycle are Gate 3.
+Each item includes capture identity, capability/TShark version, calculation,
+limitations, scope and generated verification filter. Exact event/sample frames
+remain inside values. Broad supporting stream/capture frame lists above their bound
+use a start/end range plus fixed selection filter, without hidden sample selection.
+
+Default additional limits: 5,000 evidence items, 20,000 cumulative list slots in
+normalized values, 16 MiB **serialized, indented** result, 64 occurrences per numeric
+field and 256 references per explicit event/reference array. Oversize event arrays
+fail with `diagnostic_frame_reference_limit`; record/byte/occurrence overflow fails
+explicitly. Limits are positive integers and independently configurable through
+`DiagnosticLimits`. All Gate 1 capture/packet/time/pipe limits still apply. A rejected
+large diagnostic result can be rerun with a scoped capability or deliberately raised
+limits. No partial output is labeled complete.
+
+Work indexes frames/streams once, performs a fixed number of passes within each
+stream and sorts sequence intervals once per direction. Two-endpoint stream identity
+is checked before calculations. This bounds work to O(N log N), plus bounded schema
+validation/serialization; no per-stream full-capture rescans. Tests count full-list
+visits across 600 streams and consume 10,000 shuffled overlapping sequence intervals
+once. A private managed data root and trusted packet-tool installation remain required.
+
+### Measurement semantics and limits
+
+- TShark 4.2.2 is the validated reference. Its live `-G fields` registry and real
+  fixture observations verify the used fields; tool versions are recorded on every run.
+  Expert labels remain **suspected indicators**, not independently proven loss.
+- ACK RTT uses a prior reverse-direction segment in the same stream, valid ACK flag,
+  nonnegative interval and nonnegative tool timing; segments marked retransmitted are
+  excluded. Delayed ACKs and SYN samples remain possible. This is not one-way latency
+  or a full independent Karn implementation.
+- Rates use the common stream first-to-last frame interval. Sequence ranges deduplicate
+  payload overlaps; SYN/FIN sequence occupancy is excluded. Conservative half-space
+  checks withhold ambiguous wraps/large jumps or truncated payload approximations.
+  Reverse cumulative ACK coverage adds a **TCP goodput approximation**; application
+  goodput and application consumption remain unknown. Rates are null for zero duration
+  or timestamp regression. Wire lengths do not imply physical Ethernet line rate.
+- Zero-window duration measures first zero advertisement to next positive advertisement
+  from that receiver. An unclosed span is open at capture end, not an inferred timeout.
+  Receiver constraints do not identify why the application stopped consuming data.
+- DNS names/answer text and TLS certificates/SNI/payload are deliberately not extracted.
+  Query IDs are never a standalone correlation key. A retry linked to the original
+  query response has no separately attributable elapsed time. Multiple DNS messages in
+  one frame are explicitly ambiguous. Encrypted DNS is unavailable.
+- TLS timing is based on the frame completing dissection/reassembly. TLS 1.3 content
+  after ServerHello and normally encrypted TLS 1.2 Finished are unavailable without keys.
+  Keylog loading is disabled; no TLS decryption is required or performed. Session
+  completion remains unknown even if a Finished message is visible. Repeated hellos
+  can reflect retry requests, renegotiation or transport behavior.
+- ICMP quoted headers are never assigned as current TCP streams. Fragment indicators
+  inside ICMP errors are withheld; they cannot be safely assigned to the outer packet
+  with this field representation. Other nested/tunneled diagnostic headers are rejected
+  explicitly. PMTUD signals do not establish an MTU black hole; absence does not rule one out.
+
+See [`../../docs/gate2-verification.md`](../../docs/gate2-verification.md) for task
+mapping, real-tool validation, authoritative field references and reproducible examples.

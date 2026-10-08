@@ -157,7 +157,7 @@ class Store:
         return path
 
     def persist(self, capture_id: str, value: dict, *, name="capture-summary.json") -> Path:
-        if name not in ("capture-summary.json", "capture-identity.json"):
+        if name not in ("capture-summary.json", "capture-identity.json", "diagnostics.json"):
             raise AnalyzerError("invalid_artifact_name")
         path = self.confined(Path("cases") / capture_id / "normalized", exists=False)
         path.mkdir(exist_ok=True)

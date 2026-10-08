@@ -1,10 +1,10 @@
-"""Gate 1 capabilities; directly callable without an API or model provider."""
+"""Deterministic capabilities; directly callable without an API or model provider."""
 
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from . import normalize
+from . import diagnostics, normalize
 from .capture_headers import pcapng_metadata
 from .errors import AnalyzerError
 from .runner import FIELDS, Operation, Runner
@@ -13,8 +13,14 @@ from .storage import Limits, Store
 
 class Analyzer:
     def __init__(
-        self, data_root: Path, *, limits: Limits | None = None, schema: Path | None = None
+        self,
+        data_root: Path,
+        *,
+        limits: Limits | None = None,
+        schema: Path | None = None,
+        diagnostic_limits: diagnostics.DiagnosticLimits | None = None,
     ):
+        self.diagnostic_limits = diagnostic_limits or diagnostics.DiagnosticLimits()
         self.store = Store(data_root, limits or Limits())
         self.runner = Runner(self.store)
         # Source checkout default; installed consumers explicitly supply the shared contract.
@@ -102,7 +108,7 @@ class Analyzer:
         result = {
             "schema_version": "1.0",
             "capture_sha256": capture_id,
-            "analyzer_version": "0.1.0",
+            "analyzer_version": "0.2.0",
             "tool_versions": self.versions,
             "configuration": {
                 **vars(self.store.limits),
@@ -129,3 +135,56 @@ class Analyzer:
 
     def list_conversations(self, capture_id: str) -> dict:
         return self._baseline(capture_id)["evidence"][4]
+
+    def diagnose(self, capture_id: str) -> dict:
+        """Run Gate 1 first, then all fixed Gate 2 capabilities; preserve baseline on failure."""
+        return self._diagnose(capture_id)
+
+    def run_diagnostic(self, request: diagnostics.DiagnosticRequest) -> dict:
+        if not isinstance(request, diagnostics.DiagnosticRequest):
+            raise AnalyzerError("invalid_diagnostic_request")
+        return self._diagnose(request.capture_id, request)
+
+    def _diagnose(self, capture_id, request=None):
+        baseline = self._baseline(capture_id)
+        path = self.store.verify(capture_id)
+        rows = diagnostics.packets(
+            self.runner.run(Operation.DIAGNOSTICS, path),
+            self.store.limits.max_packets,
+            self.diagnostic_limits,
+        )
+        if len(rows) != baseline["evidence"][0]["value"]["packet_count"]:
+            raise AnalyzerError("packet_count_mismatch")
+        quality = baseline["evidence"][1]
+        evidence = diagnostics.build(
+            capture_id,
+            rows,
+            self.versions["tshark"]["version"],
+            quality["value"],
+            self.diagnostic_limits,
+            self.validator,
+            request,
+        )
+        self.store.verify(capture_id)
+        result = {
+            "schema_version": "1.0",
+            "capture_sha256": capture_id,
+            "analyzer_version": "0.2.0",
+            "tool_versions": self.versions,
+            "capture_quality_evidence_id": quality["id"],
+            "capture_quality_state": quality["value"]["state"],
+            "configuration": {
+                **baseline["configuration"],
+                "diagnostic_limits": vars(self.diagnostic_limits),
+                "diagnostic_fields": list(FIELDS + diagnostics.EXTRA_FIELDS),
+                "two_pass": True,
+                "decryption": False,
+            },
+            "request": {"capability": request.capability.value, "tcp_stream": request.tcp_stream}
+            if request
+            else {"capability": "all"},
+            "evidence": evidence,
+        }
+        diagnostics.ensure_bytes(result, self.diagnostic_limits)
+        self.store.persist(capture_id, result, name="diagnostics.json")
+        return result

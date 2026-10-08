@@ -168,3 +168,14 @@ The packet-tool environment prefix remains the scratch-only prefix documented
 above. Zeek is still explicitly optional/unavailable; no native macOS/Windows
 execution was claimed. Review threads remain for the independent reviewer to
 confirm; the PR is not merged and Gate 2 has not started.
+
+## Approved Gate 1 closeout — 2026-10-08 UTC
+
+Independent re-review approved head `e4b05738b3e33a9d4276aa8896332aa6b39e8ba5`.
+PR #1 was merged using a merge commit into `main`:
+`3eb988f84bb2ccdf1f193e4be6464d4d0d9c50e5`. The reviewed head is an ancestor
+of that commit; all three review threads were confirmed resolved. All G1 tasks
+remained checked and all G2 tasks were unchecked, with no Gate 2 implementation,
+at closeout. The local checkout was fast-forwarded to main and the separate
+`gate2-tcp-dns-tls-diagnostics` branch was then created. The earlier unmerged-state
+statements are historical records of the original review submissions.
