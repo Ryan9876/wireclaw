@@ -66,7 +66,8 @@ but not optimized; API orchestration/caching remains Gate 3.
 ## Output and storage
 
 - `cases/<sha256>/original/capture`: immutable byte copy, published without overwrite,
-  read-only mode; hash verified before/after baseline execution.
+  read-only mode; hash verified before/after baseline execution. A failed ingest
+  removes only originals created by that invocation; existing originals are preserved.
 - `cases/<sha256>/normalized/capture-identity.json`: persisted identity and file size.
 - `cases/<sha256>/normalized/capture-summary.json`: normalized evidence, analyzer and
   tool versions, configuration. Writes are atomic.
@@ -80,6 +81,10 @@ from the IP endpoint inventory. The first IPv4 fields are preferred when present
 otherwise first IPv6 fields are used. Nested/tunneled endpoint inventory is not
 implemented in Gate 1. Protocol-layer counts overlap and must not be summed as a
 packet total. Byte totals are wire-frame lengths, not application goodput.
+Non-TCP/UDP conversations include the observed IP protocol/base IPv6 next-header
+number. Extension or unavailable headers also retain the first terminal dissector
+to distinguish carried protocols; payload layers do not change ordinary protocol
+identity. TCP/UDP conversation behavior is unchanged.
 
 capinfos supplies metadata; TShark supplies selected fields with name resolution
 **disabled** and checksum validation **enabled**. A narrow, bounded PCAPNG header
@@ -100,7 +105,8 @@ and incomplete SYN/SYN-ACK/ACK flag sequences. These are indicators only: direct
 asymmetry and offload causes are not proven. Duplicate-capture artifacts remain
 `unknown` because repeated transport packets cannot establish the capture cause.
 Unavailable drop counters remain `unknown`, never zero. A malformed/unreadable file
-returns an analyzer error rather than an apparently valid quality result.
+returns an analyzer error rather than an apparently valid quality result. TCP
+frames are indexed once for handshake checks, avoiding per-conversation rescans.
 
 Defaults: 64 MiB capture, 100,000 frames, 16 MiB combined stdout/stderr per process,
 30 seconds per process. Limits are configurable positive, finite values; exceeding
@@ -123,5 +129,7 @@ Managed data directories must be private to Wireclaw: this is not protection aga
 a privileged local process racing filesystem changes. Read-only mode is advisory
 on some filesystems/platforms; integrity checks detect later changes. Atomic original
 publication uses same-filesystem hard links; unsupported filesystems must fail rather
-than fall back to overwriting. Windows/macOS native execution has not been smoke-tested
+than fall back to overwriting. Post-publication failures roll back owned originals
+and staging/identity artifacts. Persistent filesystem denial during rollback is
+reported explicitly as `capture_cleanup_failure`, never as successful intake. Windows/macOS native execution has not been smoke-tested
 in this Linux development environment. Docker packaging is intentionally deferred.

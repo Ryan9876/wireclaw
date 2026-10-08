@@ -72,6 +72,10 @@ class Store:
         fd, temporary = tempfile.mkstemp(dir=destination)
         temporary = Path(temporary)
         digest = hashlib.sha256()
+        created_original = False
+        target = None
+        identity = None
+        identity_existed = False
         try:
             total = 0
             with os.fdopen(fd, "wb") as outgoing, source.open("rb") as incoming:
@@ -86,28 +90,57 @@ class Store:
             directory = self.confined(Path("cases") / capture_id / "original", exists=False)
             directory.mkdir(parents=True, exist_ok=True)
             target = directory / "capture"
+            identity = self.confined(
+                directory.parent / "normalized" / "capture-identity.json", exists=False
+            )
+            identity_existed = identity.exists()
             if target.exists():
                 self.verify(capture_id)
             else:
-                # Hard-link publication is atomic and never overwrites an existing original.
+                # The exclusive link decides ownership, including duplicate publication races.
                 try:
                     os.link(temporary, target)
-                    # Windows cannot unlink a read-only hard link. Remove the staging
-                    # name first, then protect the managed original.
-                    temporary.unlink()
-                    target.chmod(0o444)
+                    created_original = True
                 except FileExistsError:
                     self.verify(capture_id)
+            # Cleanup is part of the transaction, before protection/persistence and success.
+            # Windows cannot unlink a read-only hard link, so remove staging first.
+            temporary.unlink()
+            if created_original:
+                target.chmod(0o444)
             self.persist(
                 capture_id,
                 {"capture_sha256": capture_id, "file_bytes": total},
                 name="capture-identity.json",
             )
             return capture_id
-        except OSError:
-            raise AnalyzerError("capture_storage_failure") from None
-        finally:
-            temporary.unlink(missing_ok=True)
+        except BaseException as error:
+            cleanup_failed = False
+            artifacts = [temporary]
+            if created_original:
+                artifacts.append(target)
+                if not identity_existed:
+                    artifacts.append(identity)
+            for artifact in artifacts:
+                try:
+                    self._remove_ingest_artifact(artifact)
+                except OSError:
+                    cleanup_failed = True
+            if cleanup_failed:
+                raise AnalyzerError("capture_cleanup_failure") from None
+            if isinstance(error, OSError):
+                raise AnalyzerError("capture_storage_failure") from None
+            raise
+
+    @staticmethod
+    def _remove_ingest_artifact(path: Path):
+        try:
+            path.unlink(missing_ok=True)
+        except PermissionError:
+            # Windows requires clearing read-only protection before deleting an
+            # original owned by this failed invocation. Existing originals never enter here.
+            os.chmod(path, 0o600)
+            path.unlink(missing_ok=True)
 
     def verify(self, capture_id: str) -> Path:
         path = self.capture_path(capture_id)

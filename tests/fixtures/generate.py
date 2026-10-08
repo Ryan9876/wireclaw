@@ -15,6 +15,7 @@ NAMES = (
     "timestamp_regression",
     "pcapng",
     "drops",
+    "mixed_protocols",
 )
 
 
@@ -47,16 +48,43 @@ def packet(src, dst, protocol, sport, dport, *, flags=0, seq=0, ack=0, payload=b
     )
     check = 0x1234 if bad else checksum(pseudo + segment) or 0xFFFF
     segment = segment[:offset] + struct.pack("!H", check) + segment[offset + 2 :]
-    if ipv6:
-        header = struct.pack("!IHBB", 6 << 28, len(segment), protocol, 64) + source + destination
+    return network_packet(src, dst, protocol, segment)
+
+
+def network_packet(src, dst, protocol, payload):
+    source, destination = ipaddress.ip_address(src).packed, ipaddress.ip_address(dst).packed
+    if len(source) == 16:
+        header = struct.pack("!IHBB", 6 << 28, len(payload), protocol, 64) + source + destination
         ethertype = 0x86DD
     else:
-        header = struct.pack("!BBHHHBBH", 0x45, 0, 20 + len(segment), 1, 0, 64, protocol, 0)
+        header = struct.pack("!BBHHHBBH", 0x45, 0, 20 + len(payload), 1, 0, 64, protocol, 0)
         header += source + destination
         header = header[:10] + struct.pack("!H", checksum(header)) + header[12:]
         ethertype = 0x0800
     ethernet = bytes.fromhex("020000000002020000000001") + struct.pack("!H", ethertype)
-    return ethernet + header + segment
+    return ethernet + header + payload
+
+
+def mixed_protocol_frames():
+    icmp = struct.pack("!BBHHH", 8, 0, 0, 1, 1)
+    icmp = icmp[:2] + struct.pack("!H", checksum(icmp)) + icmp[4:]
+    igmp = bytes([0x16, 0, 0, 0, 224, 0, 0, 1])
+    igmp = igmp[:2] + struct.pack("!H", checksum(igmp)) + igmp[4:]
+    source = ipaddress.ip_address("2001:db8::1").packed
+    destination = ipaddress.ip_address("2001:db8::2").packed
+    icmp6 = struct.pack("!BBHHH", 128, 0, 0, 1, 1)
+    pseudo = source + destination + struct.pack("!I3xB", len(icmp6), 58)
+    icmp6 = icmp6[:2] + struct.pack("!H", checksum(pseudo + icmp6)) + icmp6[4:]
+    # Common SCTP header and shutdown-ack chunk; checksum verification is not a Gate 1 diagnostic.
+    sctp = struct.pack("!HHII", 40000, 40001, 1, 0) + bytes([8, 0, 0, 4])
+    return [
+        network_packet("192.0.2.1", "192.0.2.2", 1, icmp),
+        network_packet("192.0.2.2", "192.0.2.1", 2, igmp),
+        network_packet("2001:db8::1", "2001:db8::2", 58, icmp6),
+        network_packet("2001:db8::2", "2001:db8::1", 132, sctp),
+        network_packet("2001:db8::1", "2001:db8::2", 0, bytes([58, 0]) + b"\0" * 6 + icmp6),
+        network_packet("2001:db8::2", "2001:db8::1", 0, bytes([132, 0]) + b"\0" * 6 + sctp),
+    ]
 
 
 def frames(*, bad=False):
@@ -122,6 +150,7 @@ def generate(directory: Path):
         "timestamp_regression": pcap(healthy, backwards=True),
         "pcapng": pcapng(healthy),
         "drops": pcapng(healthy, drops=True),
+        "mixed_protocols": pcap(mixed_protocol_frames()),
         "malformed": b"not a capture\x00\xff",
         "damaged_record": pcap(healthy)[:-9],
         "unsupported": b"\xd4\xc3\xb2\xa1" + b"\x00" * 20,

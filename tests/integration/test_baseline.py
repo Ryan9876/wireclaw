@@ -164,3 +164,25 @@ def test_independent_fixture_observations(tmp_path):
     drops = analyzer.analyze(analyzer.ingest_capture(Path("incoming/drops.capture")))
     assert drops["evidence"][0]["value"]["capture_drops"] == 3
     assert drops["evidence"][1]["value"]["state"] == "limited"
+
+
+def test_mixed_network_protocols_preserve_per_protocol_one_sidedness(tmp_path):
+    analyzer, _ = prepared(tmp_path)
+    identity = analyzer.ingest_capture(Path("incoming/mixed_protocols.capture"))
+    result = analyzer.analyze(identity)
+    conv = result["evidence"][4]["value"]["conversations"]
+    assert len(conv) == 6
+    ipv4 = [c for c in conv if c["a"]["address"] == "192.0.2.1"]
+    assert [c["network_protocol"]["number"] for c in ipv4] == [1, 2]
+    assert [c["frame_refs"] for c in ipv4] == [[1], [2]]
+    ipv6 = [c for c in conv if c["a"]["address"] == "2001:db8::1"]
+    assert [c["network_protocol"]["number"] for c in ipv6] == [0, 0, 58, 132]
+    extension_flows = [c for c in ipv6 if c["network_protocol"]["number"] == 0]
+    assert {c["network_protocol"]["dissector"] for c in extension_flows} == {"icmpv6", "sctp"}
+    for c in conv:
+        assert c["transport"] == "other"
+        assert (c["a_to_b_packets"], c["b_to_a_packets"]) in ((1, 0), (0, 1))
+    quality = result["evidence"][1]["value"]
+    assert quality["state"] == "limited"
+    assert quality["checks"]["one_sided_conversations"]["count"] == 6
+    assert quality["checks"]["one_sided_conversations"]["frame_refs"] == [1, 2, 3, 4, 5, 6]

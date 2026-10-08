@@ -22,6 +22,7 @@ are not committed.
 | incomplete_handshake | SYN/SYN-ACK only; final ACK absent |
 | timestamp_regression | Healthy bytes with timestamps in descending order |
 | drops | PCAPNG interface statistics block reporting three drops |
+| mixed_protocols | IPv4 ICMP/IGMP and IPv6 ICMPv6/SCTP in opposite directions, including two hop-by-hop extension flows sharing base next-header 0; six distinct one-sided conversations |
 | malformed | Invalid magic/text bytes; rejected |
 | damaged_record | Valid PCAP cut inside final record; rejected |
 | unsupported | PCAP-like magic with unsupported/corrupt header; rejected |

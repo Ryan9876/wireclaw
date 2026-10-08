@@ -70,7 +70,7 @@ def packets(text: str, maximum: int) -> list[dict]:
                 if address:
                     ipaddress.ip_address(address)
             protocol_stack = raw["frame.protocols"].split(":")
-            if any(not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", p) for p in protocol_stack):
+            if any(not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", p) for p in protocol_stack):
                 raise ValueError
             tcp = raw["tcp.stream"] != ""
             udp = raw["udp.stream"] != ""
@@ -84,6 +84,7 @@ def packets(text: str, maximum: int) -> list[dict]:
                 "src": source or None,
                 "dst": destination or None,
                 "transport": transport,
+                "ip_protocol": integer("ip.proto" if raw["ip.src"] else "ipv6.nxt"),
                 "src_port": integer(f"{transport}.srcport") if tcp or udp else None,
                 "dst_port": integer(f"{transport}.dstport") if tcp or udp else None,
                 "stream": integer(f"{transport}.stream") if tcp or udp else None,
@@ -103,6 +104,8 @@ def packets(text: str, maximum: int) -> list[dict]:
                 if row[key] is not None and not 0 <= row[key] <= 65535:
                     raise ValueError
             if row["stream"] is not None and row["stream"] < 0:
+                raise ValueError
+            if row["ip_protocol"] is not None and not 0 <= row["ip_protocol"] <= 255:
                 raise ValueError
             rows.append(row)
         except (ValueError, InvalidOperation, TypeError):
@@ -160,7 +163,22 @@ def conversations(rows: list[dict]) -> dict:
             ((row["src"], row["src_port"]), (row["dst"], row["dst_port"])),
             key=lambda x: (x[0], -1 if x[1] is None else x[1]),
         )
-        key = (row["transport"], tuple(pair), row["stream"])
+        network_protocol = None
+        discriminator = None
+        if row["transport"] == "other":
+            number = row["ip_protocol"]
+            network_protocol = {"number": number}
+            # Base IPv6 next-header may identify an extension rather than the
+            # carried protocol. Retain its first terminal dissector in that case.
+            if number is None or (":" in row["src"] and number in (0, 43, 44, 51, 60)):
+                layer = "ipv6" if ":" in row["src"] else "ip"
+                stack = row["protocols"]
+                following = stack[stack.index(layer) + 1 :] if layer in stack else []
+                network_protocol["dissector"] = next(
+                    (p for p in following if not p.startswith("ipv6.") and p != "ah"), None
+                )
+            discriminator = (number, network_protocol.get("dissector"))
+        key = (row["transport"], tuple(pair), row["stream"], discriminator)
         item = result.setdefault(
             key,
             {
@@ -175,6 +193,8 @@ def conversations(rows: list[dict]) -> dict:
                 "_times": [],
             },
         )
+        if discriminator is not None:
+            item["network_protocol"] = network_protocol
         direction = "a_to_b" if (row["src"], row["src_port"]) == pair[0] else "b_to_a"
         item[f"{direction}_packets"] += 1
         item["wire_bytes"] += row["wire_bytes"]
@@ -200,9 +220,18 @@ def conversations(rows: list[dict]) -> dict:
                 x["b"]["address"],
                 x["b"]["port"] or 0,
                 x["stream"] if x["stream"] is not None else -1,
+                x.get("network_protocol", {}).get("number")
+                if x.get("network_protocol", {}).get("number") is not None
+                else -1,
+                x.get("network_protocol", {}).get("dissector") or "",
             ),
         ),
-        "calculation": "Group bidirectional endpoint pairs by transport and tool stream ID; sum wire lengths; duration=max(time)-min(time).",
+        "calculation": "Group bidirectional endpoint pairs by transport and tool stream ID; sum wire lengths; duration=max(time)-min(time)."
+        + (
+            " Non-TCP/UDP groups also use IP protocol/base IPv6 next-header, with terminal dissector for extension or unavailable headers."
+            if any(c["transport"] == "other" for c in items)
+            else ""
+        ),
     }
 
 
@@ -247,12 +276,13 @@ def quality(meta: dict, rows: list[dict], inventory: dict) -> dict:
         count=len(one_sided),
         note="One observed direction may be normal; asymmetric capture is not proven.",
     )
+    # Each frame is indexed once; conversation frame sets partition TCP rows.
+    tcp_frames = {r["frame"]: r for r in rows if r["transport"] == "tcp"}
     midstream, incomplete = [], []
     for c in inventory["conversations"]:
         if c["transport"] != "tcp":
             continue
-        frames = set(c["frame_refs"])
-        stream = [r for r in rows if r["frame"] in frames]
+        stream = [tcp_frames[frame] for frame in c["frame_refs"]]
         first = stream[0]
         if not first["syn"] or first["ack"]:
             midstream.extend(c["frame_refs"])

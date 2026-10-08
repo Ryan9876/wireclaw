@@ -130,3 +130,41 @@ release toolchain pinning, container isolation and packaging remain in their lat
 gates; none was begun. Both Wireshark actions remain requirements for those gates.
 
 **Gate 1: PASS — ready to begin Gate 2**
+
+## PR #1 blocking-review follow-up — 2026-10-08 UTC
+
+This follow-up supersedes the original completion assessment for the three defects
+identified during independent review. It is based on published commit
+`53afbdae89e20bf2301459934a15208de0122754` and addresses only the three unresolved
+review threads on PR #1. No Gate 2 tasks or specification changes are included.
+
+| Blocking finding | Correction and regression evidence |
+| --- | --- |
+| Capture-quality O(N×C) rescans | TCP frames indexed once; each conversation reads only its indexed frames. A counted-iteration regression with 3,000 interleaved complete, midstream and incomplete streams enforces a constant packet-pass budget, without a wall-clock threshold. Handshake work is O(N); existing output ordering is retained. |
+| Failed ingest retains a published original | Exclusive link publication records ownership. Staging cleanup, protection and identity persistence occur before success. Any later failure removes only this invocation's original and new identity artifact; existing originals are verified and preserved. Failure injection covers protection, persistence before/after write, atomic-replace failure, staging unlink, duplicate intake, publication races and simulated Windows read-only deletion. Permanent cleanup denial is explicitly `capture_cleanup_failure`. |
+| Non-TCP/UDP protocols collapse | TShark extracts validated `ip.proto` / `ipv6.nxt`. Non-TCP/UDP keys include the observed number; extension/unavailable headers also retain the first terminal dissector. Ordinary payload-layer differences do not split a protocol. A six-frame IPv4 ICMP/IGMP and IPv6 ICMPv6/SCTP fixture (including shared base next-header 0) retains six one-sided conversations. |
+
+Final follow-up validation:
+
+- `.venv/bin/pytest -q`: **89 passed, zero skipped**. Includes 66 unit tests and
+  23 real-tool integration tests, with all eleven complete semantic goldens and
+  per-evidence schema validation.
+- `.venv/bin/pytest tests/integration/test_baseline.py -q`: **23 passed** against
+  real TShark/capinfos 4.2.2, including eleven golden/reproducibility cases.
+- `.venv/bin/ruff check services/analyzer/src tests/unit tests/integration/test_baseline.py tests/fixtures/generate.py`:
+  passed.
+- `.venv/bin/ruff format --check services/analyzer/src tests/unit tests/integration/test_baseline.py tests/fixtures/generate.py`:
+  passed; fourteen Python files formatted.
+- `.venv/bin/python -m compileall -q services/analyzer/src tests/unit tests/integration/test_baseline.py tests/fixtures/generate.py`:
+  passed.
+- Installed CLI healthy-capture smoke passed. A separate JSON-schema check validated
+  sixty persisted/example evidence records and the unchanged shared schema.
+- `git diff --check`: passed. Nine original golden files are unchanged; only the
+  truncated conversation inventory gains missing protocol identity. Existing
+  capture-quality values and TCP/UDP inventories are unchanged. The evidence example
+  changes only its recorded field-selection configuration.
+
+The packet-tool environment prefix remains the scratch-only prefix documented
+above. Zeek is still explicitly optional/unavailable; no native macOS/Windows
+execution was claimed. Review threads remain for the independent reviewer to
+confirm; the PR is not merged and Gate 2 has not started.

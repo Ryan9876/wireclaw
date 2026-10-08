@@ -34,6 +34,8 @@ FIELDS = (
     "_ws.malformed",
     "tcp.seq_raw",
     "tcp.ack_raw",
+    "ip.proto",
+    "ipv6.nxt",
 )
 
 

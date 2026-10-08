@@ -2,7 +2,7 @@
   {
     "category": "get_capture_metadata",
     "epistemic_class": "observed",
-    "id": "ev_917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d_get_capture_metadata",
+    "id": "ev_dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d_get_capture_metadata",
     "limitations": [],
     "schema_version": "1.0",
     "scope": {
@@ -15,23 +15,23 @@
     "summary": "get capture metadata",
     "value": {
       "capture_drops": null,
-      "capture_sha256": "917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d",
-      "duration_seconds": 0.6,
+      "capture_sha256": "dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d",
+      "duration_seconds": 0.5,
       "encapsulation": "ether",
-      "file_bytes": 416,
+      "file_bytes": 484,
       "format": "pcap",
-      "packet_count": 7,
-      "snaplen": null,
-      "wire_bytes": 469
+      "packet_count": 6,
+      "snaplen": 65535,
+      "wire_bytes": 364
     }
   },
   {
     "category": "assess_capture_quality",
     "epistemic_class": "derived",
-    "id": "ev_917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d_assess_capture_quality",
+    "id": "ev_dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d_assess_capture_quality",
     "limitations": [
-      "truncation",
       "capture_drops",
+      "one_sided_conversations",
       "duplicate_capture_artifacts"
     ],
     "schema_version": "1.0",
@@ -45,7 +45,7 @@
     "summary": "assess capture quality",
     "value": {
       "calculation": "Insufficient for empty capture; limited for observed quality indicators; good means no baseline indicator observed, not complete visibility.",
-      "capture_sha256": "917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d",
+      "capture_sha256": "dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d",
       "checks": {
         "capture_drops": {
           "count": null,
@@ -77,31 +77,30 @@
           "state": "not_observed"
         },
         "one_sided_conversations": {
-          "count": 0,
-          "frame_refs": [],
-          "note": "One observed direction may be normal; asymmetric capture is not proven.",
-          "state": "not_observed"
-        },
-        "timestamp_regressions": {
-          "frame_refs": [],
-          "state": "not_observed"
-        },
-        "truncation": {
+          "count": 6,
           "frame_refs": [
             1,
             2,
             3,
             4,
             5,
-            6,
-            7
+            6
           ],
+          "note": "One observed direction may be normal; asymmetric capture is not proven.",
           "state": "observed"
+        },
+        "timestamp_regressions": {
+          "frame_refs": [],
+          "state": "not_observed"
+        },
+        "truncation": {
+          "frame_refs": [],
+          "state": "not_observed"
         }
       },
       "limitations": [
-        "truncation",
         "capture_drops",
+        "one_sided_conversations",
         "duplicate_capture_artifacts"
       ],
       "state": "limited"
@@ -110,7 +109,7 @@
   {
     "category": "list_protocols",
     "epistemic_class": "derived",
-    "id": "ev_917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d_list_protocols",
+    "id": "ev_dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d_list_protocols",
     "limitations": [],
     "schema_version": "1.0",
     "scope": {
@@ -123,31 +122,43 @@
     "summary": "list protocols",
     "value": {
       "calculation": "Count each protocol at most once per frame; layers overlap.",
-      "capture_sha256": "917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d",
+      "capture_sha256": "dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d",
       "protocols": [
         {
-          "packets": 7,
+          "packets": 6,
           "protocol": "eth"
         },
         {
-          "packets": 7,
+          "packets": 6,
           "protocol": "ethertype"
         },
         {
-          "packets": 5,
+          "packets": 1,
+          "protocol": "icmp"
+        },
+        {
+          "packets": 2,
+          "protocol": "icmpv6"
+        },
+        {
+          "packets": 1,
+          "protocol": "igmp"
+        },
+        {
+          "packets": 2,
           "protocol": "ip"
         },
         {
-          "packets": 2,
+          "packets": 4,
           "protocol": "ipv6"
         },
         {
-          "packets": 3,
-          "protocol": "tcp"
+          "packets": 2,
+          "protocol": "ipv6.hopopts"
         },
         {
           "packets": 2,
-          "protocol": "udp"
+          "protocol": "sctp"
         }
       ]
     }
@@ -155,7 +166,7 @@
   {
     "category": "list_endpoints",
     "epistemic_class": "derived",
-    "id": "ev_917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d_list_endpoints",
+    "id": "ev_dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d_list_endpoints",
     "limitations": [],
     "schema_version": "1.0",
     "scope": {
@@ -168,52 +179,43 @@
     "summary": "list endpoints",
     "value": {
       "calculation": "Sum frame wire lengths per observed IP endpoint and direction.",
-      "capture_sha256": "917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d",
+      "capture_sha256": "dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d",
       "endpoints": [
         {
           "address": "192.0.2.1",
           "address_family": "ipv4",
           "ports": [],
-          "received_packets": 2,
-          "received_wire_bytes": 145,
-          "sent_packets": 3,
-          "sent_wire_bytes": 183
+          "received_packets": 1,
+          "received_wire_bytes": 42,
+          "sent_packets": 1,
+          "sent_wire_bytes": 42
         },
         {
           "address": "192.0.2.2",
           "address_family": "ipv4",
           "ports": [],
-          "received_packets": 2,
-          "received_wire_bytes": 108,
-          "sent_packets": 1,
-          "sent_wire_bytes": 54
-        },
-        {
-          "address": "192.0.2.53",
-          "address_family": "ipv4",
-          "ports": [],
           "received_packets": 1,
-          "received_wire_bytes": 75,
+          "received_wire_bytes": 42,
           "sent_packets": 1,
-          "sent_wire_bytes": 91
+          "sent_wire_bytes": 42
         },
         {
           "address": "2001:db8::1",
           "address_family": "ipv6",
           "ports": [],
-          "received_packets": 0,
-          "received_wire_bytes": 0,
-          "sent_packets": 1,
-          "sent_wire_bytes": 71
+          "received_packets": 2,
+          "received_wire_bytes": 148,
+          "sent_packets": 2,
+          "sent_wire_bytes": 132
         },
         {
           "address": "2001:db8::2",
           "address_family": "ipv6",
           "ports": [],
-          "received_packets": 0,
-          "received_wire_bytes": 0,
-          "sent_packets": 1,
-          "sent_wire_bytes": 70
+          "received_packets": 2,
+          "received_wire_bytes": 132,
+          "sent_packets": 2,
+          "sent_wire_bytes": 148
         }
       ],
       "excluded_non_ip_packets": 0
@@ -222,7 +224,7 @@
   {
     "category": "list_conversations",
     "epistemic_class": "derived",
-    "id": "ev_917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d_list_conversations",
+    "id": "ev_dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d_list_conversations",
     "limitations": [],
     "schema_version": "1.0",
     "scope": {
@@ -235,33 +237,8 @@
     "summary": "list conversations",
     "value": {
       "calculation": "Group bidirectional endpoint pairs by transport and tool stream ID; sum wire lengths; duration=max(time)-min(time). Non-TCP/UDP groups also use IP protocol/base IPv6 next-header, with terminal dissector for extension or unavailable headers.",
-      "capture_sha256": "917d5bac72ec1aee268f7b9b8052890684be26bc5796e13bc23bc7a0e4a2e09d",
+      "capture_sha256": "dd998d7acdb39d50d2f95dd594a6be02de2d9aa0573da837d7aeeedfc4228a2d",
       "conversations": [
-        {
-          "a": {
-            "address": "192.0.2.1",
-            "port": null
-          },
-          "a_to_b_packets": 2,
-          "b": {
-            "address": "192.0.2.2",
-            "port": null
-          },
-          "b_to_a_packets": 1,
-          "display_filter": null,
-          "duration_seconds": 0.2,
-          "frame_refs": [
-            1,
-            2,
-            3
-          ],
-          "network_protocol": {
-            "number": 6
-          },
-          "stream": null,
-          "transport": "other",
-          "wire_bytes": 162
-        },
         {
           "a": {
             "address": "192.0.2.1",
@@ -269,22 +246,138 @@
           },
           "a_to_b_packets": 1,
           "b": {
-            "address": "192.0.2.53",
+            "address": "192.0.2.2",
+            "port": null
+          },
+          "b_to_a_packets": 0,
+          "display_filter": null,
+          "duration_seconds": 0.0,
+          "frame_refs": [
+            1
+          ],
+          "network_protocol": {
+            "number": 1
+          },
+          "stream": null,
+          "transport": "other",
+          "wire_bytes": 42
+        },
+        {
+          "a": {
+            "address": "192.0.2.1",
+            "port": null
+          },
+          "a_to_b_packets": 0,
+          "b": {
+            "address": "192.0.2.2",
             "port": null
           },
           "b_to_a_packets": 1,
           "display_filter": null,
-          "duration_seconds": 0.1,
+          "duration_seconds": 0.0,
           "frame_refs": [
-            4,
-            5
+            2
           ],
           "network_protocol": {
-            "number": 17
+            "number": 2
           },
           "stream": null,
           "transport": "other",
-          "wire_bytes": 166
+          "wire_bytes": 42
+        },
+        {
+          "a": {
+            "address": "2001:db8::1",
+            "port": null
+          },
+          "a_to_b_packets": 1,
+          "b": {
+            "address": "2001:db8::2",
+            "port": null
+          },
+          "b_to_a_packets": 0,
+          "display_filter": null,
+          "duration_seconds": 0.0,
+          "frame_refs": [
+            5
+          ],
+          "network_protocol": {
+            "dissector": "icmpv6",
+            "number": 0
+          },
+          "stream": null,
+          "transport": "other",
+          "wire_bytes": 70
+        },
+        {
+          "a": {
+            "address": "2001:db8::1",
+            "port": null
+          },
+          "a_to_b_packets": 0,
+          "b": {
+            "address": "2001:db8::2",
+            "port": null
+          },
+          "b_to_a_packets": 1,
+          "display_filter": null,
+          "duration_seconds": 0.0,
+          "frame_refs": [
+            6
+          ],
+          "network_protocol": {
+            "dissector": "sctp",
+            "number": 0
+          },
+          "stream": null,
+          "transport": "other",
+          "wire_bytes": 78
+        },
+        {
+          "a": {
+            "address": "2001:db8::1",
+            "port": null
+          },
+          "a_to_b_packets": 1,
+          "b": {
+            "address": "2001:db8::2",
+            "port": null
+          },
+          "b_to_a_packets": 0,
+          "display_filter": null,
+          "duration_seconds": 0.0,
+          "frame_refs": [
+            3
+          ],
+          "network_protocol": {
+            "number": 58
+          },
+          "stream": null,
+          "transport": "other",
+          "wire_bytes": 62
+        },
+        {
+          "a": {
+            "address": "2001:db8::1",
+            "port": null
+          },
+          "a_to_b_packets": 0,
+          "b": {
+            "address": "2001:db8::2",
+            "port": null
+          },
+          "b_to_a_packets": 1,
+          "display_filter": null,
+          "duration_seconds": 0.0,
+          "frame_refs": [
+            4
+          ],
+          "network_protocol": {
+            "number": 132
+          },
+          "stream": null,
+          "transport": "other",
+          "wire_bytes": 70
         }
       ]
     }
