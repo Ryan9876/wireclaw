@@ -4,7 +4,7 @@
     "display_filter": "dns && !(icmp || icmpv6)",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_dns",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_dns",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -26,7 +26,7 @@
     "value": {
       "ambiguous_message_frames": [],
       "calculation": "Use reciprocal TShark DNS response_in/response_to frame links and matching ID, reverse endpoints and stream; elapsed=response timestamp-query timestamp. Rcode is observed; unanswered means no linked response in the capture.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
         "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
@@ -44,7 +44,7 @@
     "display_filter": "tcp",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_tcp_establishment",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tcp_establishment",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -63,7 +63,7 @@
     "summary": "analyze tcp establishment",
     "value": {
       "calculation": "No TCP stream rows observed.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Absent traffic is not proof of absence outside this capture."
       ],
@@ -75,7 +75,7 @@
     "display_filter": "tcp",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_tcp_health",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tcp_health",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -94,7 +94,7 @@
     "summary": "analyze tcp health",
     "value": {
       "calculation": "No TCP stream rows observed.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Absent traffic is not proof of absence outside this capture."
       ],
@@ -106,7 +106,7 @@
     "display_filter": "tcp",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_rtt",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_rtt",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -125,7 +125,7 @@
     "summary": "analyze rtt",
     "value": {
       "calculation": "No TCP stream rows observed.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Absent traffic is not proof of absence outside this capture."
       ],
@@ -137,7 +137,7 @@
     "display_filter": "tcp",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_window_behavior",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_window_behavior",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -156,7 +156,7 @@
     "summary": "analyze window behavior",
     "value": {
       "calculation": "No TCP stream rows observed.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Absent traffic is not proof of absence outside this capture."
       ],
@@ -168,7 +168,7 @@
     "display_filter": "tcp",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_tcp_resets",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tcp_resets",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -187,7 +187,7 @@
     "summary": "analyze tcp resets",
     "value": {
       "calculation": "No TCP stream rows observed.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Absent traffic is not proof of absence outside this capture."
       ],
@@ -199,7 +199,7 @@
     "display_filter": "tcp",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_throughput",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_throughput",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -218,7 +218,7 @@
     "summary": "analyze throughput",
     "value": {
       "calculation": "No TCP stream rows observed.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Absent traffic is not proof of absence outside this capture."
       ],
@@ -230,7 +230,7 @@
     "display_filter": "frame.number == 0",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_mss",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_mss",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -251,7 +251,7 @@
     "summary": "analyze mss",
     "value": {
       "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "MSS is advertised receive capability, not measured path MTU.",
         "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
@@ -266,7 +266,7 @@
     "display_filter": "frame.number == 0",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_fragmentation",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_fragmentation",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -287,7 +287,7 @@
     "summary": "analyze fragmentation",
     "value": {
       "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "MSS is advertised receive capability, not measured path MTU.",
         "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
@@ -305,7 +305,7 @@
       1,
       2
     ],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_pmtud_signals",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_pmtud_signals",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -326,7 +326,7 @@
     "summary": "analyze pmtud signals",
     "value": {
       "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "MSS is advertised receive capability, not measured path MTU.",
         "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
@@ -334,31 +334,42 @@
       ],
       "packet_size_patterns": [
         {
-          "destination": "2001:db8::1",
+          "destination": "192.0.2.1",
+          "df_packet_count": 0,
+          "family": "ipv4",
+          "maximum_ip_bytes": 64,
+          "maximum_size_frame": 1,
+          "minimum_ip_bytes": 64,
+          "minimum_size_frame": 1,
+          "packet_count": 1,
+          "source": "192.0.2.2"
+        },
+        {
+          "destination": "2001:db8::2",
           "df_packet_count": 0,
           "family": "ipv6",
-          "maximum_ip_bytes": 129,
-          "maximum_size_frame": 1,
-          "minimum_ip_bytes": 129,
-          "minimum_size_frame": 1,
-          "packet_count": 2,
-          "source": "2001:db8::53"
+          "maximum_ip_bytes": 112,
+          "maximum_size_frame": 2,
+          "minimum_ip_bytes": 112,
+          "minimum_size_frame": 2,
+          "packet_count": 1,
+          "source": "2001:db8::1"
         }
       ],
       "records": [
         {
-          "destination": "2001:db8::1",
+          "destination": "192.0.2.1",
           "frame": 1,
-          "kind": "packet_too_big",
-          "mtu_bytes": 1280,
-          "source": "2001:db8::53"
+          "kind": "fragmentation_needed",
+          "mtu_bytes": 1200,
+          "source": "192.0.2.2"
         },
         {
-          "destination": "2001:db8::1",
+          "destination": "2001:db8::2",
           "frame": 2,
           "kind": "packet_too_big",
           "mtu_bytes": 1280,
-          "source": "2001:db8::53"
+          "source": "2001:db8::1"
         }
       ]
     }
@@ -368,7 +379,7 @@
     "display_filter": "tcp",
     "epistemic_class": "derived",
     "frame_refs": [],
-    "id": "ev_8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029_analyze_tls_handshakes",
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tls_handshakes",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
       "capture_drops",
@@ -387,7 +398,7 @@
     "summary": "analyze tls handshakes",
     "value": {
       "calculation": "No TCP stream rows observed.",
-      "capture_sha256": "8b1771bae885ffc742b0b2e356c97610a56f59e76376c642220fcb422ab55029",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
       "limitations": [
         "Absent traffic is not proof of absence outside this capture."
       ],

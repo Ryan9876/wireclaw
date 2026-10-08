@@ -180,7 +180,8 @@ reconstructed from parallel fields; encrypted DNS is unavailable. Coalesced DNS
 messages are explicitly ambiguous. Visible TLS metadata does not
 prove a usable session; alerts/repeated hellos do not identify a root cause.
 Quoted ICMP transport never becomes a current diagnostic stream or live DNS transaction. Quoted fragment
-fields are withheld; other nested/tunneled diagnostic headers fail explicitly.
+fields are withheld; unsupported nested/tunneled packets are excluded with bounded
+frame/count limitations while unrelated supported diagnostics remain available.
 Capture quality, missing directions, offload, timestamp anomalies and drops remain
 material caveats, not proof of network failure. Prior successful diagnostic files
 remain historical if a later run fails; callers must respect the returned failure.
@@ -224,7 +225,9 @@ No Gate 3 or later work is included. The specification and shared schema remain 
 Names accept conservative ASCII labels `[A-Za-z0-9_-]{1,63}`, a total normalized
 length of at most 253, optional one trailing root dot (input limit 254), or root `.`.
 Case and the root dot are normalized. Empty labels, control/escaped/binary/non-ASCII
-presentation and excess length fail with a safe code that does not echo the value.
+presentation and excess length withhold transaction name identities and sequence
+correlation with a static limitation, without retaining or echoing rejected text.
+Numeric facts remain available where reciprocal tool links/context establish them.
 Occurrences remain bounded to 64 per field by default. No silent text truncation occurs.
 
 The name ID is HMAC-SHA256 of the normalized name, with key
@@ -303,4 +306,126 @@ health-dictionary expectation after the fraction addition, and development forma
 They were corrected and the complete final corpus rerun. No skipped packet-tool tests
 or mock integration are represented as successful real validation.
 
-**Gate 2 engine complete — ready for independent review; do not merge.**
+**Previous reviewed Gate 2 implementation: complete and left unmerged for review.**
+
+## Final independent-review remediation — PR #3
+
+Previous reviewed head: `6518af6c6ebe14b3b084b5c90c3a639a614cf706`.
+Validation base: main `3eb988f84bb2ccdf1f193e4be6464d4d0d9c50e5` (unchanged).
+Remediation implementation commit: recorded in the provenance follow-up after publication.
+The final published branch head is also recorded in PR #3's body.
+
+### Corrections and independent packet checks
+
+1. **Safe domain degradation (R-N006, R-F006, R-F017).** Unsupported DNS
+   presentation produces no identity and no raw retained text. Affected transactions
+   keep trusted numeric facts, reverse endpoints/transport/stream, reciprocal tool
+   links and timing; name-based sequence grouping is suppressed with a specific
+   limitation. Available identities must still match. Unsupported original-query
+   names also limit retries linked to that original. Nested/tunneled packets without
+   safe layer attribution are omitted from all diagnostic indexes, with bounded
+   frame/count limitations; unrelated supported streams remain available. Malformed
+   columns/numeric fields, inconsistent frame/stream identity, capture integrity
+   failure and resource violations still fail analysis. No malformed name is hashed.
+2. **Outer fragmentation (R-F009).** Protocol-stack positions identify the outer
+   network header before any ICMP quote. First outer IPv4 fields and an outer IPv6
+   fragment extension are retained; quoted inner fragment fields are suppressed.
+   Outer ICMP/ICMPv6 fragments are no longer discarded. IPv4 records now include
+   `ip.id`; IPv6 identification remains `ipv6.fraghdr.ident`.
+3. **Valid PTB (R-F009).** ICMPv6 Packet Too Big requires type 2 **and code 0**;
+   type 2/code 1 is not promoted to a valid signal. IPv4 type 3/code 4 is unchanged.
+4. **Non-causal reset relationships (R-F007/R-F008).** The existing
+   `observed_reconnect_attempts` field is preserved with an explicit limitation:
+   later SYNs are subsequent observed attempts to the same client-address,
+   server-address/service-port tuple. Application/session continuity and causal
+   relationship to the previous reset are unknown.
+5. **Exact capture references (R-F017).** MSS/fragmentation top-level references
+   select only record frames. PMTUD references select valid control signals and
+   first directional size-extremum frames, including new `minimum_size_frame`.
+   Exact scalar/nested references remain intact. Filters are generated from validated
+   integer frames. Above the reference bound, the existing range/filter fallback is
+   retained. Empty packet sets use no references and `frame.number == 0`; capture-level
+   TCP not-observable items similarly no longer point to unrelated packets.
+
+Six new deterministic captures/goldens:
+
+| Fixture | Independently asserted packet facts |
+| --- | --- |
+| `isolation_dns` | Clean TCP frames 1–7 unchanged; unsupported-name DNS ID 77 query/response frames 8/9, UDP resolver 192.0.2.53, rcode 3, 0.1 s; name identity null and no name sequence |
+| `isolation_nested` | Clean TCP frames 1–7 unchanged; IP-in-IP frame 8 omitted from diagnostic attribution, with explicit limitation |
+| `outer_icmp_fragments` | IPv4 ICMP frames 1/2, ID 1, offsets 0/2, MF true/false; IPv6 ICMPv6 frames 3/4, ID 77, offsets 0/2, M true/false; exact outer addresses |
+| `quoted_fragments` | Raw TShark exposes outer/inner IPv4 MF false/true and quoted IPv6 ID 99; zero outer-fragment records, two valid PMTUD signals |
+| `ptb_codes` | TShark dissects codes 0/1 on frames 1/2; only frame 1 yields PTB MTU 1280 |
+| `reset_independent` | Reset frame 6 and later SYN frame 7 on a different stream/client port; no application continuity or causality claim |
+
+Existing non-ICMP IPv4/IPv6 fragments are checked for exact frames, addresses,
+family, offsets, flags and IDs (1/42). The raw packet-tool fields were inspected
+independently of the analyzer: outer ICMP first fragments have stacks ending in
+`ip:data` / `ipv6:ipv6.fraghdr:data`, later reassembled fragments include ICMP;
+that variation must not suppress first-fragment evidence. Quoted DNS, normal DNS
+sequence/A/AAAA/resolver/CNAME/TCP-fallback, TLS and all TCP regressions remain included.
+Scoped RTT/health/throughput/TLS results match clean controls in both isolation captures.
+Tests also prove structural corruption remains an error in unsupported-domain rows,
+raw unsupported text is absent from logs/evidence/persistence, and reference fallback
+stays bounded. Packet-tool comparisons use normalized values rather than prose.
+
+### Golden inspection
+
+Before accepting each existing golden, a structural comparison against the previous
+reviewed head allowed only: DNS/reset/network limitation text; capture-level references
+and their internally generated filters; IPv4 fragment IDs; PMTUD minimum-size frames;
+and empty references for capture-level not-observable TCP items. Every other field
+must compare exactly, including DNS sequences/identities, TCP measurements, TLS timing,
+scoped IDs, capture hashes and source capabilities. All 23 existing Gate 2 goldens
+passed that comparison. Six new goldens have independent numeric packet assertions.
+**All eleven Gate 1 golden JSON files remain byte-for-byte unchanged against main.**
+Baseline intake, runner operations/resource bounds, SHA verification, immutable originals,
+checksum/capture-quality logic and the five-item baseline contract are unchanged.
+
+### Final complete validation
+
+Linux only; Python 3.12.14, analyzer 0.2.0, TShark/capinfos 4.2.2,
+pytest 9.1.1, Ruff 0.16.10. Zeek is optional/unavailable. The inherited scratch
+packet-tool installation crashed at startup; a fresh extraction of the same cached
+4.2.2 packages to `/tmp/wireclaw-packet-tools` restored execution. Earlier startup
+failures are not counted as validation successes. Final commands used:
+
+```sh
+export PATH=/tmp/wireclaw-packet-tools/usr/bin:$PATH
+export LD_LIBRARY_PATH=/tmp/wireclaw-packet-tools/usr/lib/x86_64-linux-gnu
+.venv/bin/python -m pytest -q
+.venv/bin/python -m pytest tests/integration -q
+.venv/bin/python -m ruff check services/analyzer/src tests
+.venv/bin/python -m ruff format --check services/analyzer/src tests
+.venv/bin/python -m compileall -q services/analyzer/src tests
+.venv/bin/wireclaw-analyze --data-root data/gate2-remediation-validation incoming/isolation_dns.capture
+.venv/bin/wireclaw-analyze --data-root data/gate2-remediation-validation incoming/isolation_dns.capture --diagnostics
+git diff --check
+```
+
+| Validation | Final result |
+| --- | --- |
+| Full pytest | 250 passed: 154 unit + 96 real integration, zero skipped |
+| Separate real-tool integration run | 96 passed, zero skipped |
+| Semantic goldens | 40 passed: 11 unchanged Gate 1 + 29 Gate 2 |
+| Repeated-run determinism | Exact repeated results for all 29 Gate 2 fixtures, also asserted by golden tests |
+| Shared schema and record checks | Schema valid; 904 checks: 478 current runtime records, 22 examples, 388 semantic golden records (reference source version restored), 16 CLI records |
+| Baseline/diagnostic installed CLI smokes | Passed: five/eleven schema-valid records; real tool versions retained |
+| Ruff lint / format | Passed; all 24 Python files formatted |
+| Python compileall | Passed |
+| Capture immutability | All 29 generated originals byte-identical to intake, SHA-matching and read-only; repeated integration runs retain originals |
+| Resource/performance/security regressions | Passed in full suite: output/time/occurrence/record/item/JSON bounds, fixed argv/no shell/path confinement, indexed packet processing |
+| Diff/scope inspection | Passed; no Gate 1 golden or execution/intake changes, no Gate 3+ implementation |
+
+No real packet-tool validation was skipped. The final separate integration result
+supersedes intermediate development assertions/formatting and tool-startup failures.
+Only Linux and packet-tool 4.2.2 were executed; native macOS/Windows, other tool
+versions and Docker/release packaging remain unvalidated. Unsupported packet layers
+remain unavailable, not factual evidence. DNS pseudonyms do not prevent dictionary
+matching; encrypted DNS/TLS completion and complete CNAME owner chains remain
+unavailable. Goodput remains an observed transport approximation; ICMP signals,
+expert labels and later SYNs do not establish root cause or application continuity.
+
+Gate 2 validation passes. PR #3 remains unmerged pending direct merge authorization;
+PR #2 remains a superseded draft and must not be merged. All Gate 2 task checkboxes
+remain complete; Gate 3 and later tasks remain unchecked. No Gate 3+ work was included.

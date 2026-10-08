@@ -165,11 +165,11 @@ not the underlying full-capture dissector pass. No caching/orchestrator is added
 | HEALTH / `analyze_tcp_health` | Each TShark expert class, exact frames, retransmission-class union, packet/data counts, bytes-in-flight samples and frame fractions |
 | RTT / `analyze_rtt` | Eligible ACK RTT samples with ACK/segment frames, direction, min/median/nearest-rank p95/max; rejected ACK frames |
 | WINDOW / `analyze_window_behavior` | Advertiser, scaled-window observations, extrema with frames, scaling options, zero-window/probe/window-full labels, observed zero-window intervals |
-| RESETS / `analyze_tcp_resets` | Sender/receiver and RST/ACK flags from capture perspective, exact frame, lifecycle timing/phase and subsequent reconnect attempts |
+| RESETS / `analyze_tcp_resets` | Sender/receiver and RST/ACK flags from capture perspective, exact frame, lifecycle timing/phase and subsequent same-service connection attempts (continuity/causality unknown) |
 | THROUGHPUT / `analyze_throughput` | Wire/captured/payload bytes, expert-marked retransmitted bytes, sequence-union/ACK-covered payload approximations and explicit rate formulas |
 | MSS / `analyze_mss` | Advertised MSS per packet/stream/direction |
-| FRAGMENTATION / `analyze_fragmentation` | IPv4 MF/offset and IPv6 fragment-header ID/offset/M flag, including atomic headers |
-| PMTUD / `analyze_pmtud_signals` | ICMP type 3/code 4 and ICMPv6 type 2 with advertised MTU, directional IP-size ranges/DF counts |
+| FRAGMENTATION / `analyze_fragmentation` | Outer IPv4 ID/MF/offset and IPv6 fragment-header ID/offset/M flag, including atomic headers |
+| PMTUD / `analyze_pmtud_signals` | ICMP type 3/code 4 and ICMPv6 type 2/code 0 with advertised MTU, directional IP-size ranges/DF counts |
 | TLS / `analyze_tls_handshakes` | Visible messages and contributing reassembly frames, TCP-to-ClientHello and ClientHello-to-ServerHello timing, repeated ClientHello and observed alerts |
 
 Run the developer CLI using a predefined switch:
@@ -228,8 +228,11 @@ once. A private managed data root and trusted packet-tool installation remain re
   ASCII letters/digits/underscore/hyphen, labels of 1–63 characters, total 1–253
   characters, optional final root dot (254 input characters); root `.` is supported.
   Case and one trailing root dot are normalized. Controls, escaped/binary/non-ASCII
-  presentation, empty labels, overlong labels/names and excess occurrences fail safely
-  without echoing text. Each field allows at most 64 occurrences by default. No raw
+  presentation, empty labels and overlong labels/names withhold the affected transaction
+  name identities and sequence correlation, with a specific limitation. Trustworthy
+  numeric DNS fields, reciprocal frame links, timing and endpoints remain available.
+  Excess occurrences still fail as a resource violation; no rejected text is echoed.
+  Each field allows at most 64 occurrences by default. No raw
   name enters evidence, logs, filters or commands. TLS certificate/SNI/payload text is
   never extracted. Encrypted DNS is unavailable.
 - Query-name ID is HMAC-SHA256 of the normalized name using
@@ -238,8 +241,8 @@ once. A private managed data root and trusted packet-tool installation remain re
   transaction ID. This is data minimization, not a secrecy guarantee against guessing
   with the public capture hash; the identity has no network meaning. A future provider
   should receive normalized IDs, not raw names, unless a separate explicit policy allows it.
-- DNS uses reciprocal TShark frame links, matching ID, query identity/type, reverse
-  endpoint tuple and stream/transport. ICMP/ICMPv6 quoted DNS fields are suppressed;
+- DNS uses reciprocal TShark frame links, matching ID/type, compatible available
+  query identities, reverse endpoint tuple and stream/transport. ICMP/ICMPv6 quoted DNS fields are suppressed;
   they never create transactions, orphan/ambiguous messages or sequences. Direct DNS,
   including TCP, remains supported. A retry linked to an original response has no
   independently attributable elapsed interval. Parallel multi-message/question arrays
@@ -259,10 +262,25 @@ once. A private managed data root and trusted packet-tool installation remain re
   Keylog loading is disabled; no TLS decryption is required or performed. Session
   completion remains unknown even if a Finished message is visible. Repeated hellos
   can reflect retry requests, renegotiation or transport behavior.
-- ICMP quoted headers are never assigned as current TCP streams. Fragment indicators
-  inside ICMP errors are withheld; they cannot be safely assigned to the outer packet
-  with this field representation. Other nested/tunneled diagnostic headers are rejected
-  explicitly. PMTUD signals do not establish an MTU black hole; absence does not rule one out.
+- ICMP quoted headers are never assigned as current TCP streams or live DNS. Only
+  fragmentation on the outer IP header/extension chain is reported, including outer
+  ICMP/ICMPv6 fragments. Inner quoted fragments are withheld. IPv4 identification
+  uses `ip.id`; IPv6 uses `ipv6.fraghdr.ident`. PMTUD requires ICMPv4 type 3/code 4
+  or ICMPv6 type 2/code 0. Signals do not establish an MTU black hole; absence does
+  not rule one out.
+- Nested/tunneled packets without safe layer attribution are excluded from diagnostic
+  indexes with a bounded frame/count limitation. Unrelated supported streams remain
+  analyzable. Structurally malformed numeric fields, frame/stream inconsistencies,
+  compromised capture integrity and resource exhaustion still fail analysis.
+- Capture-level MSS and fragmentation references select only observed record frames.
+  PMTUD selects valid control-signal frames plus the first directional minimum/maximum
+  outer-size frames, retained explicitly in each pattern. Pattern counts describe the
+  directional outer-IP population, not only those extrema. Exact internally generated
+  frame filters apply below the frame-reference bound; larger sets retain range/filter
+  fallback. Empty packet evidence uses no references and `frame.number == 0`.
+- `observed_reconnect_attempts` records only later SYNs to the same client-address,
+  server-address and service-port tuple. Application/session continuity and causality
+  to the previous reset are unknown, including when the client ephemeral port changes.
 
 See [`../../docs/gate2-verification.md`](../../docs/gate2-verification.md) for task
 mapping, real-tool validation, authoritative field references and reproducible examples.

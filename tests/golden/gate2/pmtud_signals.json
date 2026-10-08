@@ -12,7 +12,7 @@
       "midstream_indicators",
       "duplicate_capture_artifacts",
       "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-      "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+      "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
       "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
     ],
     "schema_version": "1.0",
@@ -30,7 +30,7 @@
       "capture_sha256": "c6b5653240d033ae71103b45c8f187c4522554b3cafc6a10b1646a3285e32ea9",
       "limitations": [
         "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-        "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
         "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
       ],
       "name_resolution_sequences": [],
@@ -308,7 +308,7 @@
       "one_sided_conversations",
       "midstream_indicators",
       "duplicate_capture_artifacts",
-      "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+      "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
     ],
     "schema_version": "1.0",
     "scope": {
@@ -332,7 +332,7 @@
       "count": 0,
       "establishment_state": "midstream",
       "limitations": [
-        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
       ],
       "observed_reconnect_attempts": [],
       "resets": []
@@ -409,13 +409,9 @@
   },
   {
     "category": "analyze_mss",
-    "display_filter": "tcp.options.mss_val",
+    "display_filter": "frame.number == 0",
     "epistemic_class": "derived",
-    "frame_refs": [
-      1,
-      2,
-      3
-    ],
+    "frame_refs": [],
     "id": "ev_c6b5653240d033ae71103b45c8f187c4522554b3cafc6a10b1646a3285e32ea9_analyze_mss",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
@@ -424,7 +420,7 @@
       "midstream_indicators",
       "duplicate_capture_artifacts",
       "MSS is advertised receive capability, not measured path MTU.",
-      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
       "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
     ],
     "schema_version": "1.0",
@@ -441,7 +437,7 @@
       "capture_sha256": "c6b5653240d033ae71103b45c8f187c4522554b3cafc6a10b1646a3285e32ea9",
       "limitations": [
         "MSS is advertised receive capability, not measured path MTU.",
-        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
         "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
       ],
       "packet_size_patterns": [],
@@ -450,13 +446,9 @@
   },
   {
     "category": "analyze_fragmentation",
-    "display_filter": "ip.flags.mf || ip.frag_offset || ipv6.fraghdr",
+    "display_filter": "frame.number == 0",
     "epistemic_class": "derived",
-    "frame_refs": [
-      1,
-      2,
-      3
-    ],
+    "frame_refs": [],
     "id": "ev_c6b5653240d033ae71103b45c8f187c4522554b3cafc6a10b1646a3285e32ea9_analyze_fragmentation",
     "limitations": [
       "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
@@ -465,7 +457,7 @@
       "midstream_indicators",
       "duplicate_capture_artifacts",
       "MSS is advertised receive capability, not measured path MTU.",
-      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
       "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
     ],
     "schema_version": "1.0",
@@ -482,7 +474,7 @@
       "capture_sha256": "c6b5653240d033ae71103b45c8f187c4522554b3cafc6a10b1646a3285e32ea9",
       "limitations": [
         "MSS is advertised receive capability, not measured path MTU.",
-        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
         "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
       ],
       "packet_size_patterns": [],
@@ -491,7 +483,7 @@
   },
   {
     "category": "analyze_pmtud_signals",
-    "display_filter": "ip || ipv6",
+    "display_filter": "frame.number == 1 || frame.number == 2 || frame.number == 3",
     "epistemic_class": "derived",
     "frame_refs": [
       1,
@@ -506,7 +498,7 @@
       "midstream_indicators",
       "duplicate_capture_artifacts",
       "MSS is advertised receive capability, not measured path MTU.",
-      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
       "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
     ],
     "schema_version": "1.0",
@@ -523,7 +515,7 @@
       "capture_sha256": "c6b5653240d033ae71103b45c8f187c4522554b3cafc6a10b1646a3285e32ea9",
       "limitations": [
         "MSS is advertised receive capability, not measured path MTU.",
-        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
         "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
       ],
       "packet_size_patterns": [
@@ -534,6 +526,7 @@
           "maximum_ip_bytes": 140,
           "maximum_size_frame": 1,
           "minimum_ip_bytes": 140,
+          "minimum_size_frame": 1,
           "packet_count": 1,
           "source": "192.0.2.1"
         },
@@ -544,6 +537,7 @@
           "maximum_ip_bytes": 56,
           "maximum_size_frame": 2,
           "minimum_ip_bytes": 56,
+          "minimum_size_frame": 2,
           "packet_count": 1,
           "source": "192.0.2.2"
         },
@@ -554,6 +548,7 @@
           "maximum_ip_bytes": 105,
           "maximum_size_frame": 3,
           "minimum_ip_bytes": 105,
+          "minimum_size_frame": 3,
           "packet_count": 1,
           "source": "2001:db8::2"
         }

@@ -168,5 +168,9 @@ Raw names never enter normalized evidence, logs, generated filters or command pa
 IDs remain untrusted data and have no network meaning. They minimize disclosure but do
 not prevent dictionary guessing using the public capture identity. Future providers
 must retain this minimization by default; raw-name transmission needs a separate explicit
-policy. Unsupported/control/escaped/overlong text fails with a safe code, never the value.
+policy. Unsupported/control/escaped/overlong text is discarded without producing an
+identity; affected name/sequence correlation is withheld with a static limitation.
+Trustworthy numeric DNS facts and unrelated supported capabilities remain available.
+No raw rejected value enters errors or logs. Structural/numeric output corruption,
+occurrence/resource violations and compromised capture integrity still fail analysis.
 The analyzer README specifies exact bounds, formula and correlation limitations.

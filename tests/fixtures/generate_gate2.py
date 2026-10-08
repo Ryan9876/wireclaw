@@ -32,6 +32,12 @@ NAMES = (
     "dns_tcp_fallback",
     "tls_clean",
     "tls12_clean",
+    "isolation_dns",
+    "isolation_nested",
+    "outer_icmp_fragments",
+    "quoted_fragments",
+    "ptb_codes",
+    "reset_independent",
 )
 
 
@@ -197,12 +203,28 @@ def hello(kind, version=13):
     return tls_record(22, bytes([kind]) + len(body).to_bytes(3, "big") + body)
 
 
-def fragment4(payload, offset, more):
-    raw = bytearray(network_packet(CLIENT, SERVER, 17, payload))
+def fragment4(payload, offset, more, protocol=17):
+    raw = bytearray(network_packet(CLIENT, SERVER, protocol, payload))
     raw[20:22] = struct.pack("!H", offset | (0x2000 if more else 0))
     raw[24:26] = b"\0\0"
     raw[24:26] = struct.pack("!H", checksum(bytes(raw[14:34])))
     return bytes(raw)
+
+
+def icmp6(payload, *, kind=128, code=0, mtu=0):
+    a6, b6 = "2001:db8::1", "2001:db8::2"
+    message = struct.pack("!BBHI", kind, code, 0, mtu) + payload
+    pseudo = (
+        ipaddress.ip_address(a6).packed
+        + ipaddress.ip_address(b6).packed
+        + struct.pack("!I3xB", len(message), 58)
+    )
+    return message[:2] + struct.pack("!H", checksum(pseudo + message)) + message[4:]
+
+
+def icmp4_error(quote):
+    message = struct.pack("!BBHHH", 3, 4, 0, 0, 1200) + quote
+    return message[:2] + struct.pack("!H", checksum(message)) + message[4:]
 
 
 def generate(directory: Path):
@@ -318,8 +340,44 @@ def generate(directory: Path):
         (100_000, tcp(payload=ch12, flags=24)),
         (110_000, tcp(SERVER, CLIENT, payload=sh12, flags=24, seq=201, ack=101 + len(ch12))),
     ]
+    echo4 = struct.pack("!BBHHH", 8, 0, 0, 1, 1) + b"E" * 24
+    echo4 = echo4[:2] + struct.pack("!H", checksum(echo4)) + echo4[4:]
+    echo6 = icmp6(b"E" * 24)
+    outer_icmp = [
+        (0, fragment4(echo4[:16], 0, True, 1)),
+        (10_000, fragment4(echo4[16:], 2, False, 1)),
+        (20_000, network_packet(a6, b6, 44, struct.pack("!BBHI", 58, 0, 1, 77) + echo6[:16])),
+        (30_000, network_packet(a6, b6, 44, struct.pack("!BBHI", 58, 0, 16, 77) + echo6[16:])),
+    ]
+    inner4 = fragment4(udp[:16], 0, True)[14:]
+    inner6 = network_packet(a6, b6, 44, struct.pack("!BBHI", 17, 0, 1, 99) + udp6[:16])[14:]
+    quoted_fragments = [
+        (0, network_packet(SERVER, CLIENT, 1, icmp4_error(inner4))),
+        (10_000, network_packet(a6, b6, 58, icmp6(inner6, kind=2, mtu=1280))),
+    ]
+    nested_packet = network_packet(
+        "198.51.100.1", "198.51.100.2", 4, tcp(seq=900, payload=b"nested")[14:]
+    )
     cases = {
         "clean_tcp": clean,
+        "isolation_dns": [
+            *clean,
+            (100_000, dns_packet(name="odd!name.invalid", ident=77)),
+            (200_000, dns_packet(name="odd!name.invalid", ident=77, response=True, rcode=3)),
+        ],
+        "isolation_nested": [*clean, (100_000, nested_packet)],
+        "outer_icmp_fragments": outer_icmp,
+        "quoted_fragments": quoted_fragments,
+        "ptb_codes": [
+            (0, network_packet(a6, b6, 58, icmp6(quote6, kind=2, code=0, mtu=1280))),
+            (10_000, network_packet(a6, b6, 58, icmp6(quote6, kind=2, code=1, mtu=1280))),
+        ],
+        # Packet evidence cannot determine whether this new process/session is related.
+        "reset_independent": [
+            *clean[:5],
+            (100_000, tcp(SERVER, CLIENT, seq=201, ack=121, flags=20)),
+            (200_000, tcp(seq=900, ack=0, flags=2, sport=50009)),
+        ],
         "dns_tcp_fallback": fallback,
         "tls_clean": clean_tls,
         "tls12_clean": tls12,

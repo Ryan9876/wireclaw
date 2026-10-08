@@ -33,6 +33,7 @@ EXTRA_FIELDS = (
     "dns.retransmit_request_in",
     "dns.flags.truncated",
     "ip.len",
+    "ip.id",
     "ip.flags.df",
     "ip.flags.mf",
     "ip.frag_offset",

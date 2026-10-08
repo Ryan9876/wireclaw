@@ -22,7 +22,7 @@ and all original capture-quality values remain unchanged.
 
 ## Gate 2
 
-`gate2/` contains twenty-three complete semantic diagnostic goldens from the
+`gate2/` contains twenty-nine complete semantic diagnostic goldens from the
 standard-library Gate 2 generator, using actual TShark/capinfos 4.2.2. They are
 checked by `tests/integration/test_gate2.py`, excluding only source tool version
 strings while retaining capability, tool, IDs, scopes, all values, formulas,
@@ -41,3 +41,13 @@ observed reset/reconnect references. A structural comparison against the earlier
 confirmed every other value in its fifteen goldens unchanged before accepting updates.
 Eight additional goldens have separate independent frame/timing/identity assertions.
 All eleven Gate 1 goldens remain byte-for-byte unchanged against main.
+
+The independent PR #3 review remediation changes only DNS/reset/network limitations,
+exact capture-level references and generated filters, IPv4 fragment identification,
+and the first minimum-size frame in PMTUD patterns. Capture-level not-observable
+TCP records now have no unrelated packet references. The existing 23 Gate 2
+goldens were compared structurally to reviewed head `6518af6`; all other values
+remain identical. Six new goldens cover DNS/nested isolation, outer ICMP fragments,
+quoted fragments, PTB code validation and an independent same-service SYN after reset.
+Separate real-tool tests assert these packet facts before golden comparison.
+The eleven Gate 1 golden files remain byte-for-byte unchanged.

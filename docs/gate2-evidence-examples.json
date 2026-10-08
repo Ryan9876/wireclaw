@@ -272,16 +272,11 @@
     },
     {
       "category": "analyze_mss",
-      "display_filter": "tcp.options.mss_val",
+      "display_filter": "frame.number == 1 || frame.number == 2",
       "epistemic_class": "derived",
       "frame_refs": [
         1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7
+        2
       ],
       "id": "ev_0e4ce3bc810bb802a62854e4a7f093bb250f1b3df5143d067672ec23fbc961b6_analyze_mss",
       "limitations": [
@@ -289,7 +284,7 @@
         "capture_drops",
         "duplicate_capture_artifacts",
         "MSS is advertised receive capability, not measured path MTU.",
-        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
         "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
       ],
       "schema_version": "1.0",
@@ -307,7 +302,7 @@
         "capture_sha256": "0e4ce3bc810bb802a62854e4a7f093bb250f1b3df5143d067672ec23fbc961b6",
         "limitations": [
           "MSS is advertised receive capability, not measured path MTU.",
-          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
           "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
         ],
         "packet_size_patterns": [],
@@ -361,7 +356,7 @@
         "capture_drops",
         "duplicate_capture_artifacts",
         "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-        "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
         "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
       ],
       "schema_version": "1.0",
@@ -380,7 +375,7 @@
         "capture_sha256": "5690d930a951c8f3d4378969ccf7a7fb4291121749822bee0816fed818e3559c",
         "limitations": [
           "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-          "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+          "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
           "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
         ],
         "name_resolution_sequences": [
@@ -544,7 +539,7 @@
         "capture_drops",
         "duplicate_capture_artifacts",
         "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-        "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
         "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
       ],
       "schema_version": "1.0",
@@ -563,7 +558,7 @@
         "capture_sha256": "49df6abebeda7dcf52ff9232c8c175ce6386f496d9c8b437c6713fdde12a824a",
         "limitations": [
           "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-          "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+          "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
           "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
         ],
         "name_resolution_sequences": [
@@ -664,7 +659,7 @@
         "capture_drops",
         "duplicate_capture_artifacts",
         "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-        "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
         "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
       ],
       "schema_version": "1.0",
@@ -683,7 +678,7 @@
         "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
         "limitations": [
           "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-          "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+          "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
           "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
         ],
         "name_resolution_sequences": [
@@ -1033,7 +1028,7 @@
         "capture_drops",
         "duplicate_capture_artifacts",
         "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-        "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
         "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
       ],
       "schema_version": "1.0",
@@ -1052,7 +1047,7 @@
         "capture_sha256": "6954b49285bd653c295d700b60fabe270ab65de35fda1fd77e8a6a9fde80a1f6",
         "limitations": [
           "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-          "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+          "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
           "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
         ],
         "name_resolution_sequences": [
@@ -1184,7 +1179,7 @@
   "fragments": [
     {
       "category": "analyze_fragmentation",
-      "display_filter": "ip.flags.mf || ip.frag_offset || ipv6.fraghdr",
+      "display_filter": "frame.number == 1 || frame.number == 2 || frame.number == 3 || frame.number == 4",
       "epistemic_class": "derived",
       "frame_refs": [
         1,
@@ -1199,7 +1194,7 @@
         "one_sided_conversations",
         "duplicate_capture_artifacts",
         "MSS is advertised receive capability, not measured path MTU.",
-        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
         "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
       ],
       "schema_version": "1.0",
@@ -1217,7 +1212,7 @@
         "capture_sha256": "2ad8810c892981cd4124cbbd81a2924b7e15ab935b7bbe8e70a6f53e45c77e1f",
         "limitations": [
           "MSS is advertised receive capability, not measured path MTU.",
-          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
           "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
         ],
         "packet_size_patterns": [],
@@ -1226,6 +1221,7 @@
             "destination": "192.0.2.2",
             "family": "ipv4",
             "frame": 1,
+            "identification": 1,
             "more": true,
             "offset_units_8_bytes": 0,
             "source": "192.0.2.1"
@@ -1234,6 +1230,7 @@
             "destination": "192.0.2.2",
             "family": "ipv4",
             "frame": 2,
+            "identification": 1,
             "more": false,
             "offset_units_8_bytes": 2,
             "source": "192.0.2.1"
@@ -1255,6 +1252,88 @@
             "more": false,
             "offset_units_8_bytes": 2,
             "source": "2001:db8::1"
+          }
+        ]
+      }
+    }
+  ],
+  "isolation_dns": [
+    {
+      "category": "analyze_dns",
+      "display_filter": "dns && !(icmp || icmpv6)",
+      "epistemic_class": "derived",
+      "frame_refs": [
+        8,
+        9
+      ],
+      "id": "ev_ef3693e738aef935df28d1d6469a28e55ca59e701752b2d9fa1f8610a8cb8cb1_analyze_dns",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "duplicate_capture_artifacts",
+        "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_dns",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze dns",
+      "value": {
+        "ambiguous_message_frames": [],
+        "calculation": "Use reciprocal TShark DNS response_in/response_to frame links and matching ID, reverse endpoints and stream; elapsed=response timestamp-query timestamp. Rcode is observed; unanswered means no linked response in the capture.",
+        "capture_sha256": "ef3693e738aef935df28d1d6469a28e55ca59e701752b2d9fa1f8610a8cb8cb1",
+        "limitations": [
+          "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+          "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+          "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+        ],
+        "name_resolution_sequences": [],
+        "names_retained": false,
+        "orphan_response_frames": [],
+        "query_identity_design": "HMAC-SHA256(normalized ASCII name; key=SHA256(domain separator+capture SHA256 bytes)); lower case, remove one root dot. Per-capture pseudonym; no network meaning or secrecy guarantee.",
+        "transactions": [
+          {
+            "client": {
+              "address": "192.0.2.1",
+              "port": 53000
+            },
+            "cname_target_ids": [],
+            "display_filter": "frame.number == 8 || frame.number == 9",
+            "elapsed_seconds": 0.1,
+            "frame_refs": [
+              8,
+              9
+            ],
+            "limitations": [
+              "Unsupported query-name presentation; name identity and sequence correlation withheld."
+            ],
+            "original_query_frame": null,
+            "query_frame": 8,
+            "query_name_id": null,
+            "query_types": [
+              1
+            ],
+            "repeated_query_indicator": false,
+            "resolver": {
+              "address": "192.0.2.53",
+              "port": 53
+            },
+            "response_code": 3,
+            "response_frame": 9,
+            "state": "matched",
+            "stream": 0,
+            "timing_state": "measured",
+            "tool_dns_time_seconds": 0.1,
+            "transaction_id": 77,
+            "transport": "udp",
+            "truncated_response": false
           }
         ]
       }
@@ -1424,10 +1503,91 @@
       }
     }
   ],
+  "outer_icmp_fragments": [
+    {
+      "category": "analyze_fragmentation",
+      "display_filter": "frame.number == 1 || frame.number == 2 || frame.number == 3 || frame.number == 4",
+      "epistemic_class": "derived",
+      "frame_refs": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "id": "ev_200c43af45f63595b4469995009a1aa4597e0aa5c679b82d9ae00c7b52bfdab7_analyze_fragmentation",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "duplicate_capture_artifacts",
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_fragmentation",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze fragmentation",
+      "value": {
+        "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+        "capture_sha256": "200c43af45f63595b4469995009a1aa4597e0aa5c679b82d9ae00c7b52bfdab7",
+        "limitations": [
+          "MSS is advertised receive capability, not measured path MTU.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+          "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+        ],
+        "packet_size_patterns": [],
+        "records": [
+          {
+            "destination": "192.0.2.2",
+            "family": "ipv4",
+            "frame": 1,
+            "identification": 1,
+            "more": true,
+            "offset_units_8_bytes": 0,
+            "source": "192.0.2.1"
+          },
+          {
+            "destination": "192.0.2.2",
+            "family": "ipv4",
+            "frame": 2,
+            "identification": 1,
+            "more": false,
+            "offset_units_8_bytes": 2,
+            "source": "192.0.2.1"
+          },
+          {
+            "destination": "2001:db8::2",
+            "family": "ipv6",
+            "frame": 3,
+            "identification": 77,
+            "more": true,
+            "offset_units_8_bytes": 0,
+            "source": "2001:db8::1"
+          },
+          {
+            "destination": "2001:db8::2",
+            "family": "ipv6",
+            "frame": 4,
+            "identification": 77,
+            "more": false,
+            "offset_units_8_bytes": 2,
+            "source": "2001:db8::1"
+          }
+        ]
+      }
+    }
+  ],
   "pmtud_signals": [
     {
       "category": "analyze_pmtud_signals",
-      "display_filter": "ip || ipv6",
+      "display_filter": "frame.number == 1 || frame.number == 2 || frame.number == 3",
       "epistemic_class": "derived",
       "frame_refs": [
         1,
@@ -1442,7 +1602,7 @@
         "midstream_indicators",
         "duplicate_capture_artifacts",
         "MSS is advertised receive capability, not measured path MTU.",
-        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
         "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
       ],
       "schema_version": "1.0",
@@ -1460,7 +1620,7 @@
         "capture_sha256": "c6b5653240d033ae71103b45c8f187c4522554b3cafc6a10b1646a3285e32ea9",
         "limitations": [
           "MSS is advertised receive capability, not measured path MTU.",
-          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
           "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
         ],
         "packet_size_patterns": [
@@ -1471,6 +1631,7 @@
             "maximum_ip_bytes": 140,
             "maximum_size_frame": 1,
             "minimum_ip_bytes": 140,
+            "minimum_size_frame": 1,
             "packet_count": 1,
             "source": "192.0.2.1"
           },
@@ -1481,6 +1642,7 @@
             "maximum_ip_bytes": 56,
             "maximum_size_frame": 2,
             "minimum_ip_bytes": 56,
+            "minimum_size_frame": 2,
             "packet_count": 1,
             "source": "192.0.2.2"
           },
@@ -1491,6 +1653,7 @@
             "maximum_ip_bytes": 105,
             "maximum_size_frame": 3,
             "minimum_ip_bytes": 105,
+            "minimum_size_frame": 3,
             "packet_count": 1,
             "source": "2001:db8::2"
           }
@@ -1514,6 +1677,227 @@
       }
     }
   ],
+  "ptb_codes": [
+    {
+      "category": "analyze_pmtud_signals",
+      "display_filter": "frame.number == 1",
+      "epistemic_class": "derived",
+      "frame_refs": [
+        1
+      ],
+      "id": "ev_f0875a2fafaa8184960c344ddb512a4cd7c899dac0e4ac0408b2e5fc5bd62b43_analyze_pmtud_signals",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "duplicate_capture_artifacts",
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_pmtud_signals",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze pmtud signals",
+      "value": {
+        "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+        "capture_sha256": "f0875a2fafaa8184960c344ddb512a4cd7c899dac0e4ac0408b2e5fc5bd62b43",
+        "limitations": [
+          "MSS is advertised receive capability, not measured path MTU.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+          "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+        ],
+        "packet_size_patterns": [
+          {
+            "destination": "2001:db8::2",
+            "df_packet_count": 0,
+            "family": "ipv6",
+            "maximum_ip_bytes": 105,
+            "maximum_size_frame": 1,
+            "minimum_ip_bytes": 105,
+            "minimum_size_frame": 1,
+            "packet_count": 2,
+            "source": "2001:db8::1"
+          }
+        ],
+        "records": [
+          {
+            "destination": "2001:db8::2",
+            "frame": 1,
+            "kind": "packet_too_big",
+            "mtu_bytes": 1280,
+            "source": "2001:db8::1"
+          }
+        ]
+      }
+    }
+  ],
+  "quoted_fragments": [
+    {
+      "category": "analyze_fragmentation",
+      "display_filter": "frame.number == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [],
+      "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_fragmentation",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "duplicate_capture_artifacts",
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_fragmentation",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze fragmentation",
+      "value": {
+        "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+        "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+        "limitations": [
+          "MSS is advertised receive capability, not measured path MTU.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+          "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+        ],
+        "packet_size_patterns": [],
+        "records": []
+      }
+    }
+  ],
+  "reset_independent": [
+    {
+      "category": "analyze_tcp_resets",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "id": "ev_84a82760918a51ce430ee6c23419e92f3074f46ffbda4d3f96a0f0fa435d52c6_analyze_tcp_resets_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "incomplete_handshakes",
+        "duplicate_capture_artifacts",
+        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 6,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_tcp_resets",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze tcp resets",
+      "value": {
+        "calculation": "RST and ACK flags are observed; lifecycle intervals subtract matching establishment timestamps.",
+        "capture_sha256": "84a82760918a51ce430ee6c23419e92f3074f46ffbda4d3f96a0f0fa435d52c6",
+        "count": 1,
+        "establishment_state": "established",
+        "limitations": [
+          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
+        ],
+        "observed_reconnect_attempts": [],
+        "resets": [
+          {
+            "ack": true,
+            "frame": 6,
+            "phase": "after_establishment",
+            "receiver": {
+              "address": "192.0.2.1",
+              "port": 50000
+            },
+            "rst": true,
+            "seconds_since_established": 0.08,
+            "seconds_since_syn": 0.1,
+            "sender": {
+              "address": "192.0.2.2",
+              "port": 443
+            }
+          }
+        ]
+      }
+    },
+    {
+      "category": "analyze_tcp_resets",
+      "display_filter": "tcp.stream == 1",
+      "epistemic_class": "derived",
+      "frame_refs": [
+        7
+      ],
+      "id": "ev_84a82760918a51ce430ee6c23419e92f3074f46ffbda4d3f96a0f0fa435d52c6_analyze_tcp_resets_stream1",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "incomplete_handshakes",
+        "duplicate_capture_artifacts",
+        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 7,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50009,
+        "start_frame": 7,
+        "tcp_stream": 1
+      },
+      "source": {
+        "capability": "analyze_tcp_resets",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze tcp resets",
+      "value": {
+        "calculation": "RST and ACK flags are observed; lifecycle intervals subtract matching establishment timestamps.",
+        "capture_sha256": "84a82760918a51ce430ee6c23419e92f3074f46ffbda4d3f96a0f0fa435d52c6",
+        "count": 0,
+        "establishment_state": "incomplete",
+        "limitations": [
+          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
+        ],
+        "observed_reconnect_attempts": [
+          {
+            "prior_reset_frame": 6,
+            "prior_tcp_stream": 0,
+            "seconds_since_reset": 0.1,
+            "syn_frame": 7
+          }
+        ],
+        "resets": []
+      }
+    }
+  ],
   "reset_reconnect": [
     {
       "category": "analyze_tcp_resets",
@@ -1532,7 +1916,7 @@
         "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
         "capture_drops",
         "duplicate_capture_artifacts",
-        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
       ],
       "schema_version": "1.0",
       "scope": {
@@ -1557,7 +1941,7 @@
         "count": 1,
         "establishment_state": "established",
         "limitations": [
-          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
         ],
         "observed_reconnect_attempts": [],
         "resets": [
@@ -1595,7 +1979,7 @@
         "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
         "capture_drops",
         "duplicate_capture_artifacts",
-        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
       ],
       "schema_version": "1.0",
       "scope": {
@@ -1620,7 +2004,7 @@
         "count": 1,
         "establishment_state": "established",
         "limitations": [
-          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
         ],
         "observed_reconnect_attempts": [
           {
@@ -1669,7 +2053,7 @@
         "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
         "capture_drops",
         "duplicate_capture_artifacts",
-        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
       ],
       "schema_version": "1.0",
       "scope": {
@@ -1694,7 +2078,7 @@
         "count": 1,
         "establishment_state": "established",
         "limitations": [
-          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
         ],
         "observed_reconnect_attempts": [],
         "resets": [

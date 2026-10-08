@@ -104,8 +104,9 @@ def test_structural_parser_bounds_and_occurrences():
         2,
         20,
     ]
-    with pytest.raises(AnalyzerError, match="unsupported_nested_diagnostic_headers"):
-        parse(line(**{"ip.src": "192.0.2.1,192.0.2.3"}))
+    nested = parse(line(**{"ip.src": "192.0.2.1,192.0.2.3"}))
+    assert nested[0]["unsupported_diagnostic_layer"]
+    assert not d.Index(nested).tcp
 
 
 @pytest.mark.parametrize("cap", list(Capability))
@@ -396,7 +397,7 @@ def test_network_signals_do_not_assign_quoted_streams_or_force_mtu_diagnosis():
     rows[0]["fields"]["icmp.code"] = [3]
     assert d.network(d.Index(rows), Capability.PMTUD)["records"] == []
     rows[0]["fields"]["ip.flags.mf"] = [True]
-    assert d.network(d.Index(rows), Capability.FRAGMENTATION)["records"] == []
+    assert d.network(d.Index(rows), Capability.FRAGMENTATION)["records"][0]["more"]
     direct = parse(line(**{"ip.flags.mf": "1"}))
     assert d.network(d.Index(direct), Capability.FRAGMENTATION)["records"][0]["more"]
     tcp_rows = parse(line(**{"tcp.options.mss_val": "1460"}))
@@ -626,3 +627,132 @@ def test_many_dns_names_are_grouped_in_one_transaction_pass_and_use_bounded_scop
     req = DiagnosticRequest("0" * 64, Capability.DNS)
     with pytest.raises(AnalyzerError, match="diagnostic_evidence_record_limit"):
         d.build(req.capture_id, rows, "4.2.2", {}, DiagnosticLimits(max_records=10), VALIDATOR, req)
+
+
+@pytest.mark.parametrize("name", ["odd!name.invalid", "a..b", "a" * 255, "a\\000b"])
+def test_unsupported_dns_name_preserves_numeric_transaction_without_raw_name(name):
+    rows = parse(
+        udp_line(**{"dns.qry.name": name, "dns.response_in": "2", "dns.qry.type": "1"}),
+        dns_response(**{"dns.qry.name": name, "dns.qry.type": "1"}),
+    )
+    result = d.dns(d.Index(rows))
+    tx = result["transactions"][0]
+    assert tx["query_name_id"] is None
+    assert tx["response_frame"] == 2 and tx["elapsed_seconds"] == 0.5
+    assert tx["transaction_id"] == 42 and tx["response_code"] == 2
+    assert tx["limitations"] and result["name_resolution_sequences"] == []
+    assert name not in repr(rows) and name not in json.dumps(result)
+
+
+def test_unsupported_cname_withholds_identity_correlation_without_discarding_response():
+    rows = parse(
+        udp_line(**{"dns.qry.name": "example.invalid", "dns.response_in": "2"}),
+        dns_response(**{"dns.qry.name": "example.invalid", "dns.cname": "odd!alias.invalid"}),
+    )
+    result = d.dns(d.Index(rows))
+    tx = result["transactions"][0]
+    assert tx["query_name_id"] is None and tx["cname_target_ids"] == []
+    assert tx["elapsed_seconds"] == 0.5 and tx["response_code"] == 2
+    assert result["name_resolution_sequences"] == []
+    assert any("CNAME" in limitation for limitation in tx["limitations"])
+
+
+def test_icmp_quote_inner_fragment_is_not_outer_but_outer_fragment_is_retained():
+    fields = {
+        "frame.protocols": "eth:ip:icmp:ip:udp",
+        "ip.flags.mf": "0,1",
+        "ip.frag_offset": "0,2",
+        "ip.id": "1,99",
+    }
+    rows = parse(line(**fields))
+    assert d.network(d.Index(rows), Capability.FRAGMENTATION)["records"] == []
+    fields.update({"ip.flags.mf": "1,1", "ip.frag_offset": "0,2"})
+    record = d.network(d.Index(parse(line(**fields))), Capability.FRAGMENTATION)["records"][0]
+    assert record["more"] and record["offset_units_8_bytes"] == 0 and record["identification"] == 1
+
+
+def test_ipv6_quote_inner_fragment_is_excluded_without_outer_fragment_extension():
+    fields = {
+        "frame.protocols": "eth:ipv6:icmpv6:ipv6:ipv6.fraghdr:udp",
+        "ip.src": "",
+        "ip.dst": "",
+        "ipv6.src": "2001:db8::1,2001:db8::2",
+        "ipv6.dst": "2001:db8::2,2001:db8::1",
+        "ipv6.nxt": "58,44",
+        "ipv6.fraghdr.ident": "99",
+        "ipv6.fraghdr.offset": "2",
+        "ipv6.fraghdr.more": "1",
+    }
+    rows = parse(line(**fields))
+    assert d.network(d.Index(rows), Capability.FRAGMENTATION)["records"] == []
+    fields.update(
+        {
+            "frame.protocols": "eth:ipv6:ipv6.fraghdr:icmpv6:ipv6:ipv6.fraghdr:udp",
+            "ipv6.nxt": "44,44",
+            "ipv6.fraghdr.ident": "77,99",
+            "ipv6.fraghdr.offset": "0,2",
+            "ipv6.fraghdr.more": "1,1",
+        }
+    )
+    record = d.network(d.Index(parse(line(**fields))), Capability.FRAGMENTATION)["records"][0]
+    assert record["identification"] == 77 and record["offset_units_8_bytes"] == 0 and record["more"]
+
+
+def test_nonzero_icmpv6_ptb_code_is_not_a_valid_signal():
+    rows = parse(
+        line(**{"frame.protocols": "eth:ip:icmpv6", "icmpv6.type": "2", "icmpv6.code": "1"})
+    )
+    assert d.network(d.Index(rows), Capability.PMTUD)["records"] == []
+
+
+def test_exact_capture_network_support_and_bounded_range_filter():
+    rows = setup()
+    rows.extend(parse(line(**{"tcp.options.mss_val": "1460"})))
+    rows[3]["frame"] = 4
+    req = DiagnosticRequest("0" * 64, Capability.MSS)
+    record = d.build(req.capture_id, rows, "4.2.2", {}, LIMITS, VALIDATOR, req)[0]
+    assert record["frame_refs"] == [4] and record["display_filter"] == "frame.number == 4"
+    for row in rows:
+        row["fields"]["tcp.options.mss_val"] = [1460]
+    record = d.build(
+        req.capture_id, rows, "4.2.2", {}, DiagnosticLimits(max_frame_refs=2), VALIDATOR, req
+    )[0]
+    assert record["frame_refs"] == []
+    assert record["value"]["supporting_frame_range"] == {
+        "start": 1,
+        "end": 4,
+        "selection": "tcp.options.mss_val",
+    }
+
+
+def test_unsupported_original_retry_name_withholds_sequence_only():
+    rows = parse(
+        udp_line(**{"dns.response_in": "3", "dns.qry.name": "odd!name.invalid"}),
+        udp_line(
+            2,
+            ".1",
+            **{
+                "dns.retransmit_request": "1",
+                "dns.retransmit_request_in": "1",
+                "dns.qry.name": "example.invalid",
+            },
+        ),
+        dns_response(3, **{"dns.qry.name": "example.invalid"}),
+    )
+    result = d.dns(d.Index(rows))
+    assert [t["response_frame"] for t in result["transactions"]] == [3, 3]
+    assert all(t["query_name_id"] is None and t["limitations"] for t in result["transactions"])
+    assert result["name_resolution_sequences"] == []
+
+
+@pytest.mark.parametrize("unsupported", ["dns", "nested"])
+def test_unsupported_domain_does_not_mask_structural_corruption(unsupported):
+    entry = (
+        udp_line(**{"dns.qry.name": "odd!name.invalid", "dns.id": "not-a-number"})
+        if unsupported == "dns"
+        else line(**{"frame.protocols": "eth:ip:ip:tcp", "tcp.len": "not-a-number"})
+    )
+    with pytest.raises(AnalyzerError) as error:
+        parse(entry)
+    assert error.value.code == "invalid_diagnostic_output"
+    assert "odd!name.invalid" not in str(error.value)

@@ -104,6 +104,7 @@ UINT16 = {
     "dns.flags.rcode",
     "dns.qry.type",
     "ip.len",
+    "ip.id",
     "icmp.mtu",
     "ipv6.plen",
     "tls.handshake.extensions.supported_version",
@@ -155,14 +156,26 @@ def packets(text: str, maximum: int, limits: DiagnosticLimits, capture_id=None) 
         raw = dict(zip(fields, columns, strict=True))
         # ICMP errors contain quoted inner headers. TCP/UDP quoted in them is not a stream.
         stack = raw["frame.protocols"].split(":")
-        quoted = "icmp" in stack or "icmpv6" in stack
-        if (
-            any("," in raw[f] for f in ("tcp.stream", "udp.stream", "ip.src", "ipv6.src"))
-            and not quoted
-        ):
-            raise AnalyzerError("unsupported_nested_diagnostic_headers")
+        network_positions = [i for i, layer in enumerate(stack) if layer in ("ip", "ipv6")]
+        control_position = next(
+            (i for i, layer in enumerate(stack) if layer in ("icmp", "icmpv6")), len(stack)
+        )
+        # A control dissector before any second IP header belongs to the outer packet.
+        quoted = (
+            control_position < len(stack)
+            and sum(i < control_position for i in network_positions) == 1
+        )
+        nested = not quoted and (
+            len(network_positions) > 1
+            or any("," in raw[f] for f in ("tcp.stream", "udp.stream", "ip.src", "ipv6.src"))
+        )
+        outer_family = stack[network_positions[0]] if network_positions else None
+        boundary = min(
+            control_position, network_positions[1] if len(network_positions) > 1 else len(stack)
+        )
+        outer_stack = stack[network_positions[0] + 1 : boundary] if network_positions else []
         base = [raw[f].split(",", 1)[0] for f in FIELDS]
-        if quoted:
+        if quoted or nested:
             for field in (
                 "tcp.stream",
                 "udp.stream",
@@ -174,13 +187,10 @@ def packets(text: str, maximum: int, limits: DiagnosticLimits, capture_id=None) 
                 "tcp.flags.ack",
             ):
                 base[FIELDS.index(field)] = ""
-        if (
-            quoted
-            and "ipv6" in stack
-            and ("ip" not in stack or stack.index("ipv6") < stack.index("ip"))
-        ):
+        if outer_family == "ipv6":
             for field in ("ip.src", "ip.dst", "ip.proto"):
                 base[FIELDS.index(field)] = ""
+        name_limitations = []
         try:
             if not math.isfinite(float(Decimal(raw["frame.time_epoch"]))):
                 raise ValueError
@@ -196,9 +206,19 @@ def packets(text: str, maximum: int, limits: DiagnosticLimits, capture_id=None) 
                 parsed = []
                 for part in parts:
                     if field in DNS_NAMES:
-                        if quoted:
+                        if quoted or nested:
                             continue
-                        value = name_identity(part, capture_id)
+                        try:
+                            value = name_identity(part, capture_id)
+                        except AnalyzerError as error:
+                            if error.code != "invalid_dns_name":
+                                raise
+                            value = None
+                            name_limitations.append(
+                                "Unsupported query-name presentation; name identity and sequence correlation withheld."
+                                if field == "dns.qry.name"
+                                else "Unsupported CNAME-target presentation; target identity and sequence correlation withheld."
+                            )
                     elif field in TIMES:
                         value = Decimal(part)
                         if not value.is_finite() or not math.isfinite(float(value)):
@@ -219,11 +239,33 @@ def packets(text: str, maximum: int, limits: DiagnosticLimits, capture_id=None) 
                 for field in values:
                     if field.startswith(("tcp.", "dns.")):
                         values[field] = []
-            raw_rows.append(values)
+            # The first IPv4 occurrence always belongs to the outer IPv4 header.
+            # IPv6 fragment fields exist only when the outer extension chain has one;
+            # otherwise an ICMP quote could supply the first (inner) occurrence.
+            for field in values:
+                if field.startswith("ip."):
+                    values[field] = values[field][:1] if outer_family == "ip" else []
+                if field == "ipv6.plen":
+                    values[field] = values[field][:1] if outer_family == "ipv6" else []
+                if field.startswith("ipv6.fraghdr."):
+                    values[field] = (
+                        values[field][:1]
+                        if outer_family == "ipv6"
+                        and (
+                            "ipv6.fraghdr" in outer_stack
+                            or raw["ipv6.nxt"].split(",", 1)[0] == "44"
+                        )
+                        else []
+                    )
+            if nested:
+                values = {field: [] for field in values}
+            raw_rows.append((values, sorted(set(name_limitations)), nested))
         except (ValueError, InvalidOperation, OverflowError):
             raise AnalyzerError("invalid_diagnostic_output") from None
     base_rows = normalize.packets("\n".join(base_lines), maximum)
-    for row, values in zip(base_rows, raw_rows, strict=True):
+    for row, (values, name_limitations, nested) in zip(base_rows, raw_rows, strict=True):
+        row["name_identity_limitations"] = name_limitations
+        row["unsupported_diagnostic_layer"] = nested
         if row["transport"] in ("tcp", "udp") and any(
             row[k] is None for k in ("src", "dst", "src_port", "dst_port")
         ):
@@ -287,6 +329,7 @@ class Index:
         self.tcp = defaultdict(list)
         self.dns = []
         self.network = []
+        self.unsupported_frames = []
         self.clock_regressions = {}
         self.reconnects = defaultdict(list)
         identities = {}
@@ -298,6 +341,9 @@ class Index:
             regressions += int(previous_time is not None and row["time"] < previous_time)
             self.clock_regressions[row["frame"]] = regressions
             previous_time = row["time"]
+            if row.get("unsupported_diagnostic_layer"):
+                self.unsupported_frames.append(row["frame"])
+                continue
             if row["transport"] == "tcp" and row["stream"] is not None:
                 identity = tuple(
                     sorted(((row["src"], row["src_port"]), (row["dst"], row["dst_port"])))
@@ -617,7 +663,7 @@ def resets(rows, setup, index):
         "establishment_state": setup["state"],
         "calculation": "RST and ACK flags are observed; lifecycle intervals subtract matching establishment timestamps.",
         "limitations": [
-            "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown."
+            "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
         ],
     }
 
@@ -892,6 +938,11 @@ def dns_sequences(transactions, index, limits):
     return sequences
 
 
+def compatible_name(a, b):
+    left, right = first(a, "dns.qry.name"), first(b, "dns.qry.name")
+    return left is None or right is None or left == right
+
+
 def dns(index, limits=None):
     limits = limits or DiagnosticLimits()
     transactions = []
@@ -913,7 +964,7 @@ def dns(index, limits=None):
             and flag(r, "dns.retransmit_request")
             and not original["dns_ambiguous"]
             and not first(original, "dns.flags.response")
-            and first(original, "dns.qry.name") == first(r, "dns.qry.name")
+            and compatible_name(original, r)
             and original["fields"].get("dns.qry.type") == r["fields"].get("dns.qry.type")
             and first(original, "dns.id") == first(r, "dns.id")
             and endpoint(original) == endpoint(r)
@@ -929,7 +980,7 @@ def dns(index, limits=None):
             response is not None
             and not response["dns_ambiguous"]
             and first(response, "dns.flags.response")
-            and first(response, "dns.qry.name") == first(r, "dns.qry.name")
+            and compatible_name(response, r)
             and response["fields"].get("dns.qry.type") == r["fields"].get("dns.qry.type")
             and first(response, "dns.id") == first(r, "dns.id")
             and endpoint(response) == endpoint(r, False)
@@ -952,11 +1003,23 @@ def dns(index, limits=None):
             else "unanswered_in_capture"
         )
         refs = sorted({r["frame"], *([response_frame, linked_query["frame"]] if matches else [])})
+        name_limitations = sorted(
+            set(
+                r.get("name_identity_limitations", [])
+                + linked_query.get("name_identity_limitations", [])
+                + (response.get("name_identity_limitations", []) if matches else [])
+            )
+        )
         transactions.append(
             {
                 "transaction_id": first(r, "dns.id"),
-                "query_name_id": first(r, "dns.qry.name"),
-                "cname_target_ids": response["fields"].get("dns.cname", []) if matches else [],
+                "query_name_id": None if name_limitations else first(r, "dns.qry.name"),
+                "cname_target_ids": [
+                    v for v in response["fields"].get("dns.cname", []) if v is not None
+                ]
+                if matches
+                else [],
+                **({"limitations": name_limitations} if name_limitations else {}),
                 "query_frame": r["frame"],
                 "response_frame": response_frame if matches else None,
                 "transport": r["transport"],
@@ -994,7 +1057,7 @@ def dns(index, limits=None):
         "calculation": "Use reciprocal TShark DNS response_in/response_to frame links and matching ID, reverse endpoints and stream; elapsed=response timestamp-query timestamp. Rcode is observed; unanswered means no linked response in the capture.",
         "limitations": [
             "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
-            "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+            "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
             "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays.",
         ],
     }
@@ -1017,14 +1080,13 @@ def network(index, capability):
                     )
     elif capability is Capability.FRAGMENTATION:
         for r in index.network:
-            if "icmp" in r["protocols"] or "icmpv6" in r["protocols"]:
-                continue  # Quoted inner fragment fields cannot be assigned to the outer packet.
             offset = first(r, "ip.frag_offset")
             if flag(r, "ip.flags.mf") or offset:
                 records.append(
                     {
                         "frame": r["frame"],
                         "family": "ipv4",
+                        "identification": first(r, "ip.id"),
                         "source": r["src"],
                         "destination": r["dst"],
                         "offset_units_8_bytes": offset,
@@ -1046,7 +1108,7 @@ def network(index, capability):
     else:
         for r in index.network:
             ipv4 = first(r, "icmp.type") == 3 and first(r, "icmp.code") == 4
-            ipv6 = first(r, "icmpv6.type") == 2
+            ipv6 = first(r, "icmpv6.type") == 2 and first(r, "icmpv6.code") == 0
             if ipv4 or ipv6:
                 records.append(
                     {
@@ -1082,6 +1144,7 @@ def network(index, capability):
                 "packet_count": len(values),
                 "minimum_ip_bytes": minimum,
                 "maximum_ip_bytes": maximum,
+                "minimum_size_frame": next(f for f, n, _ in values if n == minimum),
                 "maximum_size_frame": next(f for f, n, _ in values if n == maximum),
                 "df_packet_count": sum(df for _, _, df in values),
             }
@@ -1092,7 +1155,7 @@ def network(index, capability):
         "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
         "limitations": [
             "MSS is advertised receive capability, not measured path MTU.",
-            "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+            "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
             "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole.",
         ],
     }
@@ -1116,6 +1179,17 @@ def build(capture_id, rows, version, quality, limits, validator, request=None):
         "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
         *quality.get("limitations", []),
     ]
+
+    if index.unsupported_frames:
+        frames = index.unsupported_frames
+        scope = (
+            str(frames)
+            if len(frames) <= limits.max_frame_refs
+            else f"range {frames[0]}-{frames[-1]}"
+        )
+        common.append(
+            f"Unsupported nested diagnostic attribution: {len(frames)} packet(s) omitted; frames {scope}. Unrelated supported packet evidence is retained."
+        )
 
     def emit(cap, value, stream_rows=None, stream=None):
         nonlocal records
@@ -1166,9 +1240,19 @@ def build(capture_id, rows, version, quality, limits, validator, request=None):
             }
             display_filter = f"tcp.stream == {stream}"
         else:
-            refs = (
-                [r["frame"] for r in index.dns] if cap is Capability.DNS else sorted(index.frames)
-            )
+            if cap is Capability.DNS:
+                refs = [r["frame"] for r in index.dns]
+            elif cap in (Capability.MSS, Capability.FRAGMENTATION, Capability.PMTUD):
+                refs = sorted(
+                    {record["frame"] for record in value.get("records", [])}
+                    | {
+                        pattern[key]
+                        for pattern in value.get("packet_size_patterns", [])
+                        for key in ("minimum_size_frame", "maximum_size_frame")
+                    }
+                )
+            else:
+                refs = []
             scope = {"capture": True}
             display_filter = {
                 Capability.DNS: "dns && !(icmp || icmpv6)",
@@ -1176,6 +1260,13 @@ def build(capture_id, rows, version, quality, limits, validator, request=None):
                 Capability.FRAGMENTATION: "ip.flags.mf || ip.frag_offset || ipv6.fraghdr",
                 Capability.PMTUD: "ip || ipv6",
             }.get(cap, "tcp")
+        if (
+            cap in (Capability.MSS, Capability.FRAGMENTATION, Capability.PMTUD)
+            and len(refs) <= limits.max_frame_refs
+        ):
+            display_filter = (
+                " || ".join(f"frame.number == {f}" for f in refs) if refs else "frame.number == 0"
+            )
         suffix = f"_stream{stream}" if stream is not None else ""
         limitations = common + value.get("limitations", [])
         item = normalize.evidence_item(

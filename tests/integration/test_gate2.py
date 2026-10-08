@@ -444,3 +444,133 @@ def test_real_clean_tls12_and_tls13_have_decoded_handshakes_and_limited_completi
     assert [m["types"] for m in tls["visible_messages"]] == [[1], [2]]
     assert tls["attempts"][0]["client_hello_to_server_hello_seconds"] == expected
     assert tls["session_completion"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    "cap", [Capability.RTT, Capability.HEALTH, Capability.THROUGHPUT, Capability.TLS]
+)
+@pytest.mark.parametrize("name", ["isolation_dns", "isolation_nested"])
+def test_real_unsupported_evidence_does_not_change_scoped_tcp_measurements(
+    tmp_path, cap, name, caplog
+):
+    analyzer, identity = prepare(tmp_path, name)
+    control = analyzer.ingest_capture(Path("incoming/clean_tcp.capture"))
+    expected = analyzer.run_diagnostic(DiagnosticRequest(control, cap, tcp_stream=0))
+    actual = analyzer.run_diagnostic(DiagnosticRequest(identity, cap, tcp_stream=0))
+    a, b = actual["evidence"][0], expected["evidence"][0]
+    assert {k: v for k, v in a["value"].items() if k != "capture_sha256"} == {
+        k: v for k, v in b["value"].items() if k != "capture_sha256"
+    }
+    analyzer.validator.validate(a)
+    assert a["scope"] == b["scope"] and a["frame_refs"] == b["frame_refs"]
+    if name == "isolation_nested":
+        assert any("nested" in s for s in a["limitations"])
+    assert "odd!name.invalid" not in json.dumps(actual) + caplog.text
+    assert (
+        "odd!name.invalid"
+        not in (tmp_path / f"cases/{identity}/normalized/diagnostics.json").read_text()
+    )
+
+
+def test_real_unsupported_dns_keeps_numeric_facts_and_all_other_capabilities(tmp_path, caplog):
+    analyzer, identity = prepare(tmp_path, "isolation_dns")
+    for result in (
+        analyzer.diagnose(identity),
+        analyzer.run_diagnostic(DiagnosticRequest(identity, Capability.DNS)),
+    ):
+        dns = value(result, "analyze_dns")
+        tx = dns["transactions"][0]
+        assert (
+            tx["query_frame"],
+            tx["response_frame"],
+            tx["elapsed_seconds"],
+            tx["response_code"],
+            tx["transaction_id"],
+        ) == (8, 9, 0.1, 3, 77)
+        assert tx["query_name_id"] is None and tx["limitations"]
+        assert dns["name_resolution_sequences"] == []
+        assert tx["transport"] == "udp" and tx["resolver"]["address"] == "192.0.2.53"
+        assert "odd!name.invalid" not in json.dumps(result) + caplog.text
+    assert value(analyzer.diagnose(identity), "analyze_rtt")["median_seconds"] == 0.01
+
+
+@pytest.mark.parametrize("name,ipv6_ident", [("outer_icmp_fragments", 77), ("fragments", 42)])
+def test_real_outer_fragmented_icmp_is_reported_with_exact_header_facts(tmp_path, name, ipv6_ident):
+    analyzer, identity = prepare(tmp_path, name)
+    result = analyzer.diagnose(identity)
+    records = value(result, "analyze_fragmentation")["records"]
+    assert [
+        (
+            r["frame"],
+            r["family"],
+            r["source"],
+            r["destination"],
+            r["offset_units_8_bytes"],
+            r["more"],
+            r["identification"],
+        )
+        for r in records
+    ] == [
+        (1, "ipv4", "192.0.2.1", "192.0.2.2", 0, True, 1),
+        (2, "ipv4", "192.0.2.1", "192.0.2.2", 2, False, 1),
+        (3, "ipv6", "2001:db8::1", "2001:db8::2", 0, True, ipv6_ident),
+        (4, "ipv6", "2001:db8::1", "2001:db8::2", 2, False, ipv6_ident),
+    ]
+    item = next(e for e in result["evidence"] if e["category"] == "analyze_fragmentation")
+    assert item["frame_refs"] == [1, 2, 3, 4]
+
+
+def test_real_quoted_inner_fragments_are_decoded_but_not_attributed_to_outer_scope(tmp_path):
+    analyzer, identity = prepare(tmp_path, "quoted_fragments")
+    raw = analyzer.runner.run(Operation.DIAGNOSTICS, analyzer.store.capture_path(identity))
+    from wireclaw_analyzer.diagnostic_fields import EXTRA_FIELDS
+    from wireclaw_analyzer.runner import FIELDS
+
+    fields = FIELDS + EXTRA_FIELDS
+    columns = [line.split("\t") for line in raw.splitlines()]
+    assert columns[0][fields.index("ip.flags.mf")] == "False,True"
+    assert columns[1][fields.index("ipv6.fraghdr.ident")] == "0x00000063"
+    result = analyzer.diagnose(identity)
+    assert value(result, "analyze_fragmentation")["records"] == []
+    assert (
+        next(e for e in result["evidence"] if e["category"] == "analyze_fragmentation")[
+            "frame_refs"
+        ]
+        == []
+    )
+    assert len(value(result, "analyze_pmtud_signals")["records"]) == 2
+
+
+def test_real_ptb_requires_zero_code_and_retains_control_signal_limitations(tmp_path):
+    analyzer, identity = prepare(tmp_path, "ptb_codes")
+    raw = analyzer.runner.run(Operation.DIAGNOSTICS, analyzer.store.capture_path(identity))
+    from wireclaw_analyzer.diagnostic_fields import EXTRA_FIELDS
+    from wireclaw_analyzer.runner import FIELDS
+
+    fields = FIELDS + EXTRA_FIELDS
+    assert [line.split("\t")[fields.index("icmpv6.code")] for line in raw.splitlines()] == [
+        "0",
+        "1",
+    ]
+    records = value(analyzer.diagnose(identity), "analyze_pmtud_signals")["records"]
+    assert [(r["frame"], r["mtu_bytes"]) for r in records] == [(1, 1280)]
+
+
+def test_real_same_service_later_syn_does_not_establish_application_continuity(tmp_path):
+    analyzer, identity = prepare(tmp_path, "reset_independent")
+    items = [
+        e for e in analyzer.diagnose(identity)["evidence"] if e["category"] == "analyze_tcp_resets"
+    ]
+    attempt = items[1]["value"]["observed_reconnect_attempts"][0]
+    assert attempt["prior_reset_frame"] == 6 and attempt["syn_frame"] == 7
+    assert any("application/session continuity and causality" in s for s in items[1]["limitations"])
+
+
+def test_real_network_capture_scope_uses_actual_records_and_size_extrema(tmp_path):
+    analyzer, identity = prepare(tmp_path, "clean_tcp")
+    result = analyzer.diagnose(identity)
+    items = {e["category"]: e for e in result["evidence"]}
+    assert items["analyze_mss"]["frame_refs"] == [1, 2]
+    assert items["analyze_fragmentation"]["frame_refs"] == []
+    assert items["analyze_pmtud_signals"]["frame_refs"] == [3, 4, 5, 6]
+    assert items["analyze_mss"]["display_filter"] == "frame.number == 1 || frame.number == 2"
