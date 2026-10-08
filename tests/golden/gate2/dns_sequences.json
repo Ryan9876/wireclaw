@@ -1,0 +1,829 @@
+[
+  {
+    "category": "analyze_dns",
+    "display_filter": "dns && !(icmp || icmpv6)",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_dns",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+      "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+      "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_dns",
+      "tool": "tshark"
+    },
+    "summary": "analyze dns",
+    "value": {
+      "ambiguous_message_frames": [],
+      "calculation": "Use reciprocal TShark DNS response_in/response_to frame links and matching ID, reverse endpoints and stream; elapsed=response timestamp-query timestamp. Rcode is observed; unanswered means no linked response in the capture.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+        "Raw names are never retained; unsupported DNS presentation characters fail safely. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+      ],
+      "name_resolution_sequences": [
+        {
+          "client_address": "192.0.2.1",
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 1 || frame.number == 3 || frame.number == 5 || frame.number == 6 || frame.number == 7 || frame.number == 8",
+          "frame_refs": [
+            1,
+            3,
+            5,
+            6,
+            7,
+            8
+          ],
+          "limitations": [
+            "Same-name grouping is correlation across this capture, not a proven application resolution episode or fallback policy. Range filters may include unrelated DNS; transaction references identify exact contributions.",
+            "CNAME target identities are observed from linked responses; parallel answer fields cannot establish owner-to-target edges or a complete alias chain."
+          ],
+          "observed_span_seconds": 0.65,
+          "query_name_id": "41a3abdbb54a8de9813c5235c006907177757127ad706390b162e7fc9aa29a7b",
+          "query_types": [
+            1,
+            28
+          ],
+          "repeated_same_type_resolver_attempts": [
+            {
+              "previous_query_frame": 1,
+              "query_frame": 6
+            }
+          ],
+          "resolver_or_transport_changes": [
+            {
+              "from_query_frame": 6,
+              "previous_response_code": null,
+              "previous_state": "unanswered_in_capture",
+              "previous_truncated_response": null,
+              "resolver_changed": true,
+              "to_query_frame": 7,
+              "transport_changed": false
+            }
+          ],
+          "resolvers": [
+            {
+              "address": "192.0.2.53",
+              "port": 53
+            },
+            {
+              "address": "192.0.2.54",
+              "port": 53
+            }
+          ],
+          "sequence_id": "dns_41a3abdbb54a8de9813c5235c006907177757127ad706390b162e7fc9aa29a7b_client_192.0.2.1",
+          "supporting_frame_range": null,
+          "timing_reliable": true,
+          "transaction_count": 4,
+          "transaction_query_frames": [
+            1,
+            3,
+            6,
+            7
+          ]
+        },
+        {
+          "client_address": "192.0.2.1",
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 2 || frame.number == 4",
+          "frame_refs": [
+            2,
+            4
+          ],
+          "limitations": [
+            "Same-name grouping is correlation across this capture, not a proven application resolution episode or fallback policy. Range filters may include unrelated DNS; transaction references identify exact contributions.",
+            "CNAME target identities are observed from linked responses; parallel answer fields cannot establish owner-to-target edges or a complete alias chain."
+          ],
+          "observed_span_seconds": 0.02,
+          "query_name_id": "7b1ec3d48eeea18098cd04f544bffa1ab6ce0d99e63b32c2b6946726d6f26514",
+          "query_types": [
+            1
+          ],
+          "repeated_same_type_resolver_attempts": [],
+          "resolver_or_transport_changes": [],
+          "resolvers": [
+            {
+              "address": "192.0.2.53",
+              "port": 53
+            }
+          ],
+          "sequence_id": "dns_7b1ec3d48eeea18098cd04f544bffa1ab6ce0d99e63b32c2b6946726d6f26514_client_192.0.2.1",
+          "supporting_frame_range": null,
+          "timing_reliable": true,
+          "transaction_count": 1,
+          "transaction_query_frames": [
+            2
+          ]
+        },
+        {
+          "client_address": "192.0.2.1",
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 9",
+          "frame_refs": [
+            9
+          ],
+          "limitations": [
+            "Same-name grouping is correlation across this capture, not a proven application resolution episode or fallback policy. Range filters may include unrelated DNS; transaction references identify exact contributions.",
+            "CNAME target identities are observed from linked responses; parallel answer fields cannot establish owner-to-target edges or a complete alias chain."
+          ],
+          "observed_span_seconds": 0.0,
+          "query_name_id": "d22b643f082ca6220058108fff37c5aaec6b3cd70c4792713ea56cb69ae49d9e",
+          "query_types": [
+            1
+          ],
+          "repeated_same_type_resolver_attempts": [],
+          "resolver_or_transport_changes": [],
+          "resolvers": [
+            {
+              "address": "192.0.2.53",
+              "port": 53
+            }
+          ],
+          "sequence_id": "dns_d22b643f082ca6220058108fff37c5aaec6b3cd70c4792713ea56cb69ae49d9e_client_192.0.2.1",
+          "supporting_frame_range": null,
+          "timing_reliable": true,
+          "transaction_count": 1,
+          "transaction_query_frames": [
+            9
+          ]
+        }
+      ],
+      "names_retained": false,
+      "orphan_response_frames": [],
+      "query_identity_design": "HMAC-SHA256(normalized ASCII name; key=SHA256(domain separator+capture SHA256 bytes)); lower case, remove one root dot. Per-capture pseudonym; no network meaning or secrecy guarantee.",
+      "transactions": [
+        {
+          "client": {
+            "address": "192.0.2.1",
+            "port": 53000
+          },
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 1",
+          "elapsed_seconds": null,
+          "frame_refs": [
+            1
+          ],
+          "original_query_frame": null,
+          "query_frame": 1,
+          "query_name_id": "41a3abdbb54a8de9813c5235c006907177757127ad706390b162e7fc9aa29a7b",
+          "query_types": [
+            28
+          ],
+          "repeated_query_indicator": false,
+          "resolver": {
+            "address": "192.0.2.53",
+            "port": 53
+          },
+          "response_code": null,
+          "response_frame": null,
+          "state": "unanswered_in_capture",
+          "stream": 0,
+          "timing_state": "unavailable_or_ambiguous",
+          "tool_dns_time_seconds": null,
+          "transaction_id": 10,
+          "transport": "udp",
+          "truncated_response": null
+        },
+        {
+          "client": {
+            "address": "192.0.2.1",
+            "port": 53001
+          },
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 2 || frame.number == 4",
+          "elapsed_seconds": 0.02,
+          "frame_refs": [
+            2,
+            4
+          ],
+          "original_query_frame": null,
+          "query_frame": 2,
+          "query_name_id": "7b1ec3d48eeea18098cd04f544bffa1ab6ce0d99e63b32c2b6946726d6f26514",
+          "query_types": [
+            1
+          ],
+          "repeated_query_indicator": false,
+          "resolver": {
+            "address": "192.0.2.53",
+            "port": 53
+          },
+          "response_code": 0,
+          "response_frame": 4,
+          "state": "matched",
+          "stream": 1,
+          "timing_state": "measured",
+          "tool_dns_time_seconds": 0.02,
+          "transaction_id": 10,
+          "transport": "udp",
+          "truncated_response": false
+        },
+        {
+          "client": {
+            "address": "192.0.2.1",
+            "port": 53000
+          },
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 3 || frame.number == 5",
+          "elapsed_seconds": 0.02,
+          "frame_refs": [
+            3,
+            5
+          ],
+          "original_query_frame": null,
+          "query_frame": 3,
+          "query_name_id": "41a3abdbb54a8de9813c5235c006907177757127ad706390b162e7fc9aa29a7b",
+          "query_types": [
+            1
+          ],
+          "repeated_query_indicator": false,
+          "resolver": {
+            "address": "192.0.2.53",
+            "port": 53
+          },
+          "response_code": 0,
+          "response_frame": 5,
+          "state": "matched",
+          "stream": 0,
+          "timing_state": "measured",
+          "tool_dns_time_seconds": 0.02,
+          "transaction_id": 11,
+          "transport": "udp",
+          "truncated_response": false
+        },
+        {
+          "client": {
+            "address": "192.0.2.1",
+            "port": 53000
+          },
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 6",
+          "elapsed_seconds": null,
+          "frame_refs": [
+            6
+          ],
+          "original_query_frame": 1,
+          "query_frame": 6,
+          "query_name_id": "41a3abdbb54a8de9813c5235c006907177757127ad706390b162e7fc9aa29a7b",
+          "query_types": [
+            28
+          ],
+          "repeated_query_indicator": true,
+          "resolver": {
+            "address": "192.0.2.53",
+            "port": 53
+          },
+          "response_code": null,
+          "response_frame": null,
+          "state": "unanswered_in_capture",
+          "stream": 0,
+          "timing_state": "unavailable_or_ambiguous",
+          "tool_dns_time_seconds": null,
+          "transaction_id": 10,
+          "transport": "udp",
+          "truncated_response": null
+        },
+        {
+          "client": {
+            "address": "192.0.2.1",
+            "port": 53000
+          },
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 7 || frame.number == 8",
+          "elapsed_seconds": 0.05,
+          "frame_refs": [
+            7,
+            8
+          ],
+          "original_query_frame": null,
+          "query_frame": 7,
+          "query_name_id": "41a3abdbb54a8de9813c5235c006907177757127ad706390b162e7fc9aa29a7b",
+          "query_types": [
+            28
+          ],
+          "repeated_query_indicator": false,
+          "resolver": {
+            "address": "192.0.2.54",
+            "port": 53
+          },
+          "response_code": 0,
+          "response_frame": 8,
+          "state": "matched",
+          "stream": 2,
+          "timing_state": "measured",
+          "tool_dns_time_seconds": 0.05,
+          "transaction_id": 12,
+          "transport": "udp",
+          "truncated_response": false
+        },
+        {
+          "client": {
+            "address": "192.0.2.1",
+            "port": 53000
+          },
+          "cname_target_ids": [],
+          "display_filter": "frame.number == 9",
+          "elapsed_seconds": null,
+          "frame_refs": [
+            9
+          ],
+          "original_query_frame": null,
+          "query_frame": 9,
+          "query_name_id": "d22b643f082ca6220058108fff37c5aaec6b3cd70c4792713ea56cb69ae49d9e",
+          "query_types": [
+            1
+          ],
+          "repeated_query_indicator": false,
+          "resolver": {
+            "address": "192.0.2.53",
+            "port": 53
+          },
+          "response_code": null,
+          "response_frame": null,
+          "state": "unanswered_in_capture",
+          "stream": 0,
+          "timing_state": "unavailable_or_ambiguous",
+          "tool_dns_time_seconds": null,
+          "transaction_id": 13,
+          "transport": "udp",
+          "truncated_response": null
+        }
+      ]
+    }
+  },
+  {
+    "category": "analyze_tcp_establishment",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_tcp_establishment",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tcp_establishment",
+      "tool": "tshark"
+    },
+    "summary": "analyze tcp establishment",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_tcp_health",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_tcp_health",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tcp_health",
+      "tool": "tshark"
+    },
+    "summary": "analyze tcp health",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_rtt",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_rtt",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_rtt",
+      "tool": "tshark"
+    },
+    "summary": "analyze rtt",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_window_behavior",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_window_behavior",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_window_behavior",
+      "tool": "tshark"
+    },
+    "summary": "analyze window behavior",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_tcp_resets",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_tcp_resets",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tcp_resets",
+      "tool": "tshark"
+    },
+    "summary": "analyze tcp resets",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_throughput",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_throughput",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_throughput",
+      "tool": "tshark"
+    },
+    "summary": "analyze throughput",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_mss",
+    "display_filter": "tcp.options.mss_val",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_mss",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "MSS is advertised receive capability, not measured path MTU.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+      "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_mss",
+      "tool": "tshark"
+    },
+    "summary": "analyze mss",
+    "value": {
+      "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "packet_size_patterns": [],
+      "records": []
+    }
+  },
+  {
+    "category": "analyze_fragmentation",
+    "display_filter": "ip.flags.mf || ip.frag_offset || ipv6.fraghdr",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_fragmentation",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "MSS is advertised receive capability, not measured path MTU.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+      "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_fragmentation",
+      "tool": "tshark"
+    },
+    "summary": "analyze fragmentation",
+    "value": {
+      "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "packet_size_patterns": [],
+      "records": []
+    }
+  },
+  {
+    "category": "analyze_pmtud_signals",
+    "display_filter": "ip || ipv6",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_pmtud_signals",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "MSS is advertised receive capability, not measured path MTU.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+      "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_pmtud_signals",
+      "tool": "tshark"
+    },
+    "summary": "analyze pmtud signals",
+    "value": {
+      "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment signals inside ICMP errors are not inventoried.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "packet_size_patterns": [
+        {
+          "destination": "192.0.2.53",
+          "df_packet_count": 0,
+          "family": "ipv4",
+          "maximum_ip_bytes": 63,
+          "maximum_size_frame": 2,
+          "minimum_ip_bytes": 61,
+          "packet_count": 5,
+          "source": "192.0.2.1"
+        },
+        {
+          "destination": "192.0.2.54",
+          "df_packet_count": 0,
+          "family": "ipv4",
+          "maximum_ip_bytes": 61,
+          "maximum_size_frame": 7,
+          "minimum_ip_bytes": 61,
+          "packet_count": 1,
+          "source": "192.0.2.1"
+        },
+        {
+          "destination": "192.0.2.1",
+          "df_packet_count": 0,
+          "family": "ipv4",
+          "maximum_ip_bytes": 63,
+          "maximum_size_frame": 4,
+          "minimum_ip_bytes": 61,
+          "packet_count": 2,
+          "source": "192.0.2.53"
+        },
+        {
+          "destination": "192.0.2.1",
+          "df_packet_count": 0,
+          "family": "ipv4",
+          "maximum_ip_bytes": 61,
+          "maximum_size_frame": 8,
+          "minimum_ip_bytes": 61,
+          "packet_count": 1,
+          "source": "192.0.2.54"
+        }
+      ],
+      "records": []
+    }
+  },
+  {
+    "category": "analyze_tls_handshakes",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "id": "ev_a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09_analyze_tls_handshakes",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tls_handshakes",
+      "tool": "tshark"
+    },
+    "summary": "analyze tls handshakes",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "a18f7326f248a27371afc143c07017bad2e6d6a287a62c7acb9b031be4c6fc09",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  }
+]

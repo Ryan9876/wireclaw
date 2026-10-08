@@ -331,3 +331,37 @@ def quality(meta: dict, rows: list[dict], inventory: dict) -> dict:
         "limitations": limitations,
         "calculation": "Insufficient for empty capture; limited for observed quality indicators; good means no baseline indicator observed, not complete visibility.",
     }
+
+
+def evidence_item(
+    capture_id,
+    capability,
+    tool,
+    version,
+    value,
+    *,
+    derived=False,
+    scope=None,
+    scope_key=None,
+    summary=None,
+    limitations=None,
+    display_filter=None,
+    frame_refs=None,
+):
+    """Shared evidence construction; optional scope preserves Gate 1's exact shape."""
+    item = {
+        "schema_version": "1.0",
+        "id": f"ev_{capture_id}_{capability}" + (f"_{scope_key}" if scope_key else ""),
+        "category": capability,
+        "epistemic_class": "derived" if derived else "observed",
+        "source": {"capability": capability, "tool": tool, "version": version},
+        "scope": scope if scope is not None else {"capture": True},
+        "value": {"capture_sha256": capture_id, **value},
+        "summary": summary or capability.replace("_", " "),
+        "limitations": limitations if limitations is not None else value.get("limitations", []),
+    }
+    if display_filter is not None:
+        item["display_filter"] = display_filter
+    if frame_refs is not None:
+        item["frame_refs"] = frame_refs
+    return item
