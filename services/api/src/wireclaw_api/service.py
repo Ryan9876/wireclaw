@@ -228,10 +228,24 @@ class Service:
         case = self.get(case_id)
         if case["original_id"] or case["state"] not in (State.NEW, State.FAILED):
             raise ApiError("capture_already_registered")
-        run_id, _ = self.start(case_id, "ingest", {})
-        self.transition(case_id, State.INGESTING)
-        path = self.files.case(case_id) / "analyzer" / "incoming"
-        self.files.store.confined(path, exists=False).mkdir(parents=True, exist_ok=True)
+        run_id = None
+        started = time.monotonic()
+        try:
+            # Setup can fail before accepting bytes. Keep the resting checkpoint
+            # until its confined staging directory is ready.
+            path = self.files.case(case_id) / "analyzer" / "incoming"
+            self.files.store.confined(path, exists=False).mkdir(parents=True, exist_ok=True)
+            run_id, _ = self.start(case_id, "ingest", {})
+            self.transition(case_id, State.INGESTING)
+        except Exception as error:
+            code = "storage_failure" if isinstance(error, OSError) else "capture_intake_failed"
+            if run_id is not None:
+                self.fail(case_id, run_id, code, fatal=True)
+            self.cleanup_ingest(case_id)
+            if isinstance(error, OSError):
+                self.log(case_id, "ingest", started, "failed", code)
+                raise ApiError(code, 503) from None
+            raise
         return run_id, path / identifier()
 
     def ingest(self, case_id, run_id, path):
@@ -535,12 +549,19 @@ class Service:
             if trash.exists() and not directory.exists():
                 self.files.checked_tree(trash)
                 trash.rename(directory)
+            with self.db.connect() as conn:
+                running = conn.execute(
+                    "SELECT 1 FROM runs WHERE case_id=? AND status='running' LIMIT 1",
+                    (case_id,),
+                ).fetchone()
+            # BASELINE_ANALYSIS also rests between intake and investigation (or
+            # between completed stages). Only an admitted running run proves
+            # interrupted execution at that checkpoint.
             if case["state"] in (
                 State.INGESTING,
                 State.VALIDATING_CAPTURE,
-                State.BASELINE_ANALYSIS,
                 State.ASSEMBLING_REPORT,
-            ):
+            ) or (case["state"] == State.BASELINE_ANALYSIS and running):
                 self.transition(case_id, State.FAILED, error="service_interrupted")
                 self.cleanup_ingest(case_id)
             with self.db.connect() as conn:

@@ -5,6 +5,7 @@ import json
 import logging
 import shutil
 import sqlite3
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -59,6 +60,137 @@ def prepared(client, captures, name="clean_tcp"):
 
 def request_for(record, capability="analyze_rtt", stream=0):
     return {"artifact_id": record["original_id"], "capability": capability, "tcp_stream": stream}
+
+
+@pytest.mark.parametrize("completed_baseline", [False, True])
+def test_idle_baseline_checkpoint_survives_restart(environment, completed_baseline):
+    root, captures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        assert upload(client, case_id, captures["clean_tcp"]).status_code == 200
+        svc = client.app.state.service
+        if completed_baseline:
+            analyzer = svc.analyzer(case_id)
+            svc.execute(
+                case_id,
+                "baseline",
+                {},
+                lambda: analyzer.analyze(svc.get(case_id)["capture_sha"]),
+                versions=analyzer.versions,
+            )
+        before = svc.get(case_id)
+        assert before["state"] == State.BASELINE_ANALYSIS
+        assert all(run["status"] == "complete" for run in before["runs"])
+    with client_for(root) as client:
+        after = client.get(f"/api/cases/{case_id}").json()
+        assert after == before
+        assert after["last_error"] is None
+        assert all(run["error"] != "service_interrupted" for run in after["runs"])
+        response = client.post(f"/api/cases/{case_id}/investigate")
+        assert response.status_code == 200, response.text
+        assert response.json()["state"] == State.INVESTIGATING
+        assert [row["state"] for row in response.json()["history"]] == [
+            "NEW",
+            "INGESTING",
+            "VALIDATING_CAPTURE",
+            "BASELINE_ANALYSIS",
+            "INVESTIGATING",
+        ]
+
+
+@pytest.mark.parametrize("capability", ["baseline", "diagnostics"])
+def test_active_baseline_checkpoint_recovers_interrupted_run(environment, capability):
+    root, captures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        assert upload(client, case_id, captures["clean_tcp"]).status_code == 200
+        svc = client.app.state.service
+        analyzer = svc.analyzer(case_id)
+        svc.execute(
+            case_id,
+            "baseline",
+            {},
+            lambda: analyzer.analyze(svc.get(case_id)["capture_sha"]),
+            versions=analyzer.versions,
+        )
+        before = svc.get(case_id)
+        evidence = client.get(f"/api/cases/{case_id}/evidence").json()
+
+        class Interrupted(BaseException):
+            pass
+
+        def interrupt():
+            raise Interrupted
+
+        # Simulate process interruption inside execute(), after admission and
+        # before save(), while retaining the real completed baseline evidence.
+        with pytest.raises(Interrupted):
+            svc.execute(
+                case_id,
+                capability,
+                {},
+                interrupt,
+                fatal=True,
+                versions={"tshark": "changed"},
+            )
+        run_id = next(run["id"] for run in svc.get(case_id)["runs"] if run["status"] == "running")
+        assert svc.get(case_id)["state"] == State.BASELINE_ANALYSIS
+    with client_for(root) as client:
+        after = client.get(f"/api/cases/{case_id}").json()
+        assert after["state"] == State.FAILED
+        assert after["last_error"] == "service_interrupted"
+        assert after["history"][:-1] == before["history"]
+        assert after["history"][-1]["state"] == State.FAILED
+        assert [run for run in after["runs"] if run["id"] != run_id] == before["runs"]
+        interrupted = next(run for run in after["runs"] if run["id"] == run_id)
+        assert interrupted["status"] == "failed"
+        assert interrupted["error"] == "service_interrupted"
+        assert client.get(f"/api/cases/{case_id}/evidence").json() == evidence
+        assert after["artifacts"] == before["artifacts"]
+        _, original = client.app.state.service.artifact(case_id, after["original_id"])
+        assert original.read_bytes() == captures["clean_tcp"]
+
+
+@pytest.mark.parametrize("partial_directory", [False, True])
+def test_intake_preparation_failure_allows_immediate_retry(environment, caplog, partial_directory):
+    root, captures = environment
+    secret = "SECRET.storage /private/arbitrary-path $(payload)"
+    caplog.set_level(logging.INFO, logger="wireclaw.api")
+    with client_for(root) as client:
+        case_id = case(client)
+        before = client.get(f"/api/cases/{case_id}").json()
+        incoming = root / "cases" / case_id / "analyzer" / "incoming"
+        original_mkdir = Path.mkdir
+
+        def fail_preparation(path, *args, **kwargs):
+            if path == incoming:
+                if partial_directory:
+                    original_mkdir(path, *args, **kwargs)
+                raise OSError(secret)
+            return original_mkdir(path, *args, **kwargs)
+
+        with patch.object(Path, "mkdir", fail_preparation):
+            response = upload(client, case_id, captures["clean_tcp"])
+        assert response.status_code == 503
+        assert response.json() == {"error": {"code": "storage_failure"}}
+        after = client.get(f"/api/cases/{case_id}").json()
+        assert after == before
+        assert after["state"] == State.NEW
+        assert not after["runs"]
+        assert after["original_id"] is None
+        assert not after["artifacts"]
+        assert not incoming.parent.exists()
+        logs = "\n".join(record.getMessage() for record in caplog.records)
+        for sensitive in secret.split():
+            assert sensitive not in response.text
+            assert sensitive not in logs
+        structured = [json.loads(r.message) for r in caplog.records if r.name == "wireclaw.api"]
+        assert len(structured) == 1
+        assert structured[0]["error_code"] == "storage_failure"
+        retry = upload(client, case_id, captures["clean_tcp"])
+        assert retry.status_code == 200, retry.text
+        assert retry.json()["state"] == State.BASELINE_ANALYSIS
+        assert all(run["status"] == "complete" for run in retry.json()["runs"])
 
 
 def test_case_lifecycle_restart_cached_determinism_schema_and_deletion(environment):

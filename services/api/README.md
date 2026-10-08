@@ -81,6 +81,12 @@ bounded runs. Prior snapshots remain historical reproducibility records.
 Restart marks interrupted active stages and runs failed, preserves registered
 originals/evidence, removes owned staging/unregistered snapshots, restores precommit
 deletion renames, retries committed cleanup and removes orphaned case directories.
+`BASELINE_ANALYSIS` also persists as an idle checkpoint after successful intake or
+between completed analysis stages. Recovery fails that checkpoint only when a
+persisted running run proves interrupted execution; completed/failed runs are retained.
+Intake prepares confined staging before creating a run or entering `INGESTING`.
+Setup failure removes the unregistered intake tree and returns a static error;
+the case remains immediately retryable without restarting the service.
 
 ```text
 data/
