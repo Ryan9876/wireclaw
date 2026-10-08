@@ -312,8 +312,11 @@ or mock integration are represented as successful real validation.
 
 Previous reviewed head: `6518af6c6ebe14b3b084b5c90c3a639a614cf706`.
 Validation base: main `3eb988f84bb2ccdf1f193e4be6464d4d0d9c50e5` (unchanged).
-Remediation implementation commit: recorded in the provenance follow-up after publication.
-The final published branch head is also recorded in PR #3's body.
+Remediation implementation commit: `f623f273e47887b6314ebf4258308f55fe696c44`.
+The final published head adds only this provenance record and is recorded in PR #3's
+body and the `gate2-tcp-dns-tls-engine` branch ref; the self-referential final commit
+hash cannot be embedded in its own file. Validation applies to the implementation
+commit above and the identical implementation in the final documentation head.
 
 ### Corrections and independent packet checks
 
