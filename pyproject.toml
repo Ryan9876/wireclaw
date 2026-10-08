@@ -9,16 +9,21 @@ requires-python = ">=3.11"
 dependencies = ["jsonschema==4.26.0"]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1", "ruff==0.16.10"]
+test = [
+    "pytest==9.1.1", "ruff==0.16.10", "httpx==0.28.1",
+    "fastapi==0.143.0", "starlette==1.7.0", "pydantic==2.13.5", "uvicorn==0.54.0",
+]
+api = ["fastapi==0.143.0", "starlette==1.7.0", "pydantic==2.13.5", "uvicorn==0.54.0"]
 
 [project.scripts]
 wireclaw-analyze = "wireclaw_analyzer.cli:main"
+wireclaw-api = "wireclaw_api.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["services/analyzer/src"]
+where = ["services/analyzer/src", "services/api/src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["services/analyzer/src", "tests/fixtures"]
+pythonpath = ["services/analyzer/src", "services/api/src", "tests/fixtures"]
 testpaths = ["tests/unit", "tests/integration"]
 
 [tool.ruff]

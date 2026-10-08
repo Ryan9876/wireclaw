@@ -75,3 +75,13 @@ Additional Gate 2 completion fixtures (all reproducible with the same generator)
 | dns_tcp_fallback | UDP truncated response followed by TCP query for the same name; observed transport/resolver change, no policy assertion |
 | reset_reconnect | Server reset, different client ephemeral port on next stream, second reset; exact prior-reset/SYN frame references |
 | tls_clean / tls12_clean | Real TLS 1.3 / 1.2 hellos with 20 / 10 ms intervals; encrypted handshake completion remains unknown |
+# Gate 3 API reuse
+
+The Gate 3 API integration tests reuse these generators without altering fixture
+bytes or Gate 1/Gate 2 goldens. `tests/integration/test_api.py` exercises actual
+packet-tool intake/analysis plus injected optional/persistence failures, independent
+case deletion, restart recovery and request/resource/security boundaries.
+`tests/unit/test_api_boundary.py` covers all 64 state transitions and local HTTP
+contracts. Install `.[api,test]` and run the full suite with TShark/capinfos.
+`scripts/validate_gate3.py` additionally exercises real loopback HTTP and both CLI
+modes, and validates shared evidence records. See `docs/gate3-verification.md`.
