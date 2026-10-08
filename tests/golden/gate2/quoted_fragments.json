@@ -1,0 +1,408 @@
+[
+  {
+    "category": "analyze_dns",
+    "display_filter": "dns && !(icmp || icmpv6)",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_dns",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+      "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+      "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_dns",
+      "tool": "tshark"
+    },
+    "summary": "analyze dns",
+    "value": {
+      "ambiguous_message_frames": [],
+      "calculation": "Use reciprocal TShark DNS response_in/response_to frame links and matching ID, reverse endpoints and stream; elapsed=response timestamp-query timestamp. Rcode is observed; unanswered means no linked response in the capture.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+      ],
+      "name_resolution_sequences": [],
+      "names_retained": false,
+      "orphan_response_frames": [],
+      "query_identity_design": "HMAC-SHA256(normalized ASCII name; key=SHA256(domain separator+capture SHA256 bytes)); lower case, remove one root dot. Per-capture pseudonym; no network meaning or secrecy guarantee.",
+      "transactions": []
+    }
+  },
+  {
+    "category": "analyze_tcp_establishment",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tcp_establishment",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tcp_establishment",
+      "tool": "tshark"
+    },
+    "summary": "analyze tcp establishment",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_tcp_health",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tcp_health",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tcp_health",
+      "tool": "tshark"
+    },
+    "summary": "analyze tcp health",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_rtt",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_rtt",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_rtt",
+      "tool": "tshark"
+    },
+    "summary": "analyze rtt",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_window_behavior",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_window_behavior",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_window_behavior",
+      "tool": "tshark"
+    },
+    "summary": "analyze window behavior",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_tcp_resets",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tcp_resets",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tcp_resets",
+      "tool": "tshark"
+    },
+    "summary": "analyze tcp resets",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_throughput",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_throughput",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_throughput",
+      "tool": "tshark"
+    },
+    "summary": "analyze throughput",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  },
+  {
+    "category": "analyze_mss",
+    "display_filter": "frame.number == 0",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_mss",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "MSS is advertised receive capability, not measured path MTU.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+      "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_mss",
+      "tool": "tshark"
+    },
+    "summary": "analyze mss",
+    "value": {
+      "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "packet_size_patterns": [],
+      "records": []
+    }
+  },
+  {
+    "category": "analyze_fragmentation",
+    "display_filter": "frame.number == 0",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_fragmentation",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "MSS is advertised receive capability, not measured path MTU.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+      "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_fragmentation",
+      "tool": "tshark"
+    },
+    "summary": "analyze fragmentation",
+    "value": {
+      "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "packet_size_patterns": [],
+      "records": []
+    }
+  },
+  {
+    "category": "analyze_pmtud_signals",
+    "display_filter": "frame.number == 1 || frame.number == 2",
+    "epistemic_class": "derived",
+    "frame_refs": [
+      1,
+      2
+    ],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_pmtud_signals",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "MSS is advertised receive capability, not measured path MTU.",
+      "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+      "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_pmtud_signals",
+      "tool": "tshark"
+    },
+    "summary": "analyze pmtud signals",
+    "value": {
+      "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "packet_size_patterns": [
+        {
+          "destination": "192.0.2.1",
+          "df_packet_count": 0,
+          "family": "ipv4",
+          "maximum_ip_bytes": 64,
+          "maximum_size_frame": 1,
+          "minimum_ip_bytes": 64,
+          "minimum_size_frame": 1,
+          "packet_count": 1,
+          "source": "192.0.2.2"
+        },
+        {
+          "destination": "2001:db8::2",
+          "df_packet_count": 0,
+          "family": "ipv6",
+          "maximum_ip_bytes": 112,
+          "maximum_size_frame": 2,
+          "minimum_ip_bytes": 112,
+          "minimum_size_frame": 2,
+          "packet_count": 1,
+          "source": "2001:db8::1"
+        }
+      ],
+      "records": [
+        {
+          "destination": "192.0.2.1",
+          "frame": 1,
+          "kind": "fragmentation_needed",
+          "mtu_bytes": 1200,
+          "source": "192.0.2.2"
+        },
+        {
+          "destination": "2001:db8::2",
+          "frame": 2,
+          "kind": "packet_too_big",
+          "mtu_bytes": 1280,
+          "source": "2001:db8::1"
+        }
+      ]
+    }
+  },
+  {
+    "category": "analyze_tls_handshakes",
+    "display_filter": "tcp",
+    "epistemic_class": "derived",
+    "frame_refs": [],
+    "id": "ev_82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335_analyze_tls_handshakes",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "one_sided_conversations",
+      "duplicate_capture_artifacts",
+      "Absent traffic is not proof of absence outside this capture."
+    ],
+    "schema_version": "1.0",
+    "scope": {
+      "capture": true
+    },
+    "source": {
+      "capability": "analyze_tls_handshakes",
+      "tool": "tshark"
+    },
+    "summary": "analyze tls handshakes",
+    "value": {
+      "calculation": "No TCP stream rows observed.",
+      "capture_sha256": "82bd1cb2225d413632af98e94d4f10730f7760ecb80b6589017b60c5703e6335",
+      "limitations": [
+        "Absent traffic is not proof of absence outside this capture."
+      ],
+      "state": "not_observable"
+    }
+  }
+]

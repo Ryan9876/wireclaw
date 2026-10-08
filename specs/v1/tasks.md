@@ -56,17 +56,17 @@ Requirements: R-F006 through R-F010, R-F017.
 
 Tasks:
 
-- [ ] G2.1 DNS timing/failure analyzer.
-- [ ] G2.2 TCP connection-establishment analyzer.
-- [ ] G2.3 TCP retransmission/duplicate-ACK/out-of-order analyzer.
-- [ ] G2.4 RTT derivation.
-- [ ] G2.5 window/zero-window/window-full analyzer.
-- [ ] G2.6 reset/failure analyzer.
-- [ ] G2.7 throughput/goodput analyzer.
-- [ ] G2.8 MSS/fragmentation/PMTUD-signal analyzer.
-- [ ] G2.9 TLS handshake timing analyzer.
-- [ ] G2.10 evidence-to-frame/stream traceability.
-- [ ] G2.11 fixture captures for clean, lossy, window-limited, reset, DNS-delay, and TLS-delay cases.
+- [x] G2.1 DNS timing/failure analyzer.
+- [x] G2.2 TCP connection-establishment analyzer.
+- [x] G2.3 TCP retransmission/duplicate-ACK/out-of-order analyzer.
+- [x] G2.4 RTT derivation.
+- [x] G2.5 window/zero-window/window-full analyzer.
+- [x] G2.6 reset/failure analyzer.
+- [x] G2.7 throughput/goodput analyzer.
+- [x] G2.8 MSS/fragmentation/PMTUD-signal analyzer.
+- [x] G2.9 TLS handshake timing analyzer.
+- [x] G2.10 evidence-to-frame/stream traceability.
+- [x] G2.11 fixture captures for clean, lossy, window-limited, reset, DNS-delay, and TLS-delay cases.
 
 Exit criteria:
 - analyzers distinguish common TCP/DNS/TLS symptoms using reproducible evidence

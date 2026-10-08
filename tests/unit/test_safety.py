@@ -214,3 +214,20 @@ def test_storage_publication_failure_is_structured_and_cleans_staging(tmp_path):
         store.ingest(source, lambda path: None)
     assert not list((tmp_path / "work").iterdir())
     assert not list(tmp_path.glob("cases/*/original/capture"))
+
+
+def test_diagnostic_plan_is_fixed_two_pass_and_has_no_secret_or_payload_fields(tmp_path):
+    from wireclaw_analyzer.diagnostic_fields import EXTRA_FIELDS
+
+    runner = setup_runner(tmp_path)
+    capture = tmp_path / "capture"
+    capture.write_bytes(b"x")
+    with patch("wireclaw_analyzer.runner.subprocess.Popen", return_value=fake_process()) as spawn:
+        runner.run(Operation.DIAGNOSTICS, capture)
+    arguments, options = spawn.call_args
+    assert options["shell"] is False
+    assert "-2" in arguments[0] and "occurrence=a" in arguments[0]
+    assert "tls.keylog_file:" in arguments[0]
+    assert "SSLKEYLOGFILE" not in options["env"]
+    assert "-Y" not in arguments[0]
+    assert not any(f in EXTRA_FIELDS for f in ("tcp.payload", "tls.handshake.certificate"))

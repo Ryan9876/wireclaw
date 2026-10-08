@@ -157,3 +157,20 @@ The UI should clearly state:
 - what class of information may be sent to it
 
 Do not claim "nothing leaves your machine" when a cloud model is configured. Instead state precisely that raw captures remain local by default and normalized evidence may be sent to the configured provider.
+
+
+## Gate 2 DNS identity boundary
+
+The fixed local diagnostic pass extracts only bounded DNS query/CNAME-target names.
+The parser accepts conservative ASCII DNS presentation labels, normalizes case/root dot,
+and immediately replaces names with domain-separated, capture-salted HMAC-SHA256 IDs.
+Raw names never enter normalized evidence, logs, generated filters or command parameters.
+IDs remain untrusted data and have no network meaning. They minimize disclosure but do
+not prevent dictionary guessing using the public capture identity. Future providers
+must retain this minimization by default; raw-name transmission needs a separate explicit
+policy. Unsupported/control/escaped/overlong text is discarded without producing an
+identity; affected name/sequence correlation is withheld with a static limitation.
+Trustworthy numeric DNS facts and unrelated supported capabilities remain available.
+No raw rejected value enters errors or logs. Structural/numeric output corruption,
+occurrence/resource violations and compromised capture integrity still fail analysis.
+The analyzer README specifies exact bounds, formula and correlation limitations.
