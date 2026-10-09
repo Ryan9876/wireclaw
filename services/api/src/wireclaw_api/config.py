@@ -26,12 +26,18 @@ class ReasoningProvider(Protocol):
 class Policy:
     host: str = "127.0.0.1"
     port: int = 8765
+    bridge_port: int = 8766
     max_cases: int = 100
     max_json_bytes: int = 16_384
     max_symptom_chars: int = 4_096
     max_runs: int = 64
     max_evidence_items: int = 5_000
     max_evidence_bytes: int = 32 * 1024 * 1024
+    max_evidence_capture_bytes: int = 16 * 1024 * 1024
+    max_evidence_captures: int = 32
+    max_bridge_grants: int = 64
+    bridge_grant_ttl_seconds: int = 30
+    max_display_filter_chars: int = 2_048
     max_result_items: int = 100
     upload_timeout_seconds: float = 60
     analyzer: Limits = field(default_factory=Limits)
@@ -40,10 +46,11 @@ class Policy:
     def __post_init__(self):
         if not ip_address(self.host).is_loopback:
             raise ValueError("loopback_required")
-        if type(self.port) is not int or not 1 <= self.port <= 65535:
-            raise ValueError("invalid_port")
+        for port in (self.port, self.bridge_port):
+            if type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError("invalid_port")
         for key, value in vars(self).items():
-            if key in ("host", "port", "analyzer", "diagnostics"):
+            if key in ("host", "port", "bridge_port", "analyzer", "diagnostics"):
                 continue
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError("invalid_policy")

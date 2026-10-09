@@ -67,6 +67,46 @@ class CapabilityRequest(StrictModel):
         return self
 
 
+FindingId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{1,128}$")]
+ArtifactId = Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]
+
+
+class EvidenceCaptureRequest(StrictModel):
+    finding_id: FindingId
+
+
+class BridgeGrantRequest(StrictModel):
+    artifact_id: ArtifactId
+    finding_id: FindingId
+
+
+class EvidenceCaptureProvenance(StrictModel):
+    artifact_id: str
+    parent_sha256: str
+    case_id: str
+    finding_id: str
+    evidence_ids: list[str]
+    extraction_mode: str
+    extraction_rule: dict
+    display_filter: str
+    created: str
+    tool_versions: dict[str, str]
+
+
+class EvidenceCaptureResponse(StrictModel):
+    artifact_id: str
+    sha256: str
+    bytes: int
+    provenance: EvidenceCaptureProvenance
+
+
+class BridgeGrantResponse(StrictModel):
+    request_id: str
+    token: str
+    bridge_origin: str
+    expires_unix: int
+
+
 class ArtifactResponse(StrictModel):
     id: str
     kind: str

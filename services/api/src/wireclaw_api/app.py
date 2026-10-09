@@ -12,14 +12,18 @@ from starlette.concurrency import run_in_threadpool
 from wireclaw_analyzer import AnalyzerError
 
 from .config import Policy
-from .gate4_service import Service
+from .gate6_service import Service
 from .models import (
     CAPABILITIES,
     ArtifactResponse,
+    BridgeGrantRequest,
+    BridgeGrantResponse,
     CapabilityRequest,
     CaseResponse,
     CreateCase,
     DeletionResponse,
+    EvidenceCaptureRequest,
+    EvidenceCaptureResponse,
 )
 from .storage import ApiError
 from .web import register_web
@@ -65,7 +69,6 @@ class Boundary:
                 )
         if upload:
             return await self.app(scope, receive, send)
-        # Reject oversized JSON before Pydantic parsing, including chunked requests.
         body = bytearray()
         try:
             async with asyncio.timeout(self.policy.upload_timeout_seconds):
@@ -109,7 +112,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
         finally:
             service.close()
 
-    app = FastAPI(title="Wireclaw local API", version="0.4.0", lifespan=lifespan)
+    app = FastAPI(title="Wireclaw local API", version="0.6.0", lifespan=lifespan)
     app.add_middleware(Boundary, policy=policy)
 
     @app.exception_handler(ApiError)
@@ -122,7 +125,6 @@ def create_app(data_root: Path, policy: Policy | None = None):
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):
-        # Framework errors contain user values and must not be echoed or logged.
         return JSONResponse({"error": {"code": "invalid_request"}}, status_code=422)
 
     @app.exception_handler(sqlite3.Error)
@@ -138,7 +140,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "gate": 4, "provider_mode": "none"}
+        return {"status": "ok", "gate": 6, "provider_mode": "none"}
 
     @app.get("/api/config/capabilities")
     def capabilities():
@@ -150,12 +152,14 @@ def create_app(data_root: Path, policy: Policy | None = None):
                 "openai_compatible_cloud",
                 "openai_compatible_local",
             ],
+            "bridge": {"origin": f"http://127.0.0.1:{policy.bridge_port}"},
             "limits": {
                 "max_cases": policy.max_cases,
                 "max_runs": policy.max_runs,
                 "max_capture_bytes": policy.analyzer.max_capture_bytes,
                 "max_json_bytes": policy.max_json_bytes,
                 "max_result_items": policy.max_result_items,
+                "max_evidence_capture_bytes": policy.max_evidence_capture_bytes,
             },
         }
 
@@ -187,7 +191,6 @@ def create_app(data_root: Path, policy: Policy | None = None):
             run_id, path = svc.begin_ingest(case_id)
             try:
                 total = 0
-                # Each chunk is written directly to a generated staging path.
                 with path.open("xb") as stream:
                     async with asyncio.timeout(policy.upload_timeout_seconds):
                         async for chunk in request.stream():
@@ -221,6 +224,19 @@ def create_app(data_root: Path, policy: Policy | None = None):
     def capability(case_id: str, body: CapabilityRequest):
         with service().admission():
             return service().capability(case_id, body)
+
+    @app.post(
+        "/api/cases/{case_id}/artifacts/evidence-capture",
+        response_model=EvidenceCaptureResponse,
+    )
+    def evidence_capture(case_id: str, body: EvidenceCaptureRequest):
+        with service().admission():
+            return service().create_evidence_capture(case_id, body.finding_id)
+
+    @app.post("/api/cases/{case_id}/bridge-grants", response_model=BridgeGrantResponse)
+    def bridge_grant(case_id: str, body: BridgeGrantRequest):
+        with service().admission():
+            return service().create_bridge_grant(case_id, body.artifact_id, body.finding_id)
 
     @app.get("/api/cases/{case_id}", response_model=CaseResponse)
     def get_case(case_id: str):
