@@ -3,7 +3,6 @@
 import hashlib
 import json
 import shutil
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -76,7 +75,11 @@ def test_evidence_capture_is_bounded_registered_parseable_and_preserves_original
         assert original_path.read_bytes() == before
         assert hashlib.sha256(original_path.read_bytes()).hexdigest() == before_hash
 
-        provenance_rows = [item for item in service.get(case_id)["artifacts"] if item["kind"] == "evidence_provenance"]
+        provenance_rows = [
+            item
+            for item in service.get(case_id)["artifacts"]
+            if item["kind"] == "evidence_provenance"
+        ]
         assert len(provenance_rows) == 1
         _, provenance_path = service.artifact(case_id, provenance_rows[0]["id"])
         provenance = json.loads(provenance_path.read_text())
