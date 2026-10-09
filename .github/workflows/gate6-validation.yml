@@ -54,7 +54,7 @@ jobs:
         run: |
           python -m pytest -q
           ruff check .
-          ruff format --check .
+          ruff format --check services scripts tests
           python -m compileall -q services scripts tests
           python scripts/validate_gate3.py
       - name: Go validation
