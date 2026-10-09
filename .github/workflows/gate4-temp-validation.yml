@@ -18,6 +18,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+      - name: Install packet tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tshark
+          tshark --version
+          capinfos --version
       - name: Install test toolchain
         run: python -m pip install -e '.[test]'
       - name: Refresh OpenAPI snapshot
@@ -50,7 +58,7 @@ jobs:
           services/api/src/wireclaw_api/investigation.py
           tests/unit/test_investigation.py
           tests/unit/test_investigation_ipv6.py
-      - name: Verify Ruff
+      - name: Verify static checks
         run: |
           ruff check .
           ruff format --check \
@@ -59,7 +67,9 @@ jobs:
             services/api/src/wireclaw_api/investigation.py \
             tests/unit/test_investigation.py \
             tests/unit/test_investigation_ipv6.py
-      - name: Run tests
+          python -m compileall -q services tests
+          git diff --check
+      - name: Run full tests with real packet tools
         run: pytest -q
       - name: Commit generated and formatter changes
         shell: bash
