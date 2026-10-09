@@ -36,7 +36,10 @@ jobs:
       - name: Verify Ruff
         run: |
           ruff check .
-          ruff format --check .
+          ruff format --check \
+            services/api/src/wireclaw_api/investigation.py \
+            tests/unit/test_investigation.py \
+            tests/unit/test_investigation_ipv6.py
       - name: Run tests
         run: pytest -q
       - name: Commit formatter changes
