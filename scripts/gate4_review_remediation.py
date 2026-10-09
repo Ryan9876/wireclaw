@@ -1,0 +1,379 @@
+from pathlib import Path
+import json
+import re
+
+
+def replace_once(path, old, new):
+    p = Path(path)
+    text = p.read_text()
+    if old not in text:
+        raise SystemExit(f"missing replacement target in {path}: {old[:80]!r}")
+    p.write_text(text.replace(old, new, 1))
+
+
+def regex_once(path, pattern, replacement):
+    p = Path(path)
+    text = p.read_text()
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"regex target count {count} in {path}: {pattern[:80]!r}")
+    p.write_text(updated)
+
+
+inv = "services/api/src/wireclaw_api/investigation.py"
+
+replace_once(
+    inv,
+    '''@dataclass(frozen=True)\nclass Candidate:\n    tcp_stream: int\n    score: int\n    reasons: tuple[str, ...]\n''',
+    '''@dataclass(frozen=True)\nclass Candidate:\n    transport: str\n    stream: int\n    score: int\n    reasons: tuple[str, ...]\n\n    @property\n    def tcp_stream(self) -> int | None:\n        return self.stream if self.transport == "tcp" else None\n''',
+)
+
+replace_once(
+    inv,
+    '''    ports = {\n        int(match)\n        for match in re.findall(r"(?:\\bport\\s+|[:/])(\\d{1,5})\\b", text)\n        if 0 < int(match) <= 65535\n    }\n''',
+    '''    port_tokens = [\n        *re.findall(r"\\bport\\s+(\\d{1,5})\\b", text),\n        *re.findall(r"\\]:(\\d{1,5})\\b", text),\n        *re.findall(r"\\b(?:\\d{1,3}\\.){3}\\d{1,3}:(\\d{1,5})\\b", text),\n    ]\n    ports = {int(match) for match in port_tokens if 0 < int(match) <= 65535}\n''',
+)
+
+regex_once(
+    inv,
+    r'''def _tcp_conversations\(evidence: Iterable\[dict\[str, Any\]\]\) -> dict\[int, dict\[str, Any\]\]:.*?\n\n\ndef _conversation_signals''',
+    '''def _conversations(\n    evidence: Iterable[dict[str, Any]],\n) -> dict[tuple[str, int], dict[str, Any]]:\n    conversations: dict[tuple[str, int], dict[str, Any]] = {}\n    for item in evidence:\n        if item.get("category") != "list_conversations":\n            continue\n        value = item.get("value") if isinstance(item.get("value"), dict) else {}\n        records = value.get("conversations") if isinstance(value.get("conversations"), list) else []\n        for record in records:\n            if not isinstance(record, dict):\n                continue\n            transport = record.get("transport")\n            stream = record.get("stream")\n            if isinstance(transport, str) and transport and isinstance(stream, int) and stream >= 0:\n                conversations.setdefault((transport, stream), record)\n    return conversations\n\n\ndef _conversation_signals''',
+)
+
+replace_once(
+    inv,
+    '''    if not conversation:\n        return 0, []\n    score = 1\n    reasons = ["tcp_conversation"]\n''',
+    '''    if not conversation:\n        return 0, []\n    transport = conversation.get("transport")\n    transport = transport if isinstance(transport, str) and transport else "other"\n    score = 1\n    reasons = [f"{transport}_conversation"]\n''',
+)
+replace_once(
+    inv,
+    '''    if 443 in endpoint_ports and ({"tls", "slow", "connect"} & families):\n        score += 2\n        reasons.append("tls_service_relevance")\n    if 53 in endpoint_ports and "dns" in families:\n        score += 3\n        reasons.append("dns_service_relevance")\n''',
+    '''    if transport == "tcp" and 443 in endpoint_ports and ({"tls", "slow", "connect"} & families):\n        score += 2\n        reasons.append("tls_service_relevance")\n    if transport in {"tcp", "udp"} and 53 in endpoint_ports and "dns" in families:\n        score += 3\n        reasons.append("dns_service_relevance")\n''',
+)
+
+regex_once(
+    inv,
+    r'''def rank_candidates\(symptom: str, evidence: list\[dict\[str, Any\]\]\) -> list\[Candidate\]:.*?\n\n\ndef _confidence''',
+    '''def _rank_candidates_all(symptom: str, evidence: list[dict[str, Any]]) -> list[Candidate]:\n    families = _families(symptom)\n    addresses, ports = _explicit_context(symptom)\n    stream_items = _by_stream(evidence)\n    conversations = _conversations(evidence)\n    keys = set(conversations) | {("tcp", stream) for stream in stream_items}\n    candidates = []\n    for transport, stream in sorted(keys):\n        anomaly_score, anomaly_reasons = (\n            _candidate_signals(stream_items.get(stream, []), families)\n            if transport == "tcp"\n            else (0, [])\n        )\n        context_score, context_reasons = _conversation_signals(\n            conversations.get((transport, stream)), families, addresses, ports\n        )\n        reasons = tuple(sorted(set(anomaly_reasons + context_reasons)))\n        candidates.append(Candidate(transport, stream, anomaly_score + context_score, reasons))\n    return sorted(\n        candidates, key=lambda candidate: (-candidate.score, candidate.transport, candidate.stream)\n    )\n\n\ndef rank_candidates(symptom: str, evidence: list[dict[str, Any]]) -> list[Candidate]:\n    return _rank_candidates_all(symptom, evidence)[:MAX_CANDIDATES]\n\n\ndef _confidence''',
+)
+
+replace_once(
+    inv,
+    '''    for candidate in candidates:\n        stream = candidate.tcp_stream\n        scope = {"tcp_stream": stream}\n''',
+    '''    for candidate in candidates:\n        stream = candidate.tcp_stream\n        if stream is None:\n            continue\n        scope = {"tcp_stream": stream}\n''',
+)
+
+# DNS evidence stays visible, but without explicit DNS symptom context it cannot
+# become the primary diagnosis solely by crossing a timing/failure threshold.
+replace_once(
+    inv,
+    '''                    _confidence("medium", quality),\n                    f"At least one DNS transaction took {worst * 1000:.0f} ms in the capture.",\n''',
+    '''                    _confidence("medium" if "dns" in families else "low", quality),\n                    f"At least one DNS transaction took {worst * 1000:.0f} ms in the capture.",\n''',
+)
+replace_once(
+    inv,
+    '''                    _confidence("high", quality, ambiguous=True),\n                    f"The capture contains {len(failures)} DNS transaction(s) with a failure code or no linked response.",\n''',
+    '''                    _confidence(\n                        "medium" if "dns" in families else "low", quality, ambiguous=True\n                    ),\n                    f"The capture contains {len(failures)} DNS transaction(s) with a failure code or no linked response.",\n''',
+)
+
+regex_once(
+    inv,
+    r'''def _time_attribution\(candidates, stream_index, grouped\) -> dict\[str, Any\] \| None:.*?\n\n\ndef _dedupe''',
+    '''def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | None:\n    segments: list[dict[str, Any]] = []\n    limitations: list[str] = []\n    tcp_candidate = next((candidate for candidate in candidates if candidate.transport == "tcp"), None)\n    if tcp_candidate is not None:\n        stream = tcp_candidate.stream\n        establishment = _stream_item(stream_index, stream, "analyze_tcp_establishment")\n        if establishment:\n            value = (\n                establishment.get("value") if isinstance(establishment.get("value"), dict) else {}\n            )\n            seconds = _number(value.get("establishment_seconds"))\n            eid = _evidence_id(establishment)\n            if seconds is not None and eid:\n                segments.append(\n                    {\n                        "name": "tcp_establishment",\n                        "duration_ms": round(seconds * 1000, 6),\n                        "measurement_class": establishment.get("epistemic_class", "derived"),\n                        "evidence_ids": [eid],\n                    }\n                )\n        tls = _stream_item(stream_index, stream, "analyze_tls_handshakes")\n        if tls:\n            value = tls.get("value") if isinstance(tls.get("value"), dict) else {}\n            attempts = value.get("attempts") if isinstance(value.get("attempts"), list) else []\n            retries = _frames(value.get("repeated_client_hello_frames"))\n            alerts = value.get("alerts") if isinstance(value.get("alerts"), list) else []\n            if retries or alerts or len(attempts) > 1:\n                limitations.append(\n                    "Repeated/retried/alerted TLS metadata prevents one deterministic non-overlapping TLS-establishment duration; that stage is omitted rather than treating the first ServerHello as completed establishment."\n                )\n            else:\n                usable = []\n                for attempt in attempts:\n                    if not isinstance(attempt, dict):\n                        continue\n                    before = _number(attempt.get("tcp_established_to_client_hello_seconds"))\n                    hello = _number(attempt.get("client_hello_to_server_hello_seconds"))\n                    if before is not None and hello is not None:\n                        usable.append(before + hello)\n                    elif hello is not None:\n                        usable.append(hello)\n                eid = _evidence_id(tls)\n                if usable and eid:\n                    seconds = usable[0]\n                    segments.append(\n                        {\n                            "name": "tls_establishment",\n                            "duration_ms": round(seconds * 1000, 6),\n                            "measurement_class": tls.get("epistemic_class", "derived"),\n                            "evidence_ids": [eid],\n                        }\n                    )\n                    limitations.append(\n                        "TLS attribution ends at the first visible ServerHello milestone; encrypted session completion is not assumed."\n                    )\n        if segments:\n            limitations.append(\n                "Time attribution is a non-overlapping measured stage subtotal for the top-ranked TCP stream, not complete user-visible transaction time."\n            )\n    elif grouped.get("analyze_dns"):\n        item = grouped["analyze_dns"][0]\n        value = item.get("value") if isinstance(item.get("value"), dict) else {}\n        transactions = (\n            value.get("transactions") if isinstance(value.get("transactions"), list) else []\n        )\n        complete = [\n            tx\n            for tx in transactions\n            if isinstance(tx, dict) and _number(tx.get("elapsed_seconds")) is not None\n        ]\n        eid = _evidence_id(item)\n        if len(complete) == 1 and eid:\n            seconds = _number(complete[0].get("elapsed_seconds"))\n            segments.append(\n                {\n                    "name": "dns",\n                    "duration_ms": round(seconds * 1000, 6),\n                    "measurement_class": item.get("epistemic_class", "derived"),\n                    "evidence_ids": [eid],\n                }\n            )\n            limitations.append(\n                "The DNS interval is measured, but no application transaction linkage is inferred from timing or transaction ID alone."\n            )\n    if not segments:\n        return None\n    for segment in segments:\n        if segment["measurement_class"] not in {"observed", "derived", "inferred"}:\n            segment["measurement_class"] = "derived"\n    return {\n        "total_ms": round(sum(segment["duration_ms"] for segment in segments), 6),\n        "segments": segments,\n        "limitations": limitations,\n    }\n\n\ndef _dedupe''',
+)
+
+replace_once(
+    inv,
+    '''def _dedupe(strings: Iterable[str], limit: int = 16) -> list[str]:\n    result = []\n    for value in strings:\n        if isinstance(value, str) and value and value not in result:\n            result.append(value)\n            if len(result) >= limit:\n                break\n    return result\n''',
+    '''def _dedupe(strings: Iterable[str]) -> list[str]:\n    result = []\n    for value in strings:\n        if isinstance(value, str) and value and value not in result:\n            result.append(value)\n    return result\n''',
+)
+
+replace_once(
+    inv,
+    '''    candidates = rank_candidates(symptom, evidence)\n\n    findings = []\n''',
+    '''    all_candidates = _rank_candidates_all(symptom, evidence)\n    candidates = all_candidates[:MAX_CANDIDATES]\n    truncation_limitations = []\n    if len(all_candidates) > MAX_CANDIDATES:\n        truncation_limitations.append(\n            f"Candidate conversation ranking was limited to the top {MAX_CANDIDATES} of {len(all_candidates)} conversations; lower-ranked conversations were not evaluated for Gate 4 findings."\n        )\n\n    findings = []\n''',
+)
+replace_once(
+    inv,
+    '''    findings = findings[:MAX_FINDINGS]\n\n    evidence_map = {\n''',
+    '''    total_findings = len(findings)\n    if total_findings > MAX_FINDINGS:\n        truncation_limitations.append(\n            f"Finding output was limited to the top {MAX_FINDINGS} of {total_findings} supported observations."\n        )\n    findings = findings[:MAX_FINDINGS]\n\n    evidence_map = {\n''',
+)
+replace_once(
+    inv,
+    '''    limitations = _dedupe(\n        [\n            *quality_limitations,\n            *(limitation for finding in findings for limitation in finding.limitations),\n        ]\n    )\n''',
+    '''    limitations = _dedupe(\n        [\n            *truncation_limitations,\n            *quality_limitations,\n            *(limitation for finding in findings for limitation in finding.limitations),\n        ]\n    )\n''',
+)
+
+service = "services/api/src/wireclaw_api/gate4_service.py"
+regex_once(
+    service,
+    r'''    def investigate\(self, case_id\):\n        super\(\)\.investigate\(case_id\).*?        return self\.get\(case_id\)\n\n    def recover''',
+    '''    def _assemble_report(self, case_id):\n        self.transition(case_id, State.ASSEMBLING_REPORT)\n        started = time.monotonic()\n        try:\n            case = self.get(case_id)\n            result = build_investigation_result(\n                case_id=case_id,\n                symptom=case["symptom"],\n                evidence=self.evidence_records(case_id),\n                analyzer_versions=self.analyzer_versions(case_id),\n            )\n            self.save_report(case_id, result)\n            self.transition(case_id, State.COMPLETE)\n        except Exception as error:\n            if isinstance(error, ApiError):\n                code = error.code\n                status = error.status\n            elif isinstance(error, ValidationError):\n                code, status = "report_contract_failure", 500\n            elif isinstance(error, sqlite3.Error):\n                code, status = "persistence_failure", 503\n            elif isinstance(error, OSError):\n                code, status = "storage_failure", 503\n            else:\n                code, status = "report_assembly_failed", 500\n            with suppress(ApiError, sqlite3.Error):\n                with self.db.connect() as conn:\n                    state = State(self.db.case(conn, case_id)["state"])\n                if State.FAILED in TRANSITIONS[state]:\n                    self.transition(case_id, State.FAILED, error=code)\n            self.log(case_id, "report", started, "failed", code)\n            raise ApiError(code, status) from None\n        self.log(case_id, "report", started, "complete")\n        return self.get(case_id)\n\n    def investigate(self, case_id):\n        super().investigate(case_id)\n        return self._assemble_report(case_id)\n\n    def capability(self, case_id, request):\n        was_complete = self.get(case_id)["state"] == State.COMPLETE\n        result = super().capability(case_id, request)\n        if was_complete:\n            # A successful analyzer call may have replaced an evidence record. Move the\n            # completed case through the legal report path before exposing it again.\n            self.transition(case_id, State.BASELINE_ANALYSIS)\n            self.transition(case_id, State.INVESTIGATING)\n            self._assemble_report(case_id)\n        return result\n\n    def recover''',
+)
+
+tests = "tests/unit/test_investigation.py"
+with Path(tests).open("a") as stream:
+    stream.write(r'''
+
+
+def test_candidate_ranking_includes_relevant_udp_conversation():
+    evidence = [
+        quality(),
+        ev(
+            "ev_conv_udp",
+            "list_conversations",
+            {
+                "conversations": [
+                    {
+                        "transport": "tcp",
+                        "stream": 0,
+                        "a": {"address": "192.0.2.1", "port": 51000},
+                        "b": {"address": "192.0.2.20", "port": 443},
+                        "wire_bytes": 900000,
+                        "duration_seconds": 10.0,
+                        "a_to_b_packets": 100,
+                        "b_to_a_packets": 100,
+                    },
+                    {
+                        "transport": "udp",
+                        "stream": 7,
+                        "a": {"address": "192.0.2.1", "port": 53000},
+                        "b": {"address": "192.0.2.99", "port": 5353},
+                        "wire_bytes": 120,
+                        "duration_seconds": 0.1,
+                        "a_to_b_packets": 1,
+                        "b_to_a_packets": 1,
+                    },
+                ]
+            },
+            filt="tcp || udp",
+        ),
+    ]
+    ranked = rank_candidates("failure talking to 192.0.2.99 port 5353", evidence)
+    assert ranked[0].transport == "udp"
+    assert ranked[0].stream == 7
+    assert ranked[0].tcp_stream is None
+    assert "explicit_endpoint_match" in ranked[0].reasons
+    assert "explicit_port_match" in ranked[0].reasons
+
+
+def test_unlinked_dns_delay_is_not_primary_for_generic_slow_symptom():
+    evidence = [
+        quality(),
+        ev(
+            "ev_conv_healthy",
+            "list_conversations",
+            {
+                "conversations": [
+                    {
+                        "transport": "tcp",
+                        "stream": 0,
+                        "a": {"address": "192.0.2.1", "port": 50000},
+                        "b": {"address": "192.0.2.2", "port": 443},
+                        "wire_bytes": 500,
+                        "duration_seconds": 0.2,
+                        "a_to_b_packets": 3,
+                        "b_to_a_packets": 3,
+                    }
+                ]
+            },
+            filt="tcp",
+        ),
+        ev(
+            "ev_dns_unlinked",
+            "analyze_dns",
+            {"transactions": [{"elapsed_seconds": 1.5, "response_code": 0, "state": "complete"}]},
+            filt="dns",
+        ),
+    ]
+    result = build_investigation_result(
+        case_id="3" * 32, symptom="application is slow", evidence=evidence
+    )
+    assert result["findings"][0]["category"] == "dns.timing"
+    assert result["findings"][0]["confidence"] == "low"
+    assert result["conclusion"]["type"] == "insufficient_evidence"
+
+
+def test_candidate_and_finding_bounds_are_reported_as_limitations():
+    conversations = []
+    evidence = [quality()]
+    for stream_id in range(10):
+        conversations.append(
+            {
+                "transport": "tcp",
+                "stream": stream_id,
+                "a": {"address": "192.0.2.1", "port": 50000 + stream_id},
+                "b": {"address": "192.0.2.2", "port": 443},
+                "wire_bytes": 1000 + stream_id,
+                "duration_seconds": 2.0,
+                "a_to_b_packets": 3,
+                "b_to_a_packets": 3,
+            }
+        )
+        evidence.extend(
+            [
+                ev(
+                    f"ev_reset_{stream_id}",
+                    "analyze_tcp_resets",
+                    {"count": 1},
+                    stream_id,
+                    filt=f"tcp.stream == {stream_id}",
+                ),
+                ev(
+                    f"ev_rtt_{stream_id}",
+                    "analyze_rtt",
+                    {"median_seconds": 0.2, "sample_count": 4},
+                    stream_id,
+                    filt=f"tcp.stream == {stream_id}",
+                ),
+                ev(
+                    f"ev_est_{stream_id}",
+                    "analyze_tcp_establishment",
+                    {"state": "failed", "establishment_seconds": None},
+                    stream_id,
+                    filt=f"tcp.stream == {stream_id}",
+                ),
+            ]
+        )
+    evidence.append(
+        ev("ev_many_conversations", "list_conversations", {"conversations": conversations}, filt="tcp")
+    )
+    result = build_investigation_result(
+        case_id="4" * 32, symptom="connections fail and are slow", evidence=evidence
+    )
+    assert len(result["findings"]) == 16
+    assert any("top 8 of 10 conversations" in item for item in result["limitations"])
+    assert any("top 16 of" in item for item in result["limitations"])
+
+
+def test_tls_retry_omits_misleading_establishment_duration():
+    evidence = [
+        quality(),
+        ev(
+            "ev_est_tls_retry",
+            "analyze_tcp_establishment",
+            {"state": "established", "establishment_seconds": 0.02},
+            0,
+            filt="tcp.stream == 0",
+        ),
+        ev(
+            "ev_tls_retry",
+            "analyze_tls_handshakes",
+            {
+                "attempts": [
+                    {
+                        "client_hello_frame": 4,
+                        "client_hello_to_server_hello_seconds": 1.0,
+                        "tcp_established_to_client_hello_seconds": 0.08,
+                    },
+                    {
+                        "client_hello_frame": 8,
+                        "client_hello_to_server_hello_seconds": None,
+                        "tcp_established_to_client_hello_seconds": 1.18,
+                    },
+                ],
+                "alerts": [{"frame": 9, "descriptions": [40]}],
+                "repeated_client_hello_frames": [8],
+            },
+            0,
+            filt="tcp.stream == 0 && tls",
+        ),
+    ]
+    result = build_investigation_result(
+        case_id="5" * 32, symptom="TLS handshake is slow", evidence=evidence
+    )
+    assert result["findings"][0]["category"] == "tls.handshake"
+    assert result["time_attribution"] is not None
+    assert [segment["name"] for segment in result["time_attribution"]["segments"]] == [
+        "tcp_establishment"
+    ]
+    assert any("stage is omitted" in item for item in result["time_attribution"]["limitations"])
+''')
+
+report_tests = "tests/integration/test_gate4_report.py"
+with Path(report_tests).open("a") as stream:
+    stream.write(r'''
+
+
+def test_successful_post_complete_capability_rebuilds_report_from_current_evidence(tmp_path):
+    captures = generate(tmp_path / "fixtures")
+    root = tmp_path / "data"
+
+    with _client(root) as client:
+        case_id, uploaded = _prepare(client, captures["high_rtt"])
+        completed = client.post(f"/api/cases/{case_id}/investigate")
+        assert completed.status_code == 200, completed.text
+        before = client.get(f"/api/cases/{case_id}/report").json()
+        assert before["conclusion"]["type"] == "supported_finding"
+        assert any(item["category"] == "tcp.rtt" for item in before["findings"])
+
+        original_run = Analyzer.run_diagnostic
+
+        def changed_rtt(analyzer, request):
+            result = original_run(analyzer, request)
+            for item in result["evidence"]:
+                if item["category"] == "analyze_rtt":
+                    item["value"]["median_seconds"] = 0.01
+                    item["value"]["p95_seconds"] = 0.01
+            return result
+
+        request = {
+            "artifact_id": uploaded["original_id"],
+            "capability": "analyze_rtt",
+            "tcp_stream": 0,
+        }
+        with patch.object(Analyzer, "run_diagnostic", new=changed_rtt):
+            refreshed = client.post(f"/api/cases/{case_id}/capabilities", json=request)
+        assert refreshed.status_code == 200, refreshed.text
+        record = client.get(f"/api/cases/{case_id}").json()
+        assert record["state"] == "COMPLETE"
+        assert record["history"][-1]["state"] == "COMPLETE"
+        assert record["history"][-2]["state"] == "ASSEMBLING_REPORT"
+        after = client.get(f"/api/cases/{case_id}/report").json()
+        assert after != before
+        assert after["conclusion"]["type"] == "insufficient_evidence"
+        current_rtt = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
+        current_rtt = next(item for item in current_rtt if item["category"] == "analyze_rtt")
+        assert current_rtt["value"]["median_seconds"] == 0.01
+''')
+
+golden_test = "tests/integration/test_gate4_golden.py"
+replace_once(
+    golden_test,
+    '''        "tls_delay": ("TLS handshake is slow", gate2["tls_delay"]),\n        "failed_tcp":''',
+    '''        "tls_delay": ("TLS handshake is slow", gate2["tls_delay"]),\n        "tls_retry": ("TLS handshake retries", gate2["tls_retry"]),\n        "failed_tcp":''',
+)
+
+golden_path = Path("tests/golden/gate4/rules_cases.json")
+golden = json.loads(golden_path.read_text())
+golden["tls_retry"] = {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["server_application", "local_network", "network_path"],
+    "primary_category": "tls.handshake",
+    "finding_categories": ["tls.handshake"],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": False,
+}
+golden_path.write_text(json.dumps(golden, indent=2, sort_keys=True) + "\n")
+
+readme = "services/api/README.md"
+replace_once(
+    readme,
+    '''A later optional capability failure does not invalidate or erase the completed deterministic report. Gate 7 iterative model reasoning is not implemented here.\n''',
+    '''A later optional capability failure does not invalidate or erase the completed deterministic report. A successful capability request against a completed case immediately rebuilds the report from the current persisted evidence before the case returns to `COMPLETE`, preventing evidence/report divergence. Gate 7 iterative model reasoning is not implemented here.\n''',
+)
+replace_once(
+    readme,
+    '''- ranks TCP candidates using explicit endpoint/port context, protocol relevance, anomalies, timing, and weak volume signals without excluding small flows solely for low byte count\n''',
+    '''- ranks normalized TCP, UDP, and other inventoried conversations using explicit endpoint/port context, protocol relevance, anomalies where available, timing, and weak volume signals without excluding small flows solely for low byte count\n''',
+)
+
+verification = Path("docs/gate4-verification.md")
+text = verification.read_text()
+text = text.replace(
+    "Candidate TCP conversations are ranked deterministically using bounded combinations of:",
+    "Normalized inventoried conversations are ranked deterministically across available transports using bounded combinations of:",
+)
+verification.write_text(text)
