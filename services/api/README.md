@@ -1,8 +1,6 @@
-# Local API — Gate 3
+# Local API — Gate 4
 
-FastAPI owns case lifecycle, SQLite metadata, artifact registration and bounded
-orchestration. The analyzer remains the packet-fact authority. No UI, findings,
-reports, model calls, host bridge or release packaging are implemented here.
+FastAPI owns case lifecycle, SQLite metadata, artifact registration, bounded analyzer orchestration, and deterministic rules-only investigation/report assembly. The analyzer remains the packet-fact authority. Gate 4 does not add a UI, model reasoning, host bridge, Wireshark launch integration, or release packaging.
 
 ## Developer startup
 
@@ -13,136 +11,113 @@ python -m pip install -e '.[api,test]'
 wireclaw-api --data-root data
 ```
 
-The launcher binds `127.0.0.1:8765`, runs one worker, disables request/access and
-exception logs, and caps active HTTP connections at 32. Only numeric loopback
-addresses are accepted for `--host`; `--port` is an administrator setting.
-One lifetime OS lock permits one service process per data root. Do not bypass
-the launcher to expose the service or start multiple workers. Host/Origin checks
-reject nonlocal browser requests and DNS rebinding; no wildcard CORS is enabled.
-Managed roots must be private to Wireclaw. Privileged filesystem races and
-hostile installed packet binaries remain outside the existing Gate 1 boundary.
+The launcher binds `127.0.0.1:8765`, runs one worker, disables request/access and exception logs, and caps active HTTP connections at 32. Only numeric loopback addresses are accepted for `--host`; `--port` is administrator configuration. One lifetime OS lock permits one service process per data root. Host/Origin checks reject nonlocal browser requests and DNS rebinding; no wildcard CORS is enabled.
 
 ## Routes and contracts
 
-OpenAPI is served at `/openapi.json`, documentation at `/docs`. Its checked-in
-snapshot is `contracts/api.openapi.json`.
+OpenAPI is served at `/openapi.json`, documentation at `/docs`, and the checked-in snapshot is `contracts/api.openapi.json`.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/health` | Service health, current gate/provider mode |
-| `GET /api/config/capabilities` | Sixteen existing capabilities and public bounds |
-| `POST /api/cases` | Create case from JSON `{"symptom":"application is slow"}` |
-| `POST /api/cases/{case_id}/capture` | Stream PCAP/PCAPNG body, `application/octet-stream` |
-| `POST /api/cases/{case_id}/investigate` | Baseline/quality checkpoint then existing diagnostics |
-| `POST /api/cases/{case_id}/capabilities` | Typed capability with registered original artifact ID |
-| `GET /api/cases/{case_id}` | Symptom, state/history, quality, artifacts and runs |
-| `GET /api/cases/{case_id}/evidence` | Bounded evidence page, `offset`/`limit` |
-| `GET /api/cases/{case_id}/evidence/{evidence_id}` | Exact existing record |
-| `GET /api/cases/{case_id}/artifacts/{artifact_id}` | Integrity-checked metadata, no filesystem path |
-| `DELETE /api/cases/{case_id}` | Explicit deletion of metadata, original and generated files |
+| `GET /api/health` | Service health, Gate 4, provider mode `none` |
+| `GET /api/config/capabilities` | Existing deterministic analyzer capabilities and public bounds |
+| `POST /api/cases` | Create a case from a bounded symptom string |
+| `POST /api/cases/{case_id}/capture` | Stream PCAP/PCAPNG bytes into immutable intake |
+| `POST /api/cases/{case_id}/investigate` | Run deterministic baseline/diagnostics, assemble report, reach `COMPLETE` |
+| `POST /api/cases/{case_id}/capabilities` | Re-run a typed deterministic capability against the registered original |
+| `GET /api/cases/{case_id}` | Case state/history, capture quality, artifacts, runs and metadata |
+| `GET /api/cases/{case_id}/findings` | Prioritized deterministic findings from the persisted report |
+| `GET /api/cases/{case_id}/report` | Schema-valid persisted Gate 4 investigation report |
+| `GET /api/cases/{case_id}/evidence` | Bounded evidence page |
+| `GET /api/cases/{case_id}/evidence/{evidence_id}` | Exact normalized evidence record |
+| `GET /api/cases/{case_id}/artifacts/{artifact_id}` | Integrity-checked artifact metadata; never a caller filesystem path |
+| `DELETE /api/cases/{case_id}` | Delete metadata, original and generated case files |
 
-Capability request:
+Capability requests remain typed and cannot contain executable names, arbitrary flags, paths, commands, or caller display filters. Unknown resources return 404; invalid input 422; bounded-resource overflow 413/429; persistence/storage availability failures 503. Public errors use static codes rather than packet-tool stderr, request values, or exception text.
 
-```json
-{"artifact_id":"<32-hex original_id>","capability":"analyze_rtt","tcp_stream":0}
-```
+## Investigation behavior
 
-Baseline, DNS, fragmentation and PMTUD capabilities reject stream selectors.
-Other Gate 2 capabilities accept optional nonnegative integer TCP stream IDs.
-Requests accept no paths, commands, flags, executables or display filters.
-Unknown fields fail before execution. Artifact IDs must belong to the case.
-Unknown resources return 404; invalid input 422; overflow 413/429; persistence or
-storage availability failures 503. Only static error codes are returned; no raw
-framework validation values, packet stderr or arbitrary exception text is echoed.
+Every investigation starts with capture quality and deterministic Gate 1/2 evidence. Gate 4 then runs a rules-only investigation over normalized evidence; it does not parse packet bytes itself and does not call any model provider.
 
-Create -> upload -> investigate -> retrieve evidence is the Gate 3 workflow.
-Intake accepts one immutable capture per case and validates content with Gate 1
-tools. Uploads are streamed to generated staging names, never caller filenames.
-Failed unregistered intake trees are removed. Persistent cleanup denial is explicit
-and recovery retries owned cleanup. Registered originals stay read-only and are
-SHA-checked before analysis, including cached requests.
+The rules engine:
+
+- classifies symptom text only to rank relevance; symptom text is never evidence
+- ranks TCP candidates using explicit endpoint/port context, protocol relevance, anomalies, timing, and weak volume signals without excluding small flows solely for low byte count
+- evaluates DNS delay/failure, TCP setup, retransmission/reordering, RTT, receive-window constraints, resets, TLS visibility, PMTUD signals, and capture limitations
+- cites normalized evidence IDs for every finding
+- derives confidence from evidence sufficiency and capture quality
+- limits supported primary conclusions to medium/high-confidence findings
+- returns `insufficient_evidence` when available evidence cannot discriminate adequately
+- provides remaining hypotheses and concrete next evidence for unresolved cases
+
+Important conservative boundaries are intentional: a reset proves termination but not cause; a retransmission indicator does not localize the physical loss point; reordering alone is not promoted to a root-cause finding; a zero window identifies a constrained receiver but not automatically client/server ownership; PMTUD control signals support a path hypothesis but do not by themselves prove an MTU black hole.
+
+## Time attribution
+
+Gate 4 emits only stages the deterministic evidence can measure without overlap. Current attribution may include DNS, TCP establishment and the visible TLS establishment milestone. Measurement class and evidence IDs accompany each segment.
+
+The result is a measured subtotal, not necessarily complete user-visible elapsed time. Application/server wait and request/response transfer attribution require deterministic application timing evidence that is not implemented yet. A capture with an idle interval but no decodable request/response timing therefore remains unresolved rather than being labeled server delay.
+
+## Findings and uncertainty
+
+Findings are concise, prioritized, and include:
+
+- category, statement and confidence
+- affected scope
+- supporting evidence IDs
+- alternate explanations and limitations
+- recommended validation
+- packet-level applicability and display filter where available
+
+The investigation-result contract is `contracts/investigation-result.schema.json`. Packet-level findings expose the future Wireshark-action availability fields required by the shared result model, but Gate 6 host-bridge/evidence-capture launch behavior is not implemented in Gate 4.
 
 ## Lifecycle and persistence
 
-All authoritative states/legal transitions are represented and tested. Gate 3
-normally reaches NEW -> INGESTING -> VALIDATING_CAPTURE -> BASELINE_ANALYSIS ->
-INVESTIGATING. ASSEMBLING_REPORT/COMPLETE are deferred behavior, never simulated.
-Active failures may become FAILED while preserving prior evidence. Explicit retries
-reuse preserved input. Optional capability failures retain state and earlier evidence.
+The normal successful lifecycle is:
 
-SQLite schema version 1 stores cases, history, artifacts, runs, evidence/index and
-deletion journals. Transactions and foreign keys protect metadata; PCAP blobs never
-enter SQLite. Runs retain safe parameters, analyzer/tool versions, configuration,
-produced evidence IDs and safe failures. Unknown schema versions fail startup.
-Successful repeated requests return snapshots without new execution/rows/logs.
-Cache keys include policy and tool versions; changed environments create new
-bounded runs. Prior snapshots remain historical reproducibility records.
+```text
+NEW
+ -> INGESTING
+ -> VALIDATING_CAPTURE
+ -> BASELINE_ANALYSIS
+ -> INVESTIGATING
+ -> ASSEMBLING_REPORT
+ -> COMPLETE
+```
 
-Restart marks interrupted active stages and runs failed, preserves registered
-originals/evidence, removes owned staging/unregistered snapshots, restores precommit
-deletion renames, retries committed cleanup and removes orphaned case directories.
-`BASELINE_ANALYSIS` also persists as an idle checkpoint after successful intake or
-between completed analysis stages. Recovery fails that checkpoint only when a
-persisted running run proves interrupted execution; completed/failed runs are retained.
-Intake prepares confined staging before creating a run or entering `INGESTING`.
-Setup failure removes the unregistered intake tree and returns a static error;
-the case remains immediately retryable without restarting the service.
+Failures preserve prior deterministic evidence and immutable input. A report-assembly failure transitions the case to `FAILED` without deleting analyzer results. A completed case can be re-run from its preserved original.
+
+SQLite continues to store metadata, runs and evidence indexes while packet/report bytes remain as confined case artifacts. A completed report is serialized deterministically, validated against the investigation-result schema, stored under `reports/<sha256>.json`, registered as a logical artifact, and made read-only. Re-running an unchanged case produces the same report content and reuses the report artifact identity. Restart recovery preserves registered reports and removes unregistered report debris.
+
+Reports include the deterministic analyzer, TShark and capinfos versions recovered from completed run metadata. The report endpoint re-validates the report schema, case identity and registered artifact integrity before returning it.
+
+A later optional capability failure does not invalidate or erase the completed deterministic report. Gate 7 iterative model reasoning is not implemented here.
+
+## Storage and deletion
+
+Case paths remain confined below the configured data root. Original captures are immutable and independently stored per application case. Callers use logical IDs rather than filesystem paths. Existing Gate 3 transactional intake/deletion/recovery behavior remains in force, including cleanup journals and cross-case deletion isolation.
+
+Representative layout:
 
 ```text
 data/
   cases.sqlite3
   service.lock
-  cases/<application-case-id>/
-    analyzer/cases/<capture-sha>/original/capture
-    analyzer/cases/<capture-sha>/normalized/<analyzer summaries>
-    analyzer/incoming/<generated staging name>
-    analyzer/work/ and analyzer/tool-home/
-    normalized/<run-id>.json
+  cases/<case-id>/
+    analyzer/...                         # immutable original + analyzer state
+    normalized/<run-id>.json            # reproducibility snapshots
+    reports/<report-sha256>.json        # read-only Gate 4 report
   trash/<deleted-case-id>/
 ```
 
-The isolated analyzer namespace reuses Gate 1 unchanged; identical captures in
-different application cases have independent originals and deletion. Registered
-relative paths use POSIX representation; callers use logical IDs. Per-run snapshots
-are distinct from mutable analyzer summaries. Canonical confinement rejects
-traversal, absolute escapes and managed symlinks. See ADR-0003.
-
-Deletion checks the tree, renames it inside the root, then commits case removal
-and a cleanup journal. Database failure restores the directory. With
-`cleanup_pending: true`, metadata is deleted but bytes may remain;
-`original_deleted`/`registered_artifacts_deleted` stay false. Restart retries
-cleanup, and new cases are refused while cleanup is pending. Already missing cases
-return 404. Deletion accepts no caller filesystem path.
-
 ## Resource and privacy policy
 
-Defaults: 100 cases; 64 run attempts per case including failed runs/intake; 4,096
-symptom characters; 16 KiB JSON; 60-second upload/body deadline; 5,000 indexed
-evidence items; 32 MiB indexed evidence and retained snapshots per case; 100 items
-per evidence page. One admitted mutation at a time with busy rejection and no work
-queue. All existing Gate 1/Gate 2 frame/time/pipe/capture/value bounds remain.
-`Policy` is administrator configuration, never API input. No unbounded retries.
+Existing Gate 1–3 execution, capture, pipe, evidence, request, run and case bounds remain unchanged. Gate 4 additionally caps candidate and finding counts and validates report size before persistence.
 
-Structured run logs contain only case ID, component, capability, duration, status
-and static error code. No payload, DNS raw name, symptoms, secrets, request bodies
-or arbitrary exceptions. Console output is not accumulated in application log files.
-Symptoms are untrusted stored context and never command/path/capability input.
-Provider-neutral cloud/local/none interfaces exist; active mode is none. No model
-transport, prompts or credential persistence exist. Raw captures remain local.
+Raw captures and payload bytes remain local. Structured logs contain case/component/capability/duration/status/static error code only. Symptoms, packet payload, DNS raw names, credentials, arbitrary exceptions and request bodies are not emitted to logs. Active provider mode remains `none`; Gate 4 has no model transport or model credentials.
 
 ## Validation
 
-```sh
-python -m pytest -q
-python -m pytest tests/integration -q
-python -m ruff check services tests
-python -m ruff format --check services tests
-python -m compileall -q services tests
-git diff --check
-```
+Gate 4 validation requires real TShark/capinfos with zero relevant skips, the full Gate 1–4 regression suite, schema/OpenAPI checks, Ruff lint/format, compileall, and `git diff --check`. Real-capture Gate 4 RCA goldens live in `tests/golden/gate4/rules_cases.json` and intentionally include healthy and ambiguous outcomes that must return `insufficient_evidence`.
 
-See `docs/gate3-verification.md`. Packet-tool tests must run without skips. Only
-Linux with TShark/capinfos 4.2.2 was executed. Native macOS/Windows, Docker/parser
-OS isolation and release packaging remain unvalidated/deferred. The test transport
-emits a Starlette/httpx deprecation warning; it does not skip/fail tests. Gate 2's
-nonblocking FIN/RST-ended zero-window interval remains `open_at_capture_end`.
+See `docs/gate4-verification.md` for the exact validated environment, counts, task mapping, RCA cases, and known limitations.
