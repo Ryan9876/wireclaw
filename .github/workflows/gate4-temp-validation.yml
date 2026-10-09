@@ -28,6 +28,141 @@ jobs:
           capinfos --version
       - name: Install test toolchain
         run: python -m pip install -e '.[test]'
+      - name: Align Gate 3 integration expectations with Gate 4 lifecycle
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/integration/test_api.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''        assert response.json()["state"] == State.INVESTIGATING
+          assert [row["state"] for row in response.json()["history"]] == [
+              "NEW",
+              "INGESTING",
+              "VALIDATING_CAPTURE",
+              "BASELINE_ANALYSIS",
+              "INVESTIGATING",
+          ]
+          '''
+          new = '''        completed = response.json()
+          assert completed["state"] == State.COMPLETE
+          assert [row["state"] for row in completed["history"]] == [
+              "NEW",
+              "INGESTING",
+              "VALIDATING_CAPTURE",
+              "BASELINE_ANALYSIS",
+              "INVESTIGATING",
+              "ASSEMBLING_REPORT",
+              "COMPLETE",
+          ]
+          report_response = client.get(f"/api/cases/{case_id}/report")
+          assert report_response.status_code == 200
+          report = report_response.json()
+          assert report["case_id"] == case_id
+          assert client.get(f"/api/cases/{case_id}/findings").json()["findings"] == report["findings"]
+          '''
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = '''        record = client.post(f"/api/cases/{case_id}/investigate").json()
+          assert record["state"] == State.INVESTIGATING
+          assert record["symptom"] == hostile
+          assert [r["state"] for r in record["history"]] == [
+              "NEW",
+              "INGESTING",
+              "VALIDATING_CAPTURE",
+              "BASELINE_ANALYSIS",
+              "INVESTIGATING",
+          ]
+          '''
+          new = '''        record = client.post(f"/api/cases/{case_id}/investigate").json()
+          assert record["state"] == State.COMPLETE
+          assert record["symptom"] == hostile
+          assert [r["state"] for r in record["history"]] == [
+              "NEW",
+              "INGESTING",
+              "VALIDATING_CAPTURE",
+              "BASELINE_ANALYSIS",
+              "INVESTIGATING",
+              "ASSEMBLING_REPORT",
+              "COMPLETE",
+          ]
+          report = client.get(f"/api/cases/{case_id}/report").json()
+          assert report["case_id"] == case_id
+          assert report["symptom"] == hostile
+          assert client.get(f"/api/cases/{case_id}/findings").json()["findings"] == report["findings"]
+          report_artifacts = [item for item in record["artifacts"] if item["kind"] == "report"]
+          assert len(report_artifacts) == 1
+          '''
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = '''    with client_for(root) as client:
+          assert client.get(f"/api/cases/{case_id}").json()["symptom"] == hostile
+          with patch.object(
+          '''
+          new = '''    with client_for(root) as client:
+          restarted = client.get(f"/api/cases/{case_id}").json()
+          assert restarted["symptom"] == hostile
+          assert restarted["state"] == State.COMPLETE
+          assert client.get(f"/api/cases/{case_id}/report").json() == report
+          assert len([item for item in restarted["artifacts"] if item["kind"] == "report"]) == 1
+          with patch.object(
+          '''
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = '''        case_id, record = prepared(client, captures)
+          before = client.get(f"/api/cases/{case_id}/evidence").json()
+          caplog.set_level(logging.INFO, logger="wireclaw.api")
+          '''
+          new = '''        case_id, record = prepared(client, captures)
+          before = client.get(f"/api/cases/{case_id}/evidence").json()
+          report_before = client.get(f"/api/cases/{case_id}/report").json()
+          caplog.set_level(logging.INFO, logger="wireclaw.api")
+          '''
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = '''        after = client.get(f"/api/cases/{case_id}").json()
+          assert after["state"] == "INVESTIGATING"
+          assert after["runs"][-1]["status"] == "failed"
+          '''
+          new = '''        after = client.get(f"/api/cases/{case_id}").json()
+          assert after["state"] == "COMPLETE"
+          assert client.get(f"/api/cases/{case_id}/report").json() == report_before
+          assert after["runs"][-1]["status"] == "failed"
+          '''
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = '''    with client_for(root) as client:
+          assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "INVESTIGATING"
+          assert len(client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]) == 16
+          '''
+          new = '''    with client_for(root) as client:
+          recovered = client.post(f"/api/cases/{case_id}/investigate")
+          assert recovered.status_code == 200, recovered.text
+          assert recovered.json()["state"] == "COMPLETE"
+          assert len(client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]) == 16
+          assert client.get(f"/api/cases/{case_id}/report").status_code == 200
+          '''
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = '''        assert original.read_bytes() == captures["clean_tcp"]
+          assert client.get(f"/api/cases/{second}").json()["state"] == "INVESTIGATING"
+          '''
+          new = '''        assert original.read_bytes() == captures["clean_tcp"]
+          assert client.get(f"/api/cases/{second}").json()["state"] == "COMPLETE"
+          assert client.get(f"/api/cases/{second}/report").status_code == 200
+          '''
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          path.write_text(text, encoding='utf-8')
+          PY
       - name: Refresh OpenAPI snapshot
         run: |
           python - <<'PY'
@@ -49,6 +184,7 @@ jobs:
           services/api/src/wireclaw_api/investigation.py
           tests/unit/test_investigation.py
           tests/unit/test_investigation_ipv6.py
+          tests/integration/test_api.py
           --fix --unsafe-fixes
       - name: Apply Gate 4 Ruff formatting
         run: >-
@@ -58,6 +194,7 @@ jobs:
           services/api/src/wireclaw_api/investigation.py
           tests/unit/test_investigation.py
           tests/unit/test_investigation_ipv6.py
+          tests/integration/test_api.py
       - name: Verify static checks
         run: |
           ruff check .
@@ -66,18 +203,19 @@ jobs:
             services/api/src/wireclaw_api/gate4_service.py \
             services/api/src/wireclaw_api/investigation.py \
             tests/unit/test_investigation.py \
-            tests/unit/test_investigation_ipv6.py
+            tests/unit/test_investigation_ipv6.py \
+            tests/integration/test_api.py
           python -m compileall -q services tests
           git diff --check
       - name: Run full tests with real packet tools
         run: pytest -q
-      - name: Commit generated and formatter changes
+      - name: Commit generated, integration, and formatter changes
         shell: bash
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add --all
-            git commit -m "chore: apply Gate 4 generated contract and formatting"
+            git commit -m "test: validate Gate 4 report lifecycle with real tools"
             git push
           fi
