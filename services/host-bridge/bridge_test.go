@@ -84,8 +84,13 @@ func TestOpenUsesExactApprovedArgvAndConsumesGrant(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	if executable == "" || !reflect.DeepEqual(args, []string{"-r", filepath.Join(root, "cases", "capture with spaces.pcapng"), "-Y", "tcp.stream == 7"}) {
-		t.Fatalf("unexpected launch %q %#v", executable, args)
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedArgs := []string{"-r", filepath.Join(canonicalRoot, "cases", "capture with spaces.pcapng"), "-Y", "tcp.stream == 7"}
+	if executable == "" || !reflect.DeepEqual(args, expectedArgs) {
+		t.Fatalf("unexpected launch %q %#v expected %#v", executable, args, expectedArgs)
 	}
 	if _, err := os.Stat(manifestPath); !os.IsNotExist(err) {
 		t.Fatal("grant was not consumed")
