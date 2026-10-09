@@ -31,6 +31,7 @@ jobs:
       - name: Align Gate 3 integration expectations with Gate 4 lifecycle
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
 
           path = Path('tests/integration/test_api.py')
@@ -62,16 +63,16 @@ jobs:
               assert text.count(old) == 1, (old, text.count(old))
               text = text.replace(old, new)
 
-          old_history = '''            "BASELINE_ANALYSIS",
-              "INVESTIGATING",
-          ]'''
-          new_history = '''            "BASELINE_ANALYSIS",
-              "INVESTIGATING",
-              "ASSEMBLING_REPORT",
-              "COMPLETE",
-          ]'''
-          assert text.count(old_history) == 2, text.count(old_history)
-          text = text.replace(old_history, new_history, 2)
+          pattern = r'(?m)^(\s*)"BASELINE_ANALYSIS",\n\1"INVESTIGATING",\n(\s*)\]'
+          replacement = (
+              r'\1"BASELINE_ANALYSIS",\n'
+              r'\1"INVESTIGATING",\n'
+              r'\1"ASSEMBLING_REPORT",\n'
+              r'\1"COMPLETE",\n'
+              r'\2]'
+          )
+          text, changed = re.subn(pattern, replacement, text, count=2)
+          assert changed == 2, changed
 
           path.write_text(text, encoding='utf-8')
           PY
