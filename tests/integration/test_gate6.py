@@ -87,6 +87,43 @@ def test_evidence_capture_is_bounded_registered_parseable_and_preserves_original
         assert provenance["parent_sha256"] == before_hash
 
 
+def test_evidence_launch_is_bound_to_registered_finding_provenance(environment, monkeypatch):
+    root, captures = environment
+    with client_for(root) as client:
+        case_id, _, finding = prepared(client, captures)
+        capture = client.post(
+            f"/api/cases/{case_id}/artifacts/evidence-capture",
+            json={"finding_id": finding["id"]},
+        )
+        assert capture.status_code == 200, capture.text
+        body = capture.json()
+
+        grant = client.post(
+            f"/api/cases/{case_id}/bridge-grants",
+            json={"artifact_id": body["artifact_id"], "finding_id": finding["id"]},
+        )
+        assert grant.status_code == 200, grant.text
+        manifest = root / "bridge" / "requests" / f"{grant.json()['request_id']}.json"
+        stored = json.loads(manifest.read_text())
+        assert stored["display_filter"] == body["provenance"]["display_filter"]
+
+        service = client.app.state.service
+        read_provenance = service._evidence_capture_provenance
+
+        def mismatched(case, artifact):
+            value = dict(read_provenance(case, artifact))
+            value["finding_id"] = "finding_other"
+            return value
+
+        monkeypatch.setattr(service, "_evidence_capture_provenance", mismatched)
+        rejected = client.post(
+            f"/api/cases/{case_id}/bridge-grants",
+            json={"artifact_id": body["artifact_id"], "finding_id": finding["id"]},
+        )
+        assert rejected.status_code == 409
+        assert rejected.json() == {"error": {"code": "evidence_finding_mismatch"}}
+
+
 def test_gate6_api_accepts_no_path_filter_or_executable_input_and_isolates_cases(environment):
     root, captures = environment
     with client_for(root) as client:
