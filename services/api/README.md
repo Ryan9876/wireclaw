@@ -42,7 +42,7 @@ Every investigation starts with capture quality and deterministic Gate 1/2 evide
 The rules engine:
 
 - classifies symptom text only to rank relevance; symptom text is never evidence
-- ranks TCP candidates using explicit endpoint/port context, protocol relevance, anomalies, timing, and weak volume signals without excluding small flows solely for low byte count
+- ranks normalized TCP, UDP, and other inventoried conversations using explicit endpoint/port context, protocol relevance, anomalies where available, timing, and weak volume signals without excluding small flows solely for low byte count
 - evaluates DNS delay/failure, TCP setup, retransmission/reordering, RTT, receive-window constraints, resets, TLS visibility, PMTUD signals, and capture limitations
 - cites normalized evidence IDs for every finding
 - derives confidence from evidence sufficiency and capture quality
@@ -91,7 +91,7 @@ SQLite continues to store metadata, runs and evidence indexes while packet/repor
 
 Reports include the deterministic analyzer, TShark and capinfos versions recovered from completed run metadata. The report endpoint re-validates the report schema, case identity and registered artifact integrity before returning it.
 
-A later optional capability failure does not invalidate or erase the completed deterministic report. Gate 7 iterative model reasoning is not implemented here.
+A later optional capability failure does not invalidate or erase the completed deterministic report. A successful capability request against a completed case immediately rebuilds the report from the current persisted evidence before the case returns to `COMPLETE`, preventing evidence/report divergence. Gate 7 iterative model reasoning is not implemented here.
 
 ## Storage and deletion
 

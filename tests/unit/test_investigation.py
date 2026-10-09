@@ -148,7 +148,9 @@ def test_dns_delay_is_not_claimed_as_user_root_cause():
     ]
     result = build_investigation_result(case_id="d" * 32, symptom="app is slow", evidence=evidence)
     assert result["findings"][0]["category"] == "dns.timing"
-    assert result["conclusion"]["confidence"] == "medium"
+    assert result["findings"][0]["confidence"] == "low"
+    assert result["conclusion"]["type"] == "insufficient_evidence"
+    assert result["conclusion"]["confidence"] == "low"
     assert "does not by itself prove" in result["findings"][0]["alternate_explanations"][0]
     assert result["time_attribution"]["segments"][0]["name"] == "dns"
     check_shape(result)
@@ -291,3 +293,182 @@ def test_low_confidence_observation_does_not_become_primary_diagnosis():
     assert result["conclusion"]["type"] == "insufficient_evidence"
     assert result["remaining_hypotheses"]
     check_shape(result)
+
+
+def test_candidate_ranking_includes_relevant_udp_conversation():
+    evidence = [
+        quality(),
+        ev(
+            "ev_conv_udp",
+            "list_conversations",
+            {
+                "conversations": [
+                    {
+                        "transport": "tcp",
+                        "stream": 0,
+                        "a": {"address": "192.0.2.1", "port": 51000},
+                        "b": {"address": "192.0.2.20", "port": 443},
+                        "wire_bytes": 900000,
+                        "duration_seconds": 10.0,
+                        "a_to_b_packets": 100,
+                        "b_to_a_packets": 100,
+                    },
+                    {
+                        "transport": "udp",
+                        "stream": 7,
+                        "a": {"address": "192.0.2.1", "port": 53000},
+                        "b": {"address": "192.0.2.99", "port": 5353},
+                        "wire_bytes": 120,
+                        "duration_seconds": 0.1,
+                        "a_to_b_packets": 1,
+                        "b_to_a_packets": 1,
+                    },
+                ]
+            },
+            filt="tcp || udp",
+        ),
+    ]
+    ranked = rank_candidates("failure talking to 192.0.2.99 port 5353", evidence)
+    assert ranked[0].transport == "udp"
+    assert ranked[0].stream == 7
+    assert ranked[0].tcp_stream is None
+    assert "explicit_endpoint_match" in ranked[0].reasons
+    assert "explicit_port_match" in ranked[0].reasons
+
+
+def test_unlinked_dns_delay_is_not_primary_for_generic_slow_symptom():
+    evidence = [
+        quality(),
+        ev(
+            "ev_conv_healthy",
+            "list_conversations",
+            {
+                "conversations": [
+                    {
+                        "transport": "tcp",
+                        "stream": 0,
+                        "a": {"address": "192.0.2.1", "port": 50000},
+                        "b": {"address": "192.0.2.2", "port": 443},
+                        "wire_bytes": 500,
+                        "duration_seconds": 0.2,
+                        "a_to_b_packets": 3,
+                        "b_to_a_packets": 3,
+                    }
+                ]
+            },
+            filt="tcp",
+        ),
+        ev(
+            "ev_dns_unlinked",
+            "analyze_dns",
+            {"transactions": [{"elapsed_seconds": 1.5, "response_code": 0, "state": "complete"}]},
+            filt="dns",
+        ),
+    ]
+    result = build_investigation_result(
+        case_id="3" * 32, symptom="application is slow", evidence=evidence
+    )
+    assert result["findings"][0]["category"] == "dns.timing"
+    assert result["findings"][0]["confidence"] == "low"
+    assert result["conclusion"]["type"] == "insufficient_evidence"
+
+
+def test_candidate_and_finding_bounds_are_reported_as_limitations():
+    conversations = []
+    evidence = [quality()]
+    for stream_id in range(10):
+        conversations.append(
+            {
+                "transport": "tcp",
+                "stream": stream_id,
+                "a": {"address": "192.0.2.1", "port": 50000 + stream_id},
+                "b": {"address": "192.0.2.2", "port": 443},
+                "wire_bytes": 1000 + stream_id,
+                "duration_seconds": 2.0,
+                "a_to_b_packets": 3,
+                "b_to_a_packets": 3,
+            }
+        )
+        evidence.extend(
+            [
+                ev(
+                    f"ev_reset_{stream_id}",
+                    "analyze_tcp_resets",
+                    {"count": 1},
+                    stream_id,
+                    filt=f"tcp.stream == {stream_id}",
+                ),
+                ev(
+                    f"ev_rtt_{stream_id}",
+                    "analyze_rtt",
+                    {"median_seconds": 0.2, "sample_count": 4},
+                    stream_id,
+                    filt=f"tcp.stream == {stream_id}",
+                ),
+                ev(
+                    f"ev_est_{stream_id}",
+                    "analyze_tcp_establishment",
+                    {"state": "failed", "establishment_seconds": None},
+                    stream_id,
+                    filt=f"tcp.stream == {stream_id}",
+                ),
+            ]
+        )
+    evidence.append(
+        ev(
+            "ev_many_conversations",
+            "list_conversations",
+            {"conversations": conversations},
+            filt="tcp",
+        )
+    )
+    result = build_investigation_result(
+        case_id="4" * 32, symptom="connections fail and are slow", evidence=evidence
+    )
+    assert len(result["findings"]) == 16
+    assert any("top 8 of 10 conversations" in item for item in result["limitations"])
+    assert any("top 16 of" in item for item in result["limitations"])
+
+
+def test_tls_retry_omits_misleading_establishment_duration():
+    evidence = [
+        quality(),
+        ev(
+            "ev_est_tls_retry",
+            "analyze_tcp_establishment",
+            {"state": "established", "establishment_seconds": 0.02},
+            0,
+            filt="tcp.stream == 0",
+        ),
+        ev(
+            "ev_tls_retry",
+            "analyze_tls_handshakes",
+            {
+                "attempts": [
+                    {
+                        "client_hello_frame": 4,
+                        "client_hello_to_server_hello_seconds": 1.0,
+                        "tcp_established_to_client_hello_seconds": 0.08,
+                    },
+                    {
+                        "client_hello_frame": 8,
+                        "client_hello_to_server_hello_seconds": None,
+                        "tcp_established_to_client_hello_seconds": 1.18,
+                    },
+                ],
+                "alerts": [{"frame": 9, "descriptions": [40]}],
+                "repeated_client_hello_frames": [8],
+            },
+            0,
+            filt="tcp.stream == 0 && tls",
+        ),
+    ]
+    result = build_investigation_result(
+        case_id="5" * 32, symptom="TLS handshake is slow", evidence=evidence
+    )
+    assert result["findings"][0]["category"] == "tls.handshake"
+    assert result["time_attribution"] is not None
+    assert [segment["name"] for segment in result["time_attribution"]["segments"]] == [
+        "tcp_establishment"
+    ]
+    assert any("stage is omitted" in item for item in result["time_attribution"]["limitations"])

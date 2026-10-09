@@ -62,6 +62,7 @@ def test_gate4_real_capture_golden_rca_cases(tmp_path):
         "reset_tcp": ("users disconnect", gate2["reset_tcp"]),
         "dns_delay": ("DNS name resolution is slow", gate2["dns_delay"]),
         "tls_delay": ("TLS handshake is slow", gate2["tls_delay"]),
+        "tls_retry": ("TLS handshake retries", gate2["tls_retry"]),
         "failed_tcp": ("cannot connect", gate2["failed_tcp"]),
         "pmtud_signals": ("large transfers stall", gate2["pmtud_signals"]),
         "midstream": ("application is slow", baseline["midstream"]),

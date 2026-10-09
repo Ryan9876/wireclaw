@@ -24,9 +24,14 @@ MIN_PRIMARY_CONFIDENCE = "medium"
 
 @dataclass(frozen=True)
 class Candidate:
-    tcp_stream: int
+    transport: str
+    stream: int
     score: int
     reasons: tuple[str, ...]
+
+    @property
+    def tcp_stream(self) -> int | None:
+        return self.stream if self.transport == "tcp" else None
 
 
 @dataclass(frozen=True)
@@ -139,27 +144,31 @@ def _explicit_context(symptom: str) -> tuple[set[str], set[int]]:
         candidate = token.strip(".,;()[]{}<>")
         with contextlib.suppress(ValueError):
             addresses.add(str(ip_address(candidate)))
-    ports = {
-        int(match)
-        for match in re.findall(r"(?:\bport\s+|[:/])(\d{1,5})\b", text)
-        if 0 < int(match) <= 65535
-    }
+    port_tokens = [
+        *re.findall(r"\bport\s+(\d{1,5})\b", text),
+        *re.findall(r"\]:(\d{1,5})\b", text),
+        *re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}:(\d{1,5})\b", text),
+    ]
+    ports = {int(match) for match in port_tokens if 0 < int(match) <= 65535}
     return addresses, ports
 
 
-def _tcp_conversations(evidence: Iterable[dict[str, Any]]) -> dict[int, dict[str, Any]]:
-    conversations: dict[int, dict[str, Any]] = {}
+def _conversations(
+    evidence: Iterable[dict[str, Any]],
+) -> dict[tuple[str, int], dict[str, Any]]:
+    conversations: dict[tuple[str, int], dict[str, Any]] = {}
     for item in evidence:
         if item.get("category") != "list_conversations":
             continue
         value = item.get("value") if isinstance(item.get("value"), dict) else {}
         records = value.get("conversations") if isinstance(value.get("conversations"), list) else []
         for record in records:
-            if not isinstance(record, dict) or record.get("transport") != "tcp":
+            if not isinstance(record, dict):
                 continue
+            transport = record.get("transport")
             stream = record.get("stream")
-            if isinstance(stream, int) and stream >= 0:
-                conversations.setdefault(stream, record)
+            if isinstance(transport, str) and transport and isinstance(stream, int) and stream >= 0:
+                conversations.setdefault((transport, stream), record)
     return conversations
 
 
@@ -171,8 +180,10 @@ def _conversation_signals(
 ) -> tuple[int, list[str]]:
     if not conversation:
         return 0, []
+    transport = conversation.get("transport")
+    transport = transport if isinstance(transport, str) and transport else "other"
     score = 1
-    reasons = ["tcp_conversation"]
+    reasons = [f"{transport}_conversation"]
     endpoints = [
         endpoint
         for endpoint in (conversation.get("a"), conversation.get("b"))
@@ -192,10 +203,10 @@ def _conversation_signals(
     if ports & endpoint_ports:
         score += 6
         reasons.append("explicit_port_match")
-    if 443 in endpoint_ports and ({"tls", "slow", "connect"} & families):
+    if transport == "tcp" and 443 in endpoint_ports and ({"tls", "slow", "connect"} & families):
         score += 2
         reasons.append("tls_service_relevance")
-    if 53 in endpoint_ports and "dns" in families:
+    if transport in {"tcp", "udp"} and 53 in endpoint_ports and "dns" in families:
         score += 3
         reasons.append("dns_service_relevance")
     duration = _number(conversation.get("duration_seconds"))
@@ -279,22 +290,31 @@ def _candidate_signals(items: list[dict[str, Any]], families: set[str]) -> tuple
     return score, sorted(set(reasons))
 
 
-def rank_candidates(symptom: str, evidence: list[dict[str, Any]]) -> list[Candidate]:
+def _rank_candidates_all(symptom: str, evidence: list[dict[str, Any]]) -> list[Candidate]:
     families = _families(symptom)
     addresses, ports = _explicit_context(symptom)
     stream_items = _by_stream(evidence)
-    conversations = _tcp_conversations(evidence)
+    conversations = _conversations(evidence)
+    keys = set(conversations) | {("tcp", stream) for stream in stream_items}
     candidates = []
-    for stream in sorted(set(stream_items) | set(conversations)):
-        anomaly_score, anomaly_reasons = _candidate_signals(stream_items.get(stream, []), families)
+    for transport, stream in sorted(keys):
+        anomaly_score, anomaly_reasons = (
+            _candidate_signals(stream_items.get(stream, []), families)
+            if transport == "tcp"
+            else (0, [])
+        )
         context_score, context_reasons = _conversation_signals(
-            conversations.get(stream), families, addresses, ports
+            conversations.get((transport, stream)), families, addresses, ports
         )
         reasons = tuple(sorted(set(anomaly_reasons + context_reasons)))
-        candidates.append(Candidate(stream, anomaly_score + context_score, reasons))
-    return sorted(candidates, key=lambda candidate: (-candidate.score, candidate.tcp_stream))[
-        :MAX_CANDIDATES
-    ]
+        candidates.append(Candidate(transport, stream, anomaly_score + context_score, reasons))
+    return sorted(
+        candidates, key=lambda candidate: (-candidate.score, candidate.transport, candidate.stream)
+    )
+
+
+def rank_candidates(symptom: str, evidence: list[dict[str, Any]]) -> list[Candidate]:
+    return _rank_candidates_all(symptom, evidence)[:MAX_CANDIDATES]
 
 
 def _confidence(base: str, quality: str, *, ambiguous: bool = False) -> str:
@@ -377,7 +397,7 @@ def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
                     70 if "dns" in families or "slow" in families else 55,
                     "Slow DNS transaction observed",
                     "dns.timing",
-                    _confidence("medium", quality),
+                    _confidence("medium" if "dns" in families else "low", quality),
                     f"At least one DNS transaction took {worst * 1000:.0f} ms in the capture.",
                     ("dns",),
                     (eid,),
@@ -399,7 +419,7 @@ def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
                     80 if "dns" in families or "connect" in families else 60,
                     "DNS failure or unanswered query observed",
                     "dns.failure",
-                    _confidence("high", quality, ambiguous=True),
+                    _confidence("medium" if "dns" in families else "low", quality, ambiguous=True),
                     f"The capture contains {len(failures)} DNS transaction(s) with a failure code or no linked response.",
                     ("dns",),
                     (eid,),
@@ -422,6 +442,8 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
     findings: list[RuleFinding] = []
     for candidate in candidates:
         stream = candidate.tcp_stream
+        if stream is None:
+            continue
         scope = {"tcp_stream": stream}
         bonus = min(candidate.score, 10)
 
@@ -730,8 +752,11 @@ def _capture_findings(grouped, quality, quality_limitations, quality_ids) -> lis
 def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | None:
     segments: list[dict[str, Any]] = []
     limitations: list[str] = []
-    if candidates:
-        stream = candidates[0].tcp_stream
+    tcp_candidate = next(
+        (candidate for candidate in candidates if candidate.transport == "tcp"), None
+    )
+    if tcp_candidate is not None:
+        stream = tcp_candidate.stream
         establishment = _stream_item(stream_index, stream, "analyze_tcp_establishment")
         if establishment:
             value = (
@@ -752,30 +777,37 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
         if tls:
             value = tls.get("value") if isinstance(tls.get("value"), dict) else {}
             attempts = value.get("attempts") if isinstance(value.get("attempts"), list) else []
-            usable = []
-            for attempt in attempts:
-                if not isinstance(attempt, dict):
-                    continue
-                before = _number(attempt.get("tcp_established_to_client_hello_seconds"))
-                hello = _number(attempt.get("client_hello_to_server_hello_seconds"))
-                if before is not None and hello is not None:
-                    usable.append(before + hello)
-                elif hello is not None:
-                    usable.append(hello)
-            eid = _evidence_id(tls)
-            if usable and eid:
-                seconds = min(usable)
-                segments.append(
-                    {
-                        "name": "tls_establishment",
-                        "duration_ms": round(seconds * 1000, 6),
-                        "measurement_class": tls.get("epistemic_class", "derived"),
-                        "evidence_ids": [eid],
-                    }
-                )
+            retries = _frames(value.get("repeated_client_hello_frames"))
+            alerts = value.get("alerts") if isinstance(value.get("alerts"), list) else []
+            if retries or alerts or len(attempts) > 1:
                 limitations.append(
-                    "TLS attribution ends at the first visible ServerHello milestone; encrypted session completion is not assumed."
+                    "Repeated/retried/alerted TLS metadata prevents one deterministic non-overlapping TLS-establishment duration; that stage is omitted rather than treating the first ServerHello as completed establishment."
                 )
+            else:
+                usable = []
+                for attempt in attempts:
+                    if not isinstance(attempt, dict):
+                        continue
+                    before = _number(attempt.get("tcp_established_to_client_hello_seconds"))
+                    hello = _number(attempt.get("client_hello_to_server_hello_seconds"))
+                    if before is not None and hello is not None:
+                        usable.append(before + hello)
+                    elif hello is not None:
+                        usable.append(hello)
+                eid = _evidence_id(tls)
+                if usable and eid:
+                    seconds = usable[0]
+                    segments.append(
+                        {
+                            "name": "tls_establishment",
+                            "duration_ms": round(seconds * 1000, 6),
+                            "measurement_class": tls.get("epistemic_class", "derived"),
+                            "evidence_ids": [eid],
+                        }
+                    )
+                    limitations.append(
+                        "TLS attribution ends at the first visible ServerHello milestone; encrypted session completion is not assumed."
+                    )
         if segments:
             limitations.append(
                 "Time attribution is a non-overlapping measured stage subtotal for the top-ranked TCP stream, not complete user-visible transaction time."
@@ -817,13 +849,11 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
     }
 
 
-def _dedupe(strings: Iterable[str], limit: int = 16) -> list[str]:
+def _dedupe(strings: Iterable[str]) -> list[str]:
     result = []
     for value in strings:
         if isinstance(value, str) and value and value not in result:
             result.append(value)
-            if len(result) >= limit:
-                break
     return result
 
 
@@ -992,7 +1022,13 @@ def build_investigation_result(
     stream_index = _by_stream(evidence)
     families = _families(symptom)
     quality, quality_limitations, quality_ids = _quality(evidence)
-    candidates = rank_candidates(symptom, evidence)
+    all_candidates = _rank_candidates_all(symptom, evidence)
+    candidates = all_candidates[:MAX_CANDIDATES]
+    truncation_limitations = []
+    if len(all_candidates) > MAX_CANDIDATES:
+        truncation_limitations.append(
+            f"Candidate conversation ranking was limited to the top {MAX_CANDIDATES} of {len(all_candidates)} conversations; lower-ranked conversations were not evaluated for Gate 4 findings."
+        )
 
     findings = []
     findings.extend(_capture_findings(grouped, quality, quality_limitations, quality_ids))
@@ -1006,6 +1042,11 @@ def build_investigation_result(
             tuple(sorted(finding.affected_scope.items())),
         )
     )
+    total_findings = len(findings)
+    if total_findings > MAX_FINDINGS:
+        truncation_limitations.append(
+            f"Finding output was limited to the top {MAX_FINDINGS} of {total_findings} supported observations."
+        )
     findings = findings[:MAX_FINDINGS]
 
     evidence_map = {
@@ -1020,6 +1061,7 @@ def build_investigation_result(
 
     limitations = _dedupe(
         [
+            *truncation_limitations,
             *quality_limitations,
             *(limitation for finding in findings for limitation in finding.limitations),
         ]

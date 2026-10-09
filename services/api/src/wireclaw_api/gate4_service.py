@@ -156,8 +156,7 @@ class Service(Gate3Service):
     def findings(self, case_id):
         return self.report(case_id)["findings"]
 
-    def investigate(self, case_id):
-        super().investigate(case_id)
+    def _assemble_report(self, case_id):
         self.transition(case_id, State.ASSEMBLING_REPORT)
         started = time.monotonic()
         try:
@@ -191,6 +190,21 @@ class Service(Gate3Service):
             raise ApiError(code, status) from None
         self.log(case_id, "report", started, "complete")
         return self.get(case_id)
+
+    def investigate(self, case_id):
+        super().investigate(case_id)
+        return self._assemble_report(case_id)
+
+    def capability(self, case_id, request):
+        was_complete = self.get(case_id)["state"] == State.COMPLETE
+        result = super().capability(case_id, request)
+        if was_complete:
+            # A successful analyzer call may have replaced an evidence record. Move the
+            # completed case through the legal report path before exposing it again.
+            self.transition(case_id, State.BASELINE_ANALYSIS)
+            self.transition(case_id, State.INVESTIGATING)
+            self._assemble_report(case_id)
+        return result
 
     def recover(self):
         super().recover()

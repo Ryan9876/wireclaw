@@ -126,3 +126,45 @@ def test_report_assembly_failure_preserves_deterministic_evidence_and_original(t
         assert client.get(f"/api/cases/{case_id}/report").status_code == 409
         assert original.read_bytes() == original_bytes
         assert hashlib.sha256(original_bytes).hexdigest() == record["capture_sha"]
+
+
+def test_successful_post_complete_capability_rebuilds_report_from_current_evidence(tmp_path):
+    captures = generate(tmp_path / "fixtures")
+    root = tmp_path / "data"
+
+    with _client(root) as client:
+        case_id, uploaded = _prepare(client, captures["high_rtt"])
+        completed = client.post(f"/api/cases/{case_id}/investigate")
+        assert completed.status_code == 200, completed.text
+        before = client.get(f"/api/cases/{case_id}/report").json()
+        assert before["conclusion"]["type"] == "supported_finding"
+        assert any(item["category"] == "tcp.rtt" for item in before["findings"])
+
+        original_run = Analyzer.run_diagnostic
+
+        def changed_rtt(analyzer, request):
+            result = original_run(analyzer, request)
+            for item in result["evidence"]:
+                if item["category"] == "analyze_rtt":
+                    item["value"]["median_seconds"] = 0.01
+                    item["value"]["p95_seconds"] = 0.01
+            return result
+
+        request = {
+            "artifact_id": uploaded["original_id"],
+            "capability": "analyze_rtt",
+            "tcp_stream": 0,
+        }
+        with patch.object(Analyzer, "run_diagnostic", new=changed_rtt):
+            refreshed = client.post(f"/api/cases/{case_id}/capabilities", json=request)
+        assert refreshed.status_code == 200, refreshed.text
+        record = client.get(f"/api/cases/{case_id}").json()
+        assert record["state"] == "COMPLETE"
+        assert record["history"][-1]["state"] == "COMPLETE"
+        assert record["history"][-2]["state"] == "ASSEMBLING_REPORT"
+        after = client.get(f"/api/cases/{case_id}/report").json()
+        assert after != before
+        assert after["conclusion"]["type"] == "insufficient_evidence"
+        current_rtt = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
+        current_rtt = next(item for item in current_rtt if item["category"] == "analyze_rtt")
+        assert current_rtt["value"]["median_seconds"] == 0.01
