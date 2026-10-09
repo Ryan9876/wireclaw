@@ -50,7 +50,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="wireclaw-gate3-") as temporary:
         directory = Path(temporary)
         captures = generate(directory / "incoming")
-        generate_diagnostics(directory / "incoming")
+        captures.update(generate_diagnostics(directory / "incoming"))
         cli_counts = []
         for name, options in (("healthy", []), ("dns_sequences", ["--diagnostics"])):
             command = [
@@ -101,12 +101,12 @@ def main():
                         if time.monotonic() >= deadline:
                             raise RuntimeError("api_startup_timeout") from None
                         time.sleep(0.1)
-                case = client.post("/api/cases", json={"symptom": "synthetic smoke"})
+                case = client.post("/api/cases", json={"symptom": "transfer is slow and retransmitting"})
                 case.raise_for_status()
                 case_id = case.json()["id"]
                 intake = client.post(
                     f"/api/cases/{case_id}/capture",
-                    content=captures["healthy"],
+                    content=captures["loss_tcp"],
                     headers={"content-type": "application/octet-stream"},
                 )
                 intake.raise_for_status()

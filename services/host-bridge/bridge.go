@@ -61,12 +61,12 @@ func newServer(dataRoot, wireshark string) (*server, error) {
 		return nil, err
 	}
 	if wireshark == "" {
-		wireshark, err = discoverWireshark("")
+		wireshark, err = discoverWiresharkFor(runtime.GOOS, os.Getenv, exec.LookPath, "")
 		if err != nil {
 			wireshark = ""
 		}
 	} else {
-		wireshark, err = discoverWireshark(wireshark)
+		wireshark, err = discoverWiresharkFor(runtime.GOOS, os.Getenv, exec.LookPath, wireshark)
 		if err != nil {
 			return nil, err
 		}
@@ -323,29 +323,32 @@ func (s *server) resolveArtifact(value manifest) (string, error) {
 	return resolved, nil
 }
 
-func discoverWireshark(configured string) (string, error) {
-	candidates := []string{}
+func wiresharkCandidates(goos string, getenv func(string) string, lookPath func(string) (string, error), configured string) []string {
 	if configured != "" {
-		candidates = append(candidates, configured)
-	} else {
-		switch runtime.GOOS {
-		case "darwin":
-			candidates = append(candidates, "/Applications/Wireshark.app/Contents/MacOS/Wireshark")
-		case "windows":
-			if value := os.Getenv("ProgramFiles"); value != "" {
-				candidates = append(candidates, filepath.Join(value, "Wireshark", "Wireshark.exe"))
-			}
-			if value := os.Getenv("ProgramFiles(x86)"); value != "" {
-				candidates = append(candidates, filepath.Join(value, "Wireshark", "Wireshark.exe"))
-			}
-		default:
-			if path, err := exec.LookPath("wireshark"); err == nil {
-				candidates = append(candidates, path)
-			}
-			candidates = append(candidates, "/usr/bin/wireshark", "/usr/local/bin/wireshark")
-		}
+		return []string{configured}
 	}
-	for _, candidate := range candidates {
+	candidates := []string{}
+	switch goos {
+	case "darwin":
+		candidates = append(candidates, "/Applications/Wireshark.app/Contents/MacOS/Wireshark")
+	case "windows":
+		if value := getenv("ProgramFiles"); value != "" {
+			candidates = append(candidates, filepath.Join(value, "Wireshark", "Wireshark.exe"))
+		}
+		if value := getenv("ProgramFiles(x86)"); value != "" {
+			candidates = append(candidates, filepath.Join(value, "Wireshark", "Wireshark.exe"))
+		}
+	default:
+		if path, err := lookPath("wireshark"); err == nil {
+			candidates = append(candidates, path)
+		}
+		candidates = append(candidates, "/usr/bin/wireshark", "/usr/local/bin/wireshark")
+	}
+	return candidates
+}
+
+func discoverWiresharkFor(goos string, getenv func(string) string, lookPath func(string) (string, error), configured string) (string, error) {
+	for _, candidate := range wiresharkCandidates(goos, getenv, lookPath, configured) {
 		absolute, err := filepath.Abs(candidate)
 		if err != nil {
 			continue

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -51,10 +52,14 @@ func writeGrant(t *testing.T, root, requestID, token, relative string, payload [
 }
 
 func TestOpenUsesExactApprovedArgvAndConsumesGrant(t *testing.T) {
-	root := t.TempDir()
+	rootBase := t.TempDir()
+	root := filepath.Join(rootBase, "data root with spaces")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	requestID := strings.Repeat("c", 32)
 	token := strings.Repeat("x", 48)
-	manifestPath := writeGrant(t, root, requestID, token, "cases/capture.pcapng", []byte("capture"))
+	manifestPath := writeGrant(t, root, requestID, token, "cases/capture with spaces.pcapng", []byte("capture"))
 	bridge, err := newServer(root, os.Args[0])
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +80,7 @@ func TestOpenUsesExactApprovedArgvAndConsumesGrant(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	if executable == "" || !reflect.DeepEqual(args, []string{"-r", filepath.Join(root, "cases", "capture.pcapng"), "-Y", "tcp.stream == 7"}) {
+	if executable == "" || !reflect.DeepEqual(args, []string{"-r", filepath.Join(root, "cases", "capture with spaces.pcapng"), "-Y", "tcp.stream == 7"}) {
 		t.Fatalf("unexpected launch %q %#v", executable, args)
 	}
 	if _, err := os.Stat(manifestPath); !os.IsNotExist(err) {
@@ -101,17 +106,41 @@ func TestRejectsOriginTokenTraversalAndControlFilter(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			requestID := strings.Repeat(string('a'+rune(len(name)%6)), 32)
 			manifestPath := writeGrant(t, root, requestID, strings.Repeat("x", 48), relative, []byte("capture"))
-			if filter != "tcp.stream == 7" {
-				data, _ := os.ReadFile(manifestPath)
-				var value manifest
-				_ = json.Unmarshal(data, &value)
-				value.DisplayFilter = filter
-				data, _ = json.Marshal(value)
-				_ = os.WriteFile(manifestPath, data, 0o600)
-			}
+			data, _ := os.ReadFile(manifestPath)
+			var value manifest
+			_ = json.Unmarshal(data, &value)
+			value.DisplayFilter = filter
+			data, _ = json.Marshal(value)
+			_ = os.WriteFile(manifestPath, data, 0o600)
 			body := `{"request_id":"` + requestID + `","token":"` + token + `"}`
 			request := httptest.NewRequest(http.MethodPost, "/v1/open", strings.NewReader(body))
 			request.Header.Set("Origin", origin)
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			bridge.open(response, request)
+			if response.Code != want {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, want, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestRejectsUnknownRequestFieldsOversizeAndReplay(t *testing.T) {
+	root := t.TempDir()
+	bridge, _ := newServer(root, os.Args[0])
+	requestID := strings.Repeat("d", 32)
+	token := strings.Repeat("x", 48)
+	writeGrant(t, root, requestID, token, "cases/capture", []byte("capture"))
+	for name, body, want := range []struct {
+		name, body string
+		want       int
+	}{
+		{"unknown", `{"request_id":"` + requestID + `","token":"` + token + `","path":"/tmp/x"}`, http.StatusUnprocessableEntity},
+		{"oversize", `{"request_id":"` + requestID + `","token":"` + strings.Repeat("x", maxRequestBytes) + `"}`, http.StatusUnprocessableEntity},
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/v1/open", strings.NewReader(body))
+			request.Header.Set("Origin", "http://127.0.0.1:8765")
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			bridge.open(response, request)
@@ -141,6 +170,38 @@ func TestResolveRejectsSymlinkEscape(t *testing.T) {
 	_, err := bridge.resolveArtifact(manifest{RelativePath: "escape", ArtifactSHA256: hex.EncodeToString(digest[:])})
 	if err == nil {
 		t.Fatal("expected symlink escape rejection")
+	}
+}
+
+func TestPlatformDiscoveryCandidatesAreIsolated(t *testing.T) {
+	getenv := func(name string) string {
+		switch name {
+		case "ProgramFiles":
+			return `C:\Program Files`
+		case "ProgramFiles(x86)":
+			return `C:\Program Files (x86)`
+		}
+		return ""
+	}
+	lookPath := func(name string) (string, error) {
+		if name == "wireshark" {
+			return "/opt/bin/wireshark", nil
+		}
+		return "", errors.New("not found")
+	}
+	if got := wiresharkCandidates("darwin", getenv, lookPath, ""); !reflect.DeepEqual(got, []string{"/Applications/Wireshark.app/Contents/MacOS/Wireshark"}) {
+		t.Fatalf("darwin candidates %#v", got)
+	}
+	windows := wiresharkCandidates("windows", getenv, lookPath, "")
+	if len(windows) != 2 || !strings.Contains(windows[0], "Program Files") || !strings.HasSuffix(windows[0], filepath.Join("Wireshark", "Wireshark.exe")) {
+		t.Fatalf("windows candidates %#v", windows)
+	}
+	linux := wiresharkCandidates("linux", getenv, lookPath, "")
+	if !reflect.DeepEqual(linux, []string{"/opt/bin/wireshark", "/usr/bin/wireshark", "/usr/local/bin/wireshark"}) {
+		t.Fatalf("linux candidates %#v", linux)
+	}
+	if got := wiresharkCandidates("linux", getenv, lookPath, "/approved/custom"); !reflect.DeepEqual(got, []string{"/approved/custom"}) {
+		t.Fatalf("configured candidate %#v", got)
 	}
 }
 
