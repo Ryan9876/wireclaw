@@ -12,7 +12,11 @@ ASSET = re.compile(r"[A-Za-z0-9_-]+\.(?:js|css)\Z")
 
 
 def security_headers(bridge_port: int) -> dict[str, str]:
-    if isinstance(bridge_port, bool) or not isinstance(bridge_port, int) or not 1 <= bridge_port <= 65535:
+    if (
+        isinstance(bridge_port, bool)
+        or not isinstance(bridge_port, int)
+        or not 1 <= bridge_port <= 65535
+    ):
         raise ValueError("invalid_bridge_port")
     bridge_origin = f"http://127.0.0.1:{bridge_port}"
     return {
