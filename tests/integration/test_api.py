@@ -88,13 +88,15 @@ def test_idle_baseline_checkpoint_survives_restart(environment, completed_baseli
         assert all(run["error"] != "service_interrupted" for run in after["runs"])
         response = client.post(f"/api/cases/{case_id}/investigate")
         assert response.status_code == 200, response.text
-        assert response.json()["state"] == State.INVESTIGATING
+        assert response.json()["state"] == State.COMPLETE
         assert [row["state"] for row in response.json()["history"]] == [
             "NEW",
             "INGESTING",
             "VALIDATING_CAPTURE",
             "BASELINE_ANALYSIS",
             "INVESTIGATING",
+            "ASSEMBLING_REPORT",
+            "COMPLETE",
         ]
 
 
@@ -202,7 +204,7 @@ def test_case_lifecycle_restart_cached_determinism_schema_and_deletion(environme
         assert intake.status_code == 200
         assert intake.json()["capture_sha"] == hashlib.sha256(captures["clean_tcp"]).hexdigest()
         record = client.post(f"/api/cases/{case_id}/investigate").json()
-        assert record["state"] == State.INVESTIGATING
+        assert record["state"] == State.COMPLETE
         assert record["symptom"] == hostile
         assert [r["state"] for r in record["history"]] == [
             "NEW",
@@ -210,6 +212,8 @@ def test_case_lifecycle_restart_cached_determinism_schema_and_deletion(environme
             "VALIDATING_CAPTURE",
             "BASELINE_ANALYSIS",
             "INVESTIGATING",
+            "ASSEMBLING_REPORT",
+            "COMPLETE",
         ]
         assert record["quality"] == "good"
         evidence = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
@@ -292,7 +296,7 @@ def test_optional_failure_preserves_prior_evidence_and_logs(environment, code, c
         assert response.json()["error"]["code"] == code
         assert client.get(f"/api/cases/{case_id}/evidence").json() == before
         after = client.get(f"/api/cases/{case_id}").json()
-        assert after["state"] == "INVESTIGATING"
+        assert after["state"] == "COMPLETE"
         assert after["runs"][-1]["status"] == "failed"
         logs = [json.loads(r.message) for r in caplog.records if r.name == "wireclaw.api"]
         assert logs[-1]["error_code"] == code
@@ -316,7 +320,7 @@ def test_diagnostic_failure_retains_completed_baseline_and_recovery(environment)
         assert client.get(f"/api/cases/{case_id}").json()["state"] == "FAILED"
         assert len(client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]) == 5
     with client_for(root) as client:
-        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "INVESTIGATING"
+        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
         assert len(client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]) == 16
 
 
@@ -340,7 +344,7 @@ def test_real_unknown_stream_failure_and_cross_case_isolation(environment):
         assert response.status_code == 422
         assert client.delete(f"/api/cases/{first}").status_code == 200
         assert original.read_bytes() == captures["clean_tcp"]
-        assert client.get(f"/api/cases/{second}").json()["state"] == "INVESTIGATING"
+        assert client.get(f"/api/cases/{second}").json()["state"] == "COMPLETE"
 
 
 @pytest.mark.parametrize(
