@@ -1,4 +1,4 @@
-"""Gate 3/4 state, policy and local HTTP security contracts without packet tools."""
+"""Gate 3-6 state, policy and local HTTP security contracts without packet tools."""
 
 from dataclasses import replace
 from unittest.mock import patch
@@ -25,6 +25,7 @@ def test_non_loopback_or_unresolved_bind_rejected(host):
         ("max_json_bytes", 1.5),
         ("upload_timeout_seconds", float("inf")),
         ("port", 0),
+        ("bridge_port", 0),
     ],
 )
 def test_invalid_resource_policy(key, value):
@@ -32,7 +33,7 @@ def test_invalid_resource_policy(key, value):
         replace(Policy(), **{key: value})
 
 
-def test_default_loopback_and_gate4_routes(tmp_path):
+def test_default_loopback_and_gate6_routes(tmp_path):
     policy = Policy()
     assert policy.host == "127.0.0.1"
     assert Policy(host="::1").host == "::1"
@@ -41,10 +42,24 @@ def test_default_loopback_and_gate4_routes(tmp_path):
     assert "/api/cases/{case_id}/capabilities" in paths
     assert "/api/cases/{case_id}/findings" in paths
     assert "/api/cases/{case_id}/report" in paths
-    assert not any("evidence-capture" in path for path in paths)
-    schema = app.openapi()["components"]["schemas"]["CapabilityRequest"]
-    assert schema["additionalProperties"] is False
-    assert set(schema["properties"]) == {"artifact_id", "capability", "tcp_stream"}
+    assert "/api/cases/{case_id}/artifacts/evidence-capture" in paths
+    assert "/api/cases/{case_id}/bridge-grants" in paths
+
+    schemas = app.openapi()["components"]["schemas"]
+    capability = schemas["CapabilityRequest"]
+    assert capability["additionalProperties"] is False
+    assert set(capability["properties"]) == {"artifact_id", "capability", "tcp_stream"}
+    extraction = schemas["EvidenceCaptureRequest"]
+    assert extraction["additionalProperties"] is False
+    assert set(extraction["properties"]) == {"finding_id"}
+    bridge = schemas["BridgeGrantRequest"]
+    assert bridge["additionalProperties"] is False
+    assert set(bridge["properties"]) == {"artifact_id", "finding_id"}
+    assert not any(
+        key in extraction["properties"] or key in bridge["properties"]
+        for key in ("path", "display_filter", "executable", "args", "command")
+    )
+
     import json
     from pathlib import Path
 
