@@ -6,13 +6,14 @@ run packet tools, infer facts from free text, or call a model provider.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from ipaddress import ip_address
-from typing import Any, Iterable
-
+from typing import Any
 
 RTT_HIGH_SECONDS = 0.150
 STAGE_DELAY_SECONDS = 1.000
@@ -136,10 +137,8 @@ def _explicit_context(symptom: str) -> tuple[set[str], set[int]]:
     addresses: set[str] = set()
     for token in re.findall(r"[0-9a-f:.]+", text):
         candidate = token.strip(".,;()[]{}<>")
-        try:
+        with contextlib.suppress(ValueError):
             addresses.add(str(ip_address(candidate)))
-        except ValueError:
-            pass
     ports = {
         int(match)
         for match in re.findall(r"(?:\bport\s+|[:/])(\d{1,5})\b", text)
@@ -180,7 +179,9 @@ def _conversation_signals(
         if isinstance(endpoint, dict)
     ]
     endpoint_addresses = {
-        endpoint.get("address") for endpoint in endpoints if isinstance(endpoint.get("address"), str)
+        endpoint.get("address")
+        for endpoint in endpoints
+        if isinstance(endpoint.get("address"), str)
     }
     endpoint_ports = {
         endpoint.get("port") for endpoint in endpoints if isinstance(endpoint.get("port"), int)
@@ -198,7 +199,11 @@ def _conversation_signals(
         score += 3
         reasons.append("dns_service_relevance")
     duration = _number(conversation.get("duration_seconds"))
-    if duration is not None and duration >= STAGE_DELAY_SECONDS and {"slow", "intermittent"} & families:
+    if (
+        duration is not None
+        and duration >= STAGE_DELAY_SECONDS
+        and {"slow", "intermittent"} & families
+    ):
         score += 2
         reasons.append("long_conversation")
     wire_bytes = conversation.get("wire_bytes")
@@ -314,7 +319,9 @@ def _stream_item(index: dict[int, list[dict[str, Any]]], stream: int, category: 
 
 
 def _packet_applicable(items: list[dict[str, Any]]) -> tuple[bool, str | None]:
-    filters = [item.get("display_filter") for item in items if isinstance(item.get("display_filter"), str)]
+    filters = [
+        item.get("display_filter") for item in items if isinstance(item.get("display_filter"), str)
+    ]
     return bool(filters), filters[0] if filters else None
 
 
@@ -347,7 +354,9 @@ def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
     findings: list[RuleFinding] = []
     for item in grouped.get("analyze_dns", []):
         value = item.get("value") if isinstance(item.get("value"), dict) else {}
-        transactions = value.get("transactions") if isinstance(value.get("transactions"), list) else []
+        transactions = (
+            value.get("transactions") if isinstance(value.get("transactions"), list) else []
+        )
         slow = []
         failures = []
         for tx in transactions:
@@ -373,9 +382,15 @@ def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
                     ("dns",),
                     (eid,),
                     {},
-                    ("The capture does not by itself prove that this lookup delayed the user-visible transaction.",),
-                    tuple(item.get("limitations", [])) if isinstance(item.get("limitations"), list) else (),
-                    ("Align the affected application transaction with this DNS lookup to confirm user-impact timing.",),
+                    (
+                        "The capture does not by itself prove that this lookup delayed the user-visible transaction.",
+                    ),
+                    tuple(item.get("limitations", []))
+                    if isinstance(item.get("limitations"), list)
+                    else (),
+                    (
+                        "Align the affected application transaction with this DNS lookup to confirm user-impact timing.",
+                    ),
                 )
             )
         if eid and failures:
@@ -389,9 +404,15 @@ def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
                     ("dns",),
                     (eid,),
                     {},
-                    ("An unanswered query in one capture does not prove resolver or path failure outside the capture viewpoint.",),
-                    tuple(item.get("limitations", [])) if isinstance(item.get("limitations"), list) else (),
-                    ("Correlate the failed lookup with the affected connection attempt and resolver-side logs if available.",),
+                    (
+                        "An unanswered query in one capture does not prove resolver or path failure outside the capture viewpoint.",
+                    ),
+                    tuple(item.get("limitations", []))
+                    if isinstance(item.get("limitations"), list)
+                    else (),
+                    (
+                        "Correlate the failed lookup with the affected connection attempt and resolver-side logs if available.",
+                    ),
                 )
             )
     return findings
@@ -406,7 +427,9 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
 
         establishment = _stream_item(stream_index, stream, "analyze_tcp_establishment")
         if establishment:
-            value = establishment.get("value") if isinstance(establishment.get("value"), dict) else {}
+            value = (
+                establishment.get("value") if isinstance(establishment.get("value"), dict) else {}
+            )
             eid = _evidence_id(establishment)
             state = value.get("state")
             elapsed = _number(value.get("establishment_seconds"))
@@ -425,8 +448,12 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                         (
                             "A missing or reset handshake can reflect path loss, server/listener behavior, filtering, or capture incompleteness.",
                         ),
-                        tuple(establishment.get("limitations", [])) if isinstance(establishment.get("limitations"), list) else (),
-                        ("Capture the same attempt at the server side to distinguish path loss from server/listener behavior.",),
+                        tuple(establishment.get("limitations", []))
+                        if isinstance(establishment.get("limitations"), list)
+                        else (),
+                        (
+                            "Capture the same attempt at the server side to distinguish path loss from server/listener behavior.",
+                        ),
                     )
                 )
             elif eid and ((elapsed is not None and elapsed >= STAGE_DELAY_SECONDS) or retries):
@@ -445,9 +472,15 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                         ("local_network", "network_path", "server_application"),
                         (eid,),
                         scope,
-                        ("The client-side capture alone may not distinguish path loss from a delayed server response to SYN.",),
-                        tuple(establishment.get("limitations", [])) if isinstance(establishment.get("limitations"), list) else (),
-                        ("Capture the handshake at both endpoints or inspect server/listener timing for the same attempt.",),
+                        (
+                            "The client-side capture alone may not distinguish path loss from a delayed server response to SYN.",
+                        ),
+                        tuple(establishment.get("limitations", []))
+                        if isinstance(establishment.get("limitations"), list)
+                        else (),
+                        (
+                            "Capture the handshake at both endpoints or inspect server/listener timing for the same attempt.",
+                        ),
                     )
                 )
 
@@ -472,12 +505,16 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                         tuple(
                             item
                             for item in (
-                                "Reordering can produce retransmission-like symptoms." if out_of_order else None,
+                                "Reordering can produce retransmission-like symptoms."
+                                if out_of_order
+                                else None,
                                 "Capture perspective cannot localize the physical hop where loss occurred.",
                             )
                             if item
                         ),
-                        tuple(health.get("limitations", [])) if isinstance(health.get("limitations"), list) else (),
+                        tuple(health.get("limitations", []))
+                        if isinstance(health.get("limitations"), list)
+                        else (),
                         (
                             "Compare a simultaneous server-side capture or interface counters to determine where loss/reordering occurs.",
                         ),
@@ -495,8 +532,12 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                         (eid,),
                         scope,
                         ("A single-ended capture cannot establish where reordering occurred.",),
-                        tuple(health.get("limitations", [])) if isinstance(health.get("limitations"), list) else (),
-                        ("Compare both endpoint captures to confirm sequence arrival order across the path.",),
+                        tuple(health.get("limitations", []))
+                        if isinstance(health.get("limitations"), list)
+                        else (),
+                        (
+                            "Compare both endpoint captures to confirm sequence arrival order across the path.",
+                        ),
                     )
                 )
 
@@ -522,8 +563,12 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                             f"The {RTT_HIGH_SECONDS * 1000:.0f} ms rule threshold is a diagnostic heuristic, not proof of a network fault.",
                             "Path distance and capture location can legitimately produce higher RTT.",
                         ),
-                        tuple(rtt.get("limitations", [])) if isinstance(rtt.get("limitations"), list) else (),
-                        ("Compare RTT from the same path under a known-good reproduction or from the opposite endpoint.",),
+                        tuple(rtt.get("limitations", []))
+                        if isinstance(rtt.get("limitations"), list)
+                        else (),
+                        (
+                            "Compare RTT from the same path under a known-good reproduction or from the opposite endpoint.",
+                        ),
                     )
                 )
 
@@ -543,9 +588,15 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                         ("unknown",),
                         (eid,),
                         scope,
-                        ("Endpoint role is not inferred from the packet condition alone; the constrained receiver may be client or server-side.",),
-                        tuple(window.get("limitations", [])) if isinstance(window.get("limitations"), list) else (),
-                        ("Identify the advertising endpoint and inspect its receive/application consumption behavior during the stall.",),
+                        (
+                            "Endpoint role is not inferred from the packet condition alone; the constrained receiver may be client or server-side.",
+                        ),
+                        tuple(window.get("limitations", []))
+                        if isinstance(window.get("limitations"), list)
+                        else (),
+                        (
+                            "Identify the advertising endpoint and inspect its receive/application consumption behavior during the stall.",
+                        ),
                     )
                 )
 
@@ -569,8 +620,12 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                             "A reset proves connection termination, not why the endpoint or an intermediary sent it.",
                             "A later SYN does not establish application-session continuity or causality.",
                         ),
-                        tuple(resets.get("limitations", [])) if isinstance(resets.get("limitations"), list) else (),
-                        ("Correlate the reset timestamp with endpoint/application logs and, if needed, captures on both sides.",),
+                        tuple(resets.get("limitations", []))
+                        if isinstance(resets.get("limitations"), list)
+                        else (),
+                        (
+                            "Correlate the reset timestamp with endpoint/application logs and, if needed, captures on both sides.",
+                        ),
                     )
                 )
 
@@ -611,8 +666,12 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                             "Encrypted session usability/completion is not established from visible handshake metadata alone.",
                             "Handshake response delay can include endpoint processing and network RTT.",
                         ),
-                        tuple(tls.get("limitations", [])) if isinstance(tls.get("limitations"), list) else (),
-                        ("Compare transport RTT with TLS timing and inspect server-side TLS/application logs for the same connection.",),
+                        tuple(tls.get("limitations", []))
+                        if isinstance(tls.get("limitations"), list)
+                        else (),
+                        (
+                            "Compare transport RTT with TLS timing and inspect server-side TLS/application logs for the same connection.",
+                        ),
                     )
                 )
     return findings
@@ -633,7 +692,9 @@ def _capture_findings(grouped, quality, quality_limitations, quality_ids) -> lis
                 {},
                 (),
                 tuple(quality_limitations),
-                ("Collect a complete bidirectional capture covering the full failure/slow transaction when feasible.",),
+                (
+                    "Collect a complete bidirectional capture covering the full failure/slow transaction when feasible.",
+                ),
             )
         )
 
@@ -652,9 +713,15 @@ def _capture_findings(grouped, quality, quality_limitations, quality_ids) -> lis
                     ("local_network", "network_path"),
                     (eid,),
                     {},
-                    ("A PMTUD control message is path evidence but does not by itself prove an MTU black hole or user-impact root cause.",),
-                    tuple(item.get("limitations", [])) if isinstance(item.get("limitations"), list) else (),
-                    ("Verify whether affected flows honor the advertised MTU and whether larger packets subsequently make progress.",),
+                    (
+                        "A PMTUD control message is path evidence but does not by itself prove an MTU black hole or user-impact root cause.",
+                    ),
+                    tuple(item.get("limitations", []))
+                    if isinstance(item.get("limitations"), list)
+                    else (),
+                    (
+                        "Verify whether affected flows honor the advertised MTU and whether larger packets subsequently make progress.",
+                    ),
                 )
             )
     return findings
@@ -667,7 +734,9 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
         stream = candidates[0].tcp_stream
         establishment = _stream_item(stream_index, stream, "analyze_tcp_establishment")
         if establishment:
-            value = establishment.get("value") if isinstance(establishment.get("value"), dict) else {}
+            value = (
+                establishment.get("value") if isinstance(establishment.get("value"), dict) else {}
+            )
             seconds = _number(value.get("establishment_seconds"))
             eid = _evidence_id(establishment)
             if seconds is not None and eid:
@@ -714,7 +783,9 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
     elif grouped.get("analyze_dns"):
         item = grouped["analyze_dns"][0]
         value = item.get("value") if isinstance(item.get("value"), dict) else {}
-        transactions = value.get("transactions") if isinstance(value.get("transactions"), list) else []
+        transactions = (
+            value.get("transactions") if isinstance(value.get("transactions"), list) else []
+        )
         complete = [
             tx
             for tx in transactions
@@ -861,35 +932,45 @@ def _remaining_hypotheses(
                 "Name-resolution delay or failure remains possible but is not established by the available evidence.",
                 ("dns",),
                 (),
-                ("Capture the complete DNS query/response sequence for the affected lookup or collect resolver logs.",),
+                (
+                    "Capture the complete DNS query/response sequence for the affected lookup or collect resolver logs.",
+                ),
             )
         elif "tls" in families:
             add(
                 "TLS endpoint processing and transport/path delay remain possible contributors, but the available evidence does not discriminate them.",
                 ("server_application", "network_path"),
                 (),
-                ("Capture the full TCP/TLS handshake and compare transport RTT with TLS milestone timing.",),
+                (
+                    "Capture the full TCP/TLS handshake and compare transport RTT with TLS milestone timing.",
+                ),
             )
         elif {"disconnect", "connect"} & families:
             add(
                 "Endpoint/listener behavior and network-path interruption remain plausible connection-failure domains.",
                 ("client", "local_network", "network_path", "server_application"),
                 (),
-                ("Capture the same failed attempt at both endpoints and correlate endpoint/application logs.",),
+                (
+                    "Capture the same failed attempt at both endpoints and correlate endpoint/application logs.",
+                ),
             )
         elif {"slow", "throughput"} & families:
             add(
                 "Network transport delay/loss and server/application wait remain plausible contributors to the reported slowness.",
                 ("local_network", "network_path", "server_application"),
                 (),
-                ("Capture the full request/response interval and collect application or load-balancer timing for the same transaction.",),
+                (
+                    "Capture the full request/response interval and collect application or load-balancer timing for the same transaction.",
+                ),
             )
         else:
             add(
                 "The available packet evidence does not discriminate among client, path, and server/application causes.",
                 ("client", "network_path", "server_application", "unknown"),
                 (),
-                ("Reproduce with a complete bidirectional capture and a precise affected transaction/time window.",),
+                (
+                    "Reproduce with a complete bidirectional capture and a precise affected transaction/time window.",
+                ),
             )
 
     return hypotheses[:8]
@@ -928,9 +1009,7 @@ def build_investigation_result(
     findings = findings[:MAX_FINDINGS]
 
     evidence_map = {
-        item["id"]: item
-        for item in evidence
-        if isinstance(item.get("id"), str) and item.get("id")
+        item["id"]: item for item in evidence if isinstance(item.get("id"), str) and item.get("id")
     }
     rendered = [
         _finding_dict(number, finding, evidence_map)
