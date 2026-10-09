@@ -9,6 +9,26 @@
     "time_segments": ["tcp_establishment"],
     "has_remaining_hypotheses": true
   },
+  "loss_tcp": {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["local_network", "network_path"],
+    "primary_category": "tcp.retransmission",
+    "finding_categories": ["tcp.retransmission"],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": false
+  },
+  "reordered_tcp": {
+    "capture_quality": "good",
+    "conclusion_type": "insufficient_evidence",
+    "confidence": "low",
+    "fault_domains": ["unknown"],
+    "primary_category": null,
+    "finding_categories": [],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": true
+  },
   "high_rtt": {
     "capture_quality": "good",
     "conclusion_type": "supported_finding",
@@ -18,6 +38,16 @@
     "finding_categories": ["tcp.rtt"],
     "time_segments": ["tcp_establishment"],
     "has_remaining_hypotheses": false
+  },
+  "server_wait": {
+    "capture_quality": "good",
+    "conclusion_type": "insufficient_evidence",
+    "confidence": "low",
+    "fault_domains": ["unknown"],
+    "primary_category": null,
+    "finding_categories": [],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": true
   },
   "window_tcp": {
     "capture_quality": "good",
@@ -66,6 +96,16 @@
     "fault_domains": ["local_network", "network_path", "server_application"],
     "primary_category": "tcp.establishment_failure",
     "finding_categories": ["tcp.establishment_failure", "tcp.reset", "capture.quality"],
+    "time_segments": [],
+    "has_remaining_hypotheses": false
+  },
+  "pmtud_signals": {
+    "capture_quality": "limited",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["local_network", "network_path"],
+    "primary_category": "network.pmtud",
+    "finding_categories": ["capture.quality", "network.pmtud"],
     "time_segments": [],
     "has_remaining_hypotheses": false
   },
