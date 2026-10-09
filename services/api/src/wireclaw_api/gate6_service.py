@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import time
+from contextlib import suppress
 from pathlib import Path
 
 from wireclaw_analyzer import AnalyzerError, EvidenceExtractor
@@ -147,16 +148,50 @@ class Service(Gate4Service):
         except Exception as error:
             for path in (capture_path, provenance_path):
                 if path.exists():
-                    try:
+                    with suppress(OSError):
                         path.chmod(0o600)
-                    except OSError:
-                        pass
                     path.unlink(missing_ok=True)
             code = error.code if isinstance(error, (ApiError, AnalyzerError)) else "operation_failed"
             self.log(case_id, "evidence_capture", started, "failed", code)
             if isinstance(error, ApiError):
                 raise
             raise ApiError(code, 422) from None
+
+    def _evidence_capture_provenance(self, case_id, artifact_id):
+        """Return the registered, integrity-checked provenance paired with one evidence capture."""
+        with self.db.connect() as conn:
+            row = conn.execute(
+                "SELECT relative_path FROM artifacts "
+                "WHERE id=? AND case_id=? AND kind='evidence_capture'",
+                (artifact_id, case_id),
+            ).fetchone()
+            if row is None:
+                raise ApiError("artifact_not_found", 404)
+            relative = Path(row["relative_path"])
+            provenance_relative = relative.with_suffix(".json").as_posix()
+            provenance_row = conn.execute(
+                "SELECT id FROM artifacts "
+                "WHERE case_id=? AND kind='evidence_provenance' AND relative_path=?",
+                (case_id, provenance_relative),
+            ).fetchone()
+        if provenance_row is None:
+            raise ApiError("evidence_provenance_missing", 409)
+        _, provenance_path = self.artifact(case_id, provenance_row["id"])
+        try:
+            if provenance_path.stat().st_size > self.policy.max_json_bytes:
+                raise ApiError("evidence_provenance_invalid", 409)
+            value = json.loads(provenance_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raise ApiError("evidence_provenance_invalid", 409) from None
+        if (
+            not isinstance(value, dict)
+            or value.get("artifact_id") != artifact_id
+            or value.get("case_id") != case_id
+            or not isinstance(value.get("finding_id"), str)
+            or not isinstance(value.get("display_filter"), str)
+        ):
+            raise ApiError("evidence_provenance_invalid", 409)
+        return value
 
     def _cleanup_bridge_grants(self):
         directory = self.files.path(Path("bridge") / "requests")
@@ -174,14 +209,15 @@ class Service(Gate4Service):
                     expired = True
                 else:
                     value = json.loads(path.read_text(encoding="utf-8"))
-                    expired = type(value.get("expires_unix")) is not int or value["expires_unix"] < current
+                    expired = (
+                        type(value.get("expires_unix")) is not int
+                        or value["expires_unix"] < current
+                    )
             except (OSError, json.JSONDecodeError):
                 expired = True
             if expired:
-                try:
+                with suppress(OSError):
                     path.chmod(0o600)
-                except OSError:
-                    pass
                 path.unlink(missing_ok=True)
             else:
                 active += 1
@@ -194,12 +230,21 @@ class Service(Gate4Service):
         if case["state"] != State.COMPLETE:
             raise ApiError("report_not_ready")
         finding = self._finding(case_id, finding_id)
-        display_filter, _ = self._finding_filter(case_id, finding)
+        current_filter, _ = self._finding_filter(case_id, finding)
         artifact, _ = self.artifact(case_id, artifact_id)
         if artifact["kind"] not in ("original", "evidence_capture"):
             raise ApiError("capture_artifact_required", 409)
-        if artifact["kind"] == "original" and artifact_id != case["original_id"]:
-            raise ApiError("original_artifact_required", 409)
+        if artifact["kind"] == "original":
+            if artifact_id != case["original_id"]:
+                raise ApiError("original_artifact_required", 409)
+            display_filter = current_filter
+        else:
+            provenance = self._evidence_capture_provenance(case_id, artifact_id)
+            if provenance["finding_id"] != finding_id:
+                raise ApiError("evidence_finding_mismatch", 409)
+            display_filter = self._validate_filter(provenance["display_filter"])
+            if display_filter != current_filter:
+                raise ApiError("evidence_provenance_mismatch", 409)
 
         directory = self._cleanup_bridge_grants()
         request_id = identifier()
@@ -261,10 +306,8 @@ class Service(Gate4Service):
             except (OSError, json.JSONDecodeError):
                 continue
             if value.get("case_id") == case_id:
-                try:
+                with suppress(OSError):
                     path.chmod(0o600)
-                except OSError:
-                    pass
                 path.unlink(missing_ok=True)
 
     def delete(self, case_id):
