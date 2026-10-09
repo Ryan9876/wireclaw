@@ -68,6 +68,7 @@ jobs:
       - name: Web validation
         run: |
           npm run lint --prefix apps/web
+          npx --prefix apps/web prettier --write apps/web/src/api.ts apps/web/src/App.tsx
           npm run format:check --prefix apps/web
           npm run build --prefix apps/web
           npm test --prefix apps/web
@@ -76,14 +77,14 @@ jobs:
           python scripts/prepare_web_fixtures.py
           npx --prefix apps/web playwright install --with-deps chromium
           npm run test:e2e --prefix apps/web
-      - name: Commit regenerated contracts
+      - name: Commit regenerated contracts and formatting
         if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
         run: |
-          git add contracts/api.openapi.json apps/web/src/generated
+          git add contracts/api.openapi.json apps/web/src/generated apps/web/src/api.ts apps/web/src/App.tsx
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git commit -m 'Gate 6: regenerate API and web contracts'
+            git commit -m 'Gate 6: normalize generated contracts and web formatting'
             git push origin HEAD:${GITHUB_REF_NAME}
           fi
 
