@@ -22,6 +22,7 @@ from .models import (
     DeletionResponse,
 )
 from .storage import ApiError
+from .web import register_web
 
 
 class Boundary:
@@ -262,4 +263,5 @@ def create_app(data_root: Path, policy: Policy | None = None):
         with service().admission():
             return service().delete(case_id)
 
+    register_web(app)
     return app

@@ -160,6 +160,12 @@
         "category": {"type": "string", "minLength": 1},
         "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
         "statement": {"type": "string", "minLength": 1},
+        "epistemic_class": {"type": "string", "const": "inferred"},
+        "fault_domains": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/faultDomain"},
+          "uniqueItems": true
+        },
         "affected_scope": {"type": "object", "additionalProperties": true},
         "evidence_ids": {
           "type": "array",
