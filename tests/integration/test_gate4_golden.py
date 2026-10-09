@@ -54,12 +54,16 @@ def test_gate4_real_capture_golden_rca_cases(tmp_path):
 
     cases = {
         "clean_tcp": ("application is slow", gate2["clean_tcp"]),
+        "loss_tcp": ("application is slow", gate2["loss_tcp"]),
+        "reordered_tcp": ("application is slow", gate2["reordered_tcp"]),
         "high_rtt": ("application is slow", gate2["high_rtt"]),
+        "server_wait": ("application is slow", gate2["server_wait"]),
         "window_tcp": ("download throughput is slow", gate2["window_tcp"]),
         "reset_tcp": ("users disconnect", gate2["reset_tcp"]),
         "dns_delay": ("DNS name resolution is slow", gate2["dns_delay"]),
         "tls_delay": ("TLS handshake is slow", gate2["tls_delay"]),
         "failed_tcp": ("cannot connect", gate2["failed_tcp"]),
+        "pmtud_signals": ("large transfers stall", gate2["pmtud_signals"]),
         "midstream": ("application is slow", baseline["midstream"]),
     }
 
