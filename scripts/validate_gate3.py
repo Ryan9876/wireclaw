@@ -101,7 +101,9 @@ def main():
                         if time.monotonic() >= deadline:
                             raise RuntimeError("api_startup_timeout") from None
                         time.sleep(0.1)
-                case = client.post("/api/cases", json={"symptom": "transfer is slow and retransmitting"})
+                case = client.post(
+                    "/api/cases", json={"symptom": "transfer is slow and retransmitting"}
+                )
                 case.raise_for_status()
                 case_id = case.json()["id"]
                 intake = client.post(
@@ -145,8 +147,8 @@ def main():
                 )
                 grant.raise_for_status()
                 grant_body = grant.json()
-                manifest = directory / "api" / "bridge" / "requests" / (
-                    grant_body["request_id"] + ".json"
+                manifest = (
+                    directory / "api" / "bridge" / "requests" / (grant_body["request_id"] + ".json")
                 )
                 manifest_body = json.loads(manifest.read_text())
                 assert "token" not in manifest_body
