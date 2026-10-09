@@ -60,12 +60,12 @@
     "has_remaining_hypotheses": false
   },
   "failed_tcp": {
-    "capture_quality": "good",
+    "capture_quality": "limited",
     "conclusion_type": "supported_finding",
     "confidence": "medium",
     "fault_domains": ["local_network", "network_path", "server_application"],
     "primary_category": "tcp.establishment_failure",
-    "finding_categories": ["tcp.establishment_failure", "tcp.reset"],
+    "finding_categories": ["tcp.establishment_failure", "tcp.reset", "capture.quality"],
     "time_segments": [],
     "has_remaining_hypotheses": false
   },
