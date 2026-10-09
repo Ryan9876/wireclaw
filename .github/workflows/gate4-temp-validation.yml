@@ -28,54 +28,6 @@ jobs:
           capinfos --version
       - name: Install test toolchain
         run: python -m pip install -e '.[test]'
-      - name: Align Gate 3 integration expectations with Gate 4 lifecycle
-        run: |
-          python - <<'PY'
-          import re
-          from pathlib import Path
-
-          path = Path('tests/integration/test_api.py')
-          text = path.read_text(encoding='utf-8')
-
-          replacements = [
-              (
-                  'assert response.json()["state"] == State.INVESTIGATING',
-                  'assert response.json()["state"] == State.COMPLETE',
-              ),
-              (
-                  'assert record["state"] == State.INVESTIGATING',
-                  'assert record["state"] == State.COMPLETE',
-              ),
-              (
-                  'assert after["state"] == "INVESTIGATING"',
-                  'assert after["state"] == "COMPLETE"',
-              ),
-              (
-                  'assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "INVESTIGATING"',
-                  'assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"',
-              ),
-              (
-                  'assert client.get(f"/api/cases/{second}").json()["state"] == "INVESTIGATING"',
-                  'assert client.get(f"/api/cases/{second}").json()["state"] == "COMPLETE"',
-              ),
-          ]
-          for old, new in replacements:
-              assert text.count(old) == 1, (old, text.count(old))
-              text = text.replace(old, new)
-
-          pattern = r'(?m)^(\s*)"BASELINE_ANALYSIS",\n\1"INVESTIGATING",\n(\s*)\]'
-          replacement = (
-              r'\1"BASELINE_ANALYSIS",\n'
-              r'\1"INVESTIGATING",\n'
-              r'\1"ASSEMBLING_REPORT",\n'
-              r'\1"COMPLETE",\n'
-              r'\2]'
-          )
-          text, changed = re.subn(pattern, replacement, text, count=2)
-          assert changed == 2, changed
-
-          path.write_text(text, encoding='utf-8')
-          PY
       - name: Refresh OpenAPI snapshot
         run: |
           python - <<'PY'
@@ -98,6 +50,8 @@ jobs:
           tests/unit/test_investigation.py
           tests/unit/test_investigation_ipv6.py
           tests/integration/test_api.py
+          tests/integration/test_gate4_report.py
+          tests/integration/test_gate4_golden.py
           --fix --unsafe-fixes
       - name: Apply Gate 4 Ruff formatting
         run: >-
@@ -108,6 +62,8 @@ jobs:
           tests/unit/test_investigation.py
           tests/unit/test_investigation_ipv6.py
           tests/integration/test_api.py
+          tests/integration/test_gate4_report.py
+          tests/integration/test_gate4_golden.py
       - name: Verify static checks
         run: |
           ruff check .
@@ -117,18 +73,20 @@ jobs:
             services/api/src/wireclaw_api/investigation.py \
             tests/unit/test_investigation.py \
             tests/unit/test_investigation_ipv6.py \
-            tests/integration/test_api.py
+            tests/integration/test_api.py \
+            tests/integration/test_gate4_report.py \
+            tests/integration/test_gate4_golden.py
           python -m compileall -q services tests
           git diff --check
       - name: Run full tests with real packet tools
         run: pytest -q
-      - name: Commit generated, integration, and formatter changes
+      - name: Commit generated and formatter changes
         shell: bash
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add --all
-            git commit -m "test: align API lifecycle with Gate 4 completion"
+            git commit -m "chore: refresh Gate 4 generated contract and formatting"
             git push
           fi
