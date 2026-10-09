@@ -28,7 +28,7 @@ No analyzer implementation or Gate 1/Gate 2 golden packet evidence was changed b
 
 Implemented in `services/api/src/wireclaw_api/investigation.py`.
 
-Normalized inventoried conversations are ranked deterministically across available transports using bounded combinations of:
+All normalized inventoried conversations, including transport records without a tool stream ID, are ranked deterministically using bounded combinations of:
 - explicit symptom endpoint/address references
 - explicit symptom port references
 - symptom-family/protocol relevance

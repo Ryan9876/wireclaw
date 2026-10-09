@@ -25,13 +25,14 @@ MIN_PRIMARY_CONFIDENCE = "medium"
 @dataclass(frozen=True)
 class Candidate:
     transport: str
-    stream: int
+    stream: int | None
+    conversation_index: int
     score: int
     reasons: tuple[str, ...]
 
     @property
     def tcp_stream(self) -> int | None:
-        return self.stream if self.transport == "tcp" else None
+        return self.stream if self.transport == "tcp" and isinstance(self.stream, int) else None
 
 
 @dataclass(frozen=True)
@@ -155,8 +156,9 @@ def _explicit_context(symptom: str) -> tuple[set[str], set[int]]:
 
 def _conversations(
     evidence: Iterable[dict[str, Any]],
-) -> dict[tuple[str, int], dict[str, Any]]:
-    conversations: dict[tuple[str, int], dict[str, Any]] = {}
+) -> list[tuple[int, dict[str, Any]]]:
+    conversations: list[tuple[int, dict[str, Any]]] = []
+    index = 0
     for item in evidence:
         if item.get("category") != "list_conversations":
             continue
@@ -166,9 +168,10 @@ def _conversations(
             if not isinstance(record, dict):
                 continue
             transport = record.get("transport")
-            stream = record.get("stream")
-            if isinstance(transport, str) and transport and isinstance(stream, int) and stream >= 0:
-                conversations.setdefault((transport, stream), record)
+            if not isinstance(transport, str) or not transport:
+                continue
+            conversations.append((index, record))
+            index += 1
     return conversations
 
 
@@ -295,21 +298,50 @@ def _rank_candidates_all(symptom: str, evidence: list[dict[str, Any]]) -> list[C
     addresses, ports = _explicit_context(symptom)
     stream_items = _by_stream(evidence)
     conversations = _conversations(evidence)
-    keys = set(conversations) | {("tcp", stream) for stream in stream_items}
     candidates = []
-    for transport, stream in sorted(keys):
-        anomaly_score, anomaly_reasons = (
-            _candidate_signals(stream_items.get(stream, []), families)
-            if transport == "tcp"
-            else (0, [])
-        )
+    represented_tcp_streams: set[int] = set()
+
+    for conversation_index, conversation in conversations:
+        transport = conversation.get("transport")
+        stream = conversation.get("stream")
+        stream = stream if isinstance(stream, int) and stream >= 0 else None
+        if transport == "tcp" and stream is not None:
+            represented_tcp_streams.add(stream)
+            anomaly_score, anomaly_reasons = _candidate_signals(
+                stream_items.get(stream, []), families
+            )
+        else:
+            anomaly_score, anomaly_reasons = 0, []
         context_score, context_reasons = _conversation_signals(
-            conversations.get((transport, stream)), families, addresses, ports
+            conversation, families, addresses, ports
         )
         reasons = tuple(sorted(set(anomaly_reasons + context_reasons)))
-        candidates.append(Candidate(transport, stream, anomaly_score + context_score, reasons))
+        candidates.append(
+            Candidate(
+                transport,
+                stream,
+                conversation_index,
+                anomaly_score + context_score,
+                reasons,
+            )
+        )
+
+    next_index = len(conversations)
+    for offset, stream in enumerate(sorted(set(stream_items) - represented_tcp_streams)):
+        anomaly_score, anomaly_reasons = _candidate_signals(stream_items.get(stream, []), families)
+        candidates.append(
+            Candidate("tcp", stream, next_index + offset, anomaly_score, tuple(anomaly_reasons))
+        )
+
     return sorted(
-        candidates, key=lambda candidate: (-candidate.score, candidate.transport, candidate.stream)
+        candidates,
+        key=lambda candidate: (
+            -candidate.score,
+            candidate.transport,
+            candidate.stream is None,
+            candidate.stream if candidate.stream is not None else -1,
+            candidate.conversation_index,
+        ),
     )
 
 
@@ -753,10 +785,10 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
     segments: list[dict[str, Any]] = []
     limitations: list[str] = []
     tcp_candidate = next(
-        (candidate for candidate in candidates if candidate.transport == "tcp"), None
+        (candidate for candidate in candidates if candidate.tcp_stream is not None), None
     )
     if tcp_candidate is not None:
-        stream = tcp_candidate.stream
+        stream = tcp_candidate.tcp_stream
         establishment = _stream_item(stream_index, stream, "analyze_tcp_establishment")
         if establishment:
             value = (

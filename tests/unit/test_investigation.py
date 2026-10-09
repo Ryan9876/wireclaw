@@ -472,3 +472,44 @@ def test_tls_retry_omits_misleading_establishment_duration():
         "tcp_establishment"
     ]
     assert any("stage is omitted" in item for item in result["time_attribution"]["limitations"])
+
+
+def test_candidate_ranking_includes_nonstream_ip_conversation():
+    evidence = [
+        quality(),
+        ev(
+            "ev_conv_other",
+            "list_conversations",
+            {
+                "conversations": [
+                    {
+                        "transport": "tcp",
+                        "stream": 0,
+                        "a": {"address": "192.0.2.1", "port": 51000},
+                        "b": {"address": "192.0.2.20", "port": 443},
+                        "wire_bytes": 900000,
+                        "duration_seconds": 10.0,
+                        "a_to_b_packets": 100,
+                        "b_to_a_packets": 100,
+                    },
+                    {
+                        "transport": "other",
+                        "stream": None,
+                        "a": {"address": "192.0.2.1", "port": None},
+                        "b": {"address": "198.51.100.77", "port": None},
+                        "network_protocol": {"number": 1},
+                        "wire_bytes": 84,
+                        "duration_seconds": 0.0,
+                        "a_to_b_packets": 1,
+                        "b_to_a_packets": 1,
+                    },
+                ]
+            },
+            filt="ip",
+        ),
+    ]
+    ranked = rank_candidates("failure involving 198.51.100.77", evidence)
+    assert ranked[0].transport == "other"
+    assert ranked[0].stream is None
+    assert ranked[0].tcp_stream is None
+    assert "explicit_endpoint_match" in ranked[0].reasons

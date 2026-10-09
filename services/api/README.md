@@ -42,7 +42,7 @@ Every investigation starts with capture quality and deterministic Gate 1/2 evide
 The rules engine:
 
 - classifies symptom text only to rank relevance; symptom text is never evidence
-- ranks normalized TCP, UDP, and other inventoried conversations using explicit endpoint/port context, protocol relevance, anomalies where available, timing, and weak volume signals without excluding small flows solely for low byte count
+- ranks all normalized inventoried conversations, including non-TCP/UDP records without a tool stream ID, using explicit endpoint/port context, protocol relevance, anomalies where available, timing, and weak volume signals without excluding small flows solely for low byte count
 - evaluates DNS delay/failure, TCP setup, retransmission/reordering, RTT, receive-window constraints, resets, TLS visibility, PMTUD signals, and capture limitations
 - cites normalized evidence IDs for every finding
 - derives confidence from evidence sufficiency and capture quality
