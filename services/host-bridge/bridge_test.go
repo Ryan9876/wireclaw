@@ -51,6 +51,14 @@ func writeGrant(t *testing.T, root, requestID, token, relative string, payload [
 	return path
 }
 
+func openRequestFor(requestID, token, origin string) *http.Request {
+	body := `{"request_id":"` + requestID + `","token":"` + token + `"}`
+	request := httptest.NewRequest(http.MethodPost, "/v1/open", strings.NewReader(body))
+	request.Header.Set("Origin", origin)
+	request.Header.Set("Content-Type", "application/json")
+	return request
+}
+
 func TestOpenUsesExactApprovedArgvAndConsumesGrant(t *testing.T) {
 	rootBase := t.TempDir()
 	root := filepath.Join(rootBase, "data root with spaces")
@@ -71,12 +79,8 @@ func TestOpenUsesExactApprovedArgvAndConsumesGrant(t *testing.T) {
 		args = append([]string(nil), values...)
 		return nil
 	}
-	body := `{"request_id":"` + requestID + `","token":"` + token + `"}`
-	request := httptest.NewRequest(http.MethodPost, "/v1/open", strings.NewReader(body))
-	request.Header.Set("Origin", "http://127.0.0.1:8765")
-	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
-	bridge.open(response, request)
+	bridge.open(response, openRequestFor(requestID, token, "http://127.0.0.1:8765"))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -86,6 +90,11 @@ func TestOpenUsesExactApprovedArgvAndConsumesGrant(t *testing.T) {
 	if _, err := os.Stat(manifestPath); !os.IsNotExist(err) {
 		t.Fatal("grant was not consumed")
 	}
+	response = httptest.NewRecorder()
+	bridge.open(response, openRequestFor(requestID, token, "http://127.0.0.1:8765"))
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("replay status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func TestRejectsOriginTokenTraversalAndControlFilter(t *testing.T) {
@@ -94,58 +103,61 @@ func TestRejectsOriginTokenTraversalAndControlFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, origin, token, relative, filter, want := range []struct {
-		name, origin, token, relative, filter string
-		want                                  int
+	tests := []struct {
+		name     string
+		origin   string
+		token    string
+		relative string
+		filter   string
+		want     int
 	}{
 		{"origin", "http://evil.invalid", strings.Repeat("x", 48), "cases/capture", "tcp.stream == 1", http.StatusForbidden},
 		{"token", "http://127.0.0.1:8765", strings.Repeat("y", 48), "cases/capture", "tcp.stream == 1", http.StatusUnauthorized},
 		{"traversal", "http://127.0.0.1:8765", strings.Repeat("x", 48), "../escape", "tcp.stream == 1", http.StatusUnprocessableEntity},
 		{"filter", "http://127.0.0.1:8765", strings.Repeat("x", 48), "cases/capture", "tcp.stream == 1\nframe", http.StatusUnauthorized},
-	} {
-		t.Run(name, func(t *testing.T) {
-			requestID := strings.Repeat(string('a'+rune(len(name)%6)), 32)
-			manifestPath := writeGrant(t, root, requestID, strings.Repeat("x", 48), relative, []byte("capture"))
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			requestID := strings.Repeat(string('a'+rune(len(tc.name)%6)), 32)
+			manifestPath := writeGrant(t, root, requestID, strings.Repeat("x", 48), tc.relative, []byte("capture"))
 			data, _ := os.ReadFile(manifestPath)
 			var value manifest
 			_ = json.Unmarshal(data, &value)
-			value.DisplayFilter = filter
+			value.DisplayFilter = tc.filter
 			data, _ = json.Marshal(value)
 			_ = os.WriteFile(manifestPath, data, 0o600)
-			body := `{"request_id":"` + requestID + `","token":"` + token + `"}`
-			request := httptest.NewRequest(http.MethodPost, "/v1/open", strings.NewReader(body))
-			request.Header.Set("Origin", origin)
-			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
-			bridge.open(response, request)
-			if response.Code != want {
-				t.Fatalf("status=%d want=%d body=%s", response.Code, want, response.Body.String())
+			bridge.open(response, openRequestFor(requestID, tc.token, tc.origin))
+			if response.Code != tc.want {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, tc.want, response.Body.String())
 			}
 		})
 	}
 }
 
-func TestRejectsUnknownRequestFieldsOversizeAndReplay(t *testing.T) {
+func TestRejectsUnknownRequestFieldsAndOversize(t *testing.T) {
 	root := t.TempDir()
 	bridge, _ := newServer(root, os.Args[0])
 	requestID := strings.Repeat("d", 32)
 	token := strings.Repeat("x", 48)
 	writeGrant(t, root, requestID, token, "cases/capture", []byte("capture"))
-	for name, body, want := range []struct {
-		name, body string
-		want       int
+	tests := []struct {
+		name string
+		body string
+		want int
 	}{
 		{"unknown", `{"request_id":"` + requestID + `","token":"` + token + `","path":"/tmp/x"}`, http.StatusUnprocessableEntity},
 		{"oversize", `{"request_id":"` + requestID + `","token":"` + strings.Repeat("x", maxRequestBytes) + `"}`, http.StatusUnprocessableEntity},
-	} {
-		t.Run(name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/v1/open", strings.NewReader(body))
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/v1/open", strings.NewReader(tc.body))
 			request.Header.Set("Origin", "http://127.0.0.1:8765")
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			bridge.open(response, request)
-			if response.Code != want {
-				t.Fatalf("status=%d want=%d body=%s", response.Code, want, response.Body.String())
+			if response.Code != tc.want {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, tc.want, response.Body.String())
 			}
 		})
 	}
