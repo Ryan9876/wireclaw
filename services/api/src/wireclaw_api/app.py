@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from wireclaw_analyzer import AnalyzerError
 
 from .config import Policy
+from .gate4_service import Service
 from .models import (
     CAPABILITIES,
     ArtifactResponse,
@@ -20,7 +21,6 @@ from .models import (
     CreateCase,
     DeletionResponse,
 )
-from .service import Service
 from .storage import ApiError
 
 
@@ -108,7 +108,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
         finally:
             service.close()
 
-    app = FastAPI(title="Wireclaw local API", version="0.3.0", lifespan=lifespan)
+    app = FastAPI(title="Wireclaw local API", version="0.4.0", lifespan=lifespan)
     app.add_middleware(Boundary, policy=policy)
 
     @app.exception_handler(ApiError)
@@ -137,7 +137,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "gate": 3, "provider_mode": "none"}
+        return {"status": "ok", "gate": 4, "provider_mode": "none"}
 
     @app.get("/api/config/capabilities")
     def capabilities():
@@ -238,6 +238,19 @@ def create_app(data_root: Path, policy: Policy | None = None):
         if len(evidence_id) > 256:
             raise ApiError("invalid_evidence_id", 422)
         return service().evidence(case_id, evidence_id=evidence_id)
+
+    @app.get("/api/cases/{case_id}/findings")
+    def findings(
+        case_id: str, offset: int = Query(0, ge=0, le=2**31 - 1), limit: int = Query(100, ge=1)
+    ):
+        if limit > policy.max_result_items:
+            raise ApiError("result_count_limit", 413)
+        records = service().findings(case_id)
+        return {"findings": records[offset : offset + limit]}
+
+    @app.get("/api/cases/{case_id}/report")
+    def report(case_id: str):
+        return service().report(case_id)
 
     @app.get("/api/cases/{case_id}/artifacts/{artifact_id}", response_model=ArtifactResponse)
     def artifact_metadata(case_id: str, artifact_id: str):
