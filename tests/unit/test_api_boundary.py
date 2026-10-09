@@ -1,4 +1,4 @@
-"""Gate 3 state, policy and local HTTP security contracts without packet tools."""
+"""Gate 3/4 state, policy and local HTTP security contracts without packet tools."""
 
 from dataclasses import replace
 from unittest.mock import patch
@@ -32,14 +32,16 @@ def test_invalid_resource_policy(key, value):
         replace(Policy(), **{key: value})
 
 
-def test_default_loopback_and_no_future_gate_routes(tmp_path):
+def test_default_loopback_and_gate4_routes(tmp_path):
     policy = Policy()
     assert policy.host == "127.0.0.1"
     assert Policy(host="::1").host == "::1"
     app = create_app(tmp_path)
     paths = app.openapi()["paths"]
     assert "/api/cases/{case_id}/capabilities" in paths
-    assert not any("findings" in path or "evidence-capture" in path for path in paths)
+    assert "/api/cases/{case_id}/findings" in paths
+    assert "/api/cases/{case_id}/report" in paths
+    assert not any("evidence-capture" in path for path in paths)
     schema = app.openapi()["components"]["schemas"]["CapabilityRequest"]
     assert schema["additionalProperties"] is False
     assert set(schema["properties"]) == {"artifact_id", "capability", "tcp_stream"}
