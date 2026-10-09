@@ -1,0 +1,39 @@
+name: Gate 4 remediation driver fix
+
+on:
+  push:
+    branches:
+      - gate4-rules-investigation-report
+
+permissions:
+  contents: write
+
+jobs:
+  fix-driver:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Fix remediation Python source
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/gate4-remediation.yml')
+          text = path.read_text()
+          old = '# DNS evidence remains visible, but without explicit DNS symptom context it cannot\\n          # become the primary diagnosis solely by crossing a timing/failure threshold.\\n          replace_once('
+          new = '# DNS evidence remains visible, but without explicit DNS symptom context it cannot\n          # become the primary diagnosis solely by crossing a timing/failure threshold.\n          replace_once('
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit driver fix
+        shell: bash
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/workflows/gate4-remediation.yml
+            git commit -m "ci: fix Gate 4 remediation script syntax"
+            git push
+          fi
