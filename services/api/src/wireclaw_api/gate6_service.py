@@ -107,7 +107,6 @@ class Service(Gate4Service):
                 display_filter,
                 max_bytes=self.policy.max_evidence_capture_bytes,
             )
-            # Re-verify the immutable original after packet-tool execution.
             self.artifact(case_id, case["original_id"])
             tool_versions = self.analyzer_versions(case_id)
             provenance = {
@@ -245,3 +244,29 @@ class Service(Gate4Service):
             "bridge_origin": f"http://127.0.0.1:{self.policy.bridge_port}",
             "expires_unix": expires_unix,
         }
+
+    def _remove_case_bridge_grants(self, case_id):
+        directory = self.files.path(Path("bridge") / "requests")
+        if not directory.exists():
+            return
+        for path in directory.iterdir():
+            if path.is_symlink() or not path.is_file():
+                continue
+            if not re.fullmatch(r"[a-f0-9]{32}\.json", path.name):
+                continue
+            try:
+                if path.stat().st_size > self.policy.max_json_bytes:
+                    continue
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if value.get("case_id") == case_id:
+                try:
+                    path.chmod(0o600)
+                except OSError:
+                    pass
+                path.unlink(missing_ok=True)
+
+    def delete(self, case_id):
+        self._remove_case_bridge_grants(case_id)
+        return super().delete(case_id)

@@ -112,12 +112,13 @@ def main():
                 intake.raise_for_status()
                 response = client.post(f"/api/cases/{case_id}/investigate")
                 response.raise_for_status()
-                assert response.json()["state"] == "COMPLETE"
+                state = response.json()
+                assert state["state"] == "COMPLETE"
                 evidence = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
                 for item in evidence:
                     validator.validate(item)
                     checks += 1
-                original = response.json()["original_id"]
+                original = state["original_id"]
                 request = {"artifact_id": original, "capability": "analyze_rtt", "tcp_stream": 0}
                 first = client.post(f"/api/cases/{case_id}/capabilities", json=request)
                 first.raise_for_status()
@@ -125,9 +126,36 @@ def main():
                     client.post(f"/api/cases/{case_id}/capabilities", json=request).json()
                     == first.json()
                 )
+                report = client.get(f"/api/cases/{case_id}/report")
+                report.raise_for_status()
+                finding = next(
+                    item for item in report.json()["findings"] if item["wireshark"]["applicable"]
+                )
+                derived = client.post(
+                    f"/api/cases/{case_id}/artifacts/evidence-capture",
+                    json={"finding_id": finding["id"]},
+                )
+                derived.raise_for_status()
+                derived_body = derived.json()
+                assert derived_body["provenance"]["parent_sha256"] == state["capture_sha"]
+                assert derived_body["provenance"]["finding_id"] == finding["id"]
+                grant = client.post(
+                    f"/api/cases/{case_id}/bridge-grants",
+                    json={"artifact_id": original, "finding_id": finding["id"]},
+                )
+                grant.raise_for_status()
+                grant_body = grant.json()
+                manifest = directory / "api" / "bridge" / "requests" / (
+                    grant_body["request_id"] + ".json"
+                )
+                manifest_body = json.loads(manifest.read_text())
+                assert "token" not in manifest_body
+                assert len(manifest_body["token_sha256"]) == 64
+                assert manifest_body["relative_path"].startswith(f"cases/{case_id}/")
                 deletion = client.delete(f"/api/cases/{case_id}")
                 deletion.raise_for_status()
                 assert deletion.json()["cleanup_pending"] is False
+                assert not manifest.exists()
                 assert client.get(f"/api/cases/{case_id}").status_code == 404
         finally:
             process.terminate()
@@ -143,6 +171,8 @@ def main():
                 "cli_evidence_counts": cli_counts,
                 "live_loopback_api": "passed",
                 "repeat_request": "passed",
+                "evidence_capture": "passed",
+                "bridge_grant": "passed",
                 "deletion": "passed",
             }
         )

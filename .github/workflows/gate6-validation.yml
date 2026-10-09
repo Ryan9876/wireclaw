@@ -1,0 +1,106 @@
+name: Gate 6 validation
+
+on:
+  push:
+    branches: [gate6-wireshark-evidence-bridge]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  linux-full:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Install packet tools
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
+      - name: Install Python and web dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e '.[test]'
+          npm ci --prefix apps/web
+      - name: Regenerate OpenAPI and web contracts
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from wireclaw_api.app import create_app
+          with TemporaryDirectory() as directory:
+              app = create_app(Path(directory))
+              Path('contracts/api.openapi.json').write_text(
+                  json.dumps(app.openapi(), indent=2) + '\n', encoding='utf-8'
+              )
+          PY
+          npm run contracts --prefix apps/web
+      - name: Python validation
+        run: |
+          python -m pytest -q
+          ruff check .
+          ruff format --check .
+          python -m compileall -q services scripts tests
+          python scripts/validate_gate3.py
+      - name: Go validation
+        working-directory: services/host-bridge
+        run: |
+          gofmt -w *.go
+          git diff --exit-code -- '*.go'
+          go test ./...
+          go vet ./...
+          go build ./...
+      - name: Web validation
+        run: |
+          npm run lint --prefix apps/web
+          npm run format:check --prefix apps/web
+          npm run build --prefix apps/web
+          npm test --prefix apps/web
+      - name: Production browser validation
+        run: |
+          python scripts/prepare_web_fixtures.py
+          npx --prefix apps/web playwright install --with-deps chromium
+          npm run test:e2e --prefix apps/web
+      - name: Commit regenerated contracts
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        run: |
+          git add contracts/api.openapi.json apps/web/src/generated
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'Gate 6: regenerate API and web contracts'
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+
+  bridge-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Test and build host bridge
+        working-directory: services/host-bridge
+        run: |
+          go test ./...
+          go vet ./...
+          go build ./...

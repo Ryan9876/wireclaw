@@ -85,13 +85,22 @@ function SupportingEvidence({ caseId, ids }: { caseId: string; ids: string[] }) 
 function Finding({
   finding,
   caseId,
+  originalId,
+  bridgeAvailable,
+  onBridgeUnavailable,
   onEvidence,
 }: {
   finding: Report['findings'][number];
   caseId: string;
+  originalId: string;
+  bridgeAvailable: boolean | null;
+  onBridgeUnavailable: () => void;
   onEvidence: (ids: string[]) => void;
 }) {
   const [copyStatus, setCopyStatus] = useState('');
+  const [actionStatus, setActionStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [evidenceArtifact, setEvidenceArtifact] = useState<string | null>(null);
   async function copy() {
     try {
       await navigator.clipboard.writeText(finding.wireshark.display_filter ?? '');
@@ -100,6 +109,46 @@ function Finding({
       setCopyStatus('Clipboard unavailable. Select and copy the visible filter manually.');
     }
   }
+  async function openArtifact(artifactId: string, label: string) {
+    const grant = await api.bridgeGrant(caseId, artifactId, finding.id);
+    await api.openBridge(grant);
+    setActionStatus(`${label} opened in native Wireshark.`);
+  }
+  async function fullCapture() {
+    setBusy(true);
+    setActionStatus('');
+    try {
+      await openArtifact(originalId, 'Full capture');
+    } catch (error) {
+      setActionStatus(errorMessage(error));
+      onBridgeUnavailable();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function createEvidence(openAfter: boolean) {
+    setBusy(true);
+    setActionStatus('');
+    try {
+      let artifactId = evidenceArtifact;
+      if (!artifactId) {
+        const capture = await api.evidenceCapture(caseId, finding.id);
+        artifactId = capture.artifact_id;
+        setEvidenceArtifact(artifactId);
+      }
+      if (openAfter) {
+        await openArtifact(artifactId, 'Focused evidence capture');
+      } else {
+        setActionStatus(`Focused evidence capture created locally as artifact ${artifactId}.`);
+      }
+    } catch (error) {
+      setActionStatus(errorMessage(error));
+      if (openAfter) onBridgeUnavailable();
+    } finally {
+      setBusy(false);
+    }
+  }
+  const unavailable = bridgeAvailable !== true;
   return (
     <article className="finding" aria-labelledby={`${finding.id}-title`}>
       <div className="finding-top">
@@ -129,16 +178,33 @@ function Finding({
       {finding.wireshark.applicable && (
         <div className="validation-actions">
           <div className="button-row">
-            <button disabled aria-describedby={`${finding.id}-bridge`}>
+            <button
+              disabled={busy || unavailable}
+              aria-describedby={`${finding.id}-bridge`}
+              onClick={() => void fullCapture()}
+            >
               Open Full Capture in Wireshark
             </button>
-            <button disabled aria-describedby={`${finding.id}-bridge`}>
+            <button
+              disabled={busy || unavailable}
+              aria-describedby={`${finding.id}-bridge`}
+              onClick={() => void createEvidence(true)}
+            >
               Open Evidence Capture in Wireshark
             </button>
           </div>
           <p id={`${finding.id}-bridge`} className="muted">
-            Wireshark launch and evidence extraction are unavailable until Gate 6 integration.
+            {bridgeAvailable === null
+              ? 'Checking the local native Wireshark bridge…'
+              : bridgeAvailable
+                ? 'Native bridge available. Launch grants are one-time and short-lived.'
+                : 'Native Wireshark bridge unavailable. Copy/filter evidence remains usable and a focused capture can still be generated.'}
           </p>
+          {bridgeAvailable === false && (
+            <button className="quiet" disabled={busy} onClick={() => void createEvidence(false)}>
+              Create evidence capture without opening Wireshark
+            </button>
+          )}
           {finding.wireshark.display_filter && (
             <>
               <p className="eyebrow">Wireshark display filter</p>
@@ -154,6 +220,9 @@ function Finding({
           <button className="quiet" onClick={() => onEvidence(finding.evidence_ids)}>
             Show packet evidence
           </button>
+          <p className="copy-status" role="status">
+            {actionStatus}
+          </p>
         </div>
       )}
     </article>
@@ -162,12 +231,27 @@ function Finding({
 
 export function ReportView({
   report,
+  originalId,
   onEvidence,
 }: {
   report: Report;
+  originalId: string;
   onEvidence: (ids: string[]) => void;
 }) {
   const { conclusion, capture_quality: quality, time_attribution: time } = report;
+  const [bridgeAvailable, setBridgeAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    api
+      .bridgeHealth(controller.signal)
+      .then((available) => {
+        if (!controller.signal.aborted) setBridgeAvailable(available);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setBridgeAvailable(false);
+      });
+    return () => controller.abort();
+  }, [report.case_id]);
   return (
     <div className="report">
       <section className="summary panel" aria-labelledby="conclusion-heading">
@@ -286,6 +370,9 @@ export function ReportView({
               key={finding.id}
               finding={finding}
               caseId={report.case_id}
+              originalId={originalId}
+              bridgeAvailable={bridgeAvailable}
+              onBridgeUnavailable={() => setBridgeAvailable(false)}
               onEvidence={onEvidence}
             />
           ))
