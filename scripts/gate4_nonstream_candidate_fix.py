@@ -107,4 +107,4 @@ if old not in text:
     raise SystemExit("README ranking sentence not found")
 readme.write_text(text.replace(old, new, 1))
 
-# Trigger a push after the validation workflow exists; this file is temporary closeout machinery.
+# Trigger a push after the registered validation driver was updated; this file is temporary closeout machinery.
