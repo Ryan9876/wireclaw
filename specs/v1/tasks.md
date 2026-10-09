@@ -125,16 +125,16 @@ Requirements: R-U001 through R-U006.
 
 Tasks:
 
-- [ ] G5.1 Create React/TypeScript app.
-- [ ] G5.2 Implement capture drop/select intake.
-- [ ] G5.3 Implement symptom input.
-- [ ] G5.4 Implement investigation progress stages.
-- [ ] G5.5 Implement result summary with conclusion/confidence/fault domain/capture quality.
-- [ ] G5.6 Implement time-attribution view.
-- [ ] G5.7 Implement finding cards with evidence/limitations/next validation.
-- [ ] G5.8 Implement expert evidence drawer.
-- [ ] G5.9 Implement case deletion UI.
-- [ ] G5.10 Accessibility and responsive layout review.
+- [x] G5.1 Create React/TypeScript app.
+- [x] G5.2 Implement capture drop/select intake.
+- [x] G5.3 Implement symptom input.
+- [x] G5.4 Implement investigation progress stages.
+- [x] G5.5 Implement result summary with conclusion/confidence/fault domain/capture quality.
+- [x] G5.6 Implement time-attribution view.
+- [x] G5.7 Implement finding cards with evidence/limitations/next validation.
+- [x] G5.8 Implement expert evidence drawer.
+- [x] G5.9 Implement case deletion UI.
+- [x] G5.10 Accessibility and responsive layout review.
 
 Exit criteria:
 - a user can complete the primary workflow without CLI knowledge

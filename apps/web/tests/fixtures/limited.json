@@ -1,0 +1,1273 @@
+{
+  "case": {
+    "id": "cccccccccccccccccccccccccccccccc",
+    "symptom": "application is slow",
+    "state": "COMPLETE",
+    "created": "2026-10-09T12:59:02.077413+00:00",
+    "updated": "2026-10-09T12:59:02.926865+00:00",
+    "capture_sha": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+    "original_id": "33d7355a5113426785273a0a64d6bae7",
+    "quality": "limited",
+    "last_error": null,
+    "history": [
+      {
+        "seq": 0,
+        "state": "NEW",
+        "at": "2026-10-09T12:59:02.077502+00:00"
+      },
+      {
+        "seq": 1,
+        "state": "INGESTING",
+        "at": "2026-10-09T12:59:02.080602+00:00"
+      },
+      {
+        "seq": 2,
+        "state": "VALIDATING_CAPTURE",
+        "at": "2026-10-09T12:59:02.081169+00:00"
+      },
+      {
+        "seq": 3,
+        "state": "BASELINE_ANALYSIS",
+        "at": "2026-10-09T12:59:02.377680+00:00"
+      },
+      {
+        "seq": 4,
+        "state": "INVESTIGATING",
+        "at": "2026-10-09T12:59:02.923350+00:00"
+      },
+      {
+        "seq": 5,
+        "state": "ASSEMBLING_REPORT",
+        "at": "2026-10-09T12:59:02.923844+00:00"
+      },
+      {
+        "seq": 6,
+        "state": "COMPLETE",
+        "at": "2026-10-09T12:59:02.926912+00:00"
+      }
+    ],
+    "runs": [
+      {
+        "id": "d2dc070249ed4fb9bb5c0845d2ebd24b",
+        "case_id": "cccccccccccccccccccccccccccccccc",
+        "request_key": "18ea6366d807b8b965e7282ec787fa111124ca0ddb2350313930122aa2308730",
+        "capability": "ingest",
+        "parameters": {},
+        "status": "complete",
+        "error": null,
+        "versions": {
+          "capinfos": {
+            "available": true,
+            "version": "4.2.2"
+          },
+          "tshark": {
+            "available": true,
+            "version": "4.2.2"
+          },
+          "zeek": {
+            "available": false,
+            "error": {
+              "capability": "zeek_version",
+              "code": "tool_unavailable",
+              "tool": "zeek"
+            },
+            "version": null
+          }
+        },
+        "configuration": null,
+        "evidence_ids": [],
+        "created": "2026-10-09T12:59:02.080271+00:00"
+      },
+      {
+        "id": "41ea207fb5514daa8fd24c983e3bc52b",
+        "case_id": "cccccccccccccccccccccccccccccccc",
+        "request_key": "ffc201bc836c5dd0af217346dbc274b88f189bb7c28f7e846f410ec9ca3784da",
+        "capability": "baseline",
+        "parameters": {
+          "tool_versions": {
+            "capinfos": {
+              "available": true,
+              "version": "4.2.2"
+            },
+            "tshark": {
+              "available": true,
+              "version": "4.2.2"
+            },
+            "zeek": {
+              "available": false,
+              "error": {
+                "capability": "zeek_version",
+                "code": "tool_unavailable",
+                "tool": "zeek"
+              },
+              "version": null
+            }
+          }
+        },
+        "status": "complete",
+        "error": null,
+        "versions": {
+          "analyzer": "0.2.0",
+          "capinfos": {
+            "available": true,
+            "version": "4.2.2"
+          },
+          "tshark": {
+            "available": true,
+            "version": "4.2.2"
+          },
+          "zeek": {
+            "available": false,
+            "error": {
+              "capability": "zeek_version",
+              "code": "tool_unavailable",
+              "tool": "zeek"
+            },
+            "version": null
+          }
+        },
+        "configuration": {
+          "checksum_validation": true,
+          "fields": [
+            "frame.number",
+            "frame.time_epoch",
+            "frame.len",
+            "frame.cap_len",
+            "frame.protocols",
+            "ip.src",
+            "ip.dst",
+            "ipv6.src",
+            "ipv6.dst",
+            "tcp.srcport",
+            "tcp.dstport",
+            "udp.srcport",
+            "udp.dstport",
+            "tcp.stream",
+            "udp.stream",
+            "tcp.flags.syn",
+            "tcp.flags.ack",
+            "tcp.checksum.status",
+            "udp.checksum.status",
+            "ip.checksum.status",
+            "_ws.malformed",
+            "tcp.seq_raw",
+            "tcp.ack_raw",
+            "ip.proto",
+            "ipv6.nxt"
+          ],
+          "max_capture_bytes": 67108864,
+          "max_output_bytes": 16777216,
+          "max_packets": 100000,
+          "name_resolution": false,
+          "timeout_seconds": 30
+        },
+        "evidence_ids": [
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_get_capture_metadata",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_assess_capture_quality",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_list_protocols",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_list_endpoints",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_list_conversations"
+        ],
+        "created": "2026-10-09T12:59:02.499586+00:00"
+      },
+      {
+        "id": "32aae3acf4414a0f853d6c9e73dd770e",
+        "case_id": "cccccccccccccccccccccccccccccccc",
+        "request_key": "8cf416edd9a551a1440627740357509826a22f59cc502b9a6e1c6b5210108cc4",
+        "capability": "diagnostics",
+        "parameters": {
+          "tool_versions": {
+            "capinfos": {
+              "available": true,
+              "version": "4.2.2"
+            },
+            "tshark": {
+              "available": true,
+              "version": "4.2.2"
+            },
+            "zeek": {
+              "available": false,
+              "error": {
+                "capability": "zeek_version",
+                "code": "tool_unavailable",
+                "tool": "zeek"
+              },
+              "version": null
+            }
+          }
+        },
+        "status": "complete",
+        "error": null,
+        "versions": {
+          "analyzer": "0.2.0",
+          "capinfos": {
+            "available": true,
+            "version": "4.2.2"
+          },
+          "tshark": {
+            "available": true,
+            "version": "4.2.2"
+          },
+          "zeek": {
+            "available": false,
+            "error": {
+              "capability": "zeek_version",
+              "code": "tool_unavailable",
+              "tool": "zeek"
+            },
+            "version": null
+          }
+        },
+        "configuration": {
+          "checksum_validation": true,
+          "decryption": false,
+          "diagnostic_fields": [
+            "frame.number",
+            "frame.time_epoch",
+            "frame.len",
+            "frame.cap_len",
+            "frame.protocols",
+            "ip.src",
+            "ip.dst",
+            "ipv6.src",
+            "ipv6.dst",
+            "tcp.srcport",
+            "tcp.dstport",
+            "udp.srcport",
+            "udp.dstport",
+            "tcp.stream",
+            "udp.stream",
+            "tcp.flags.syn",
+            "tcp.flags.ack",
+            "tcp.checksum.status",
+            "udp.checksum.status",
+            "ip.checksum.status",
+            "_ws.malformed",
+            "tcp.seq_raw",
+            "tcp.ack_raw",
+            "ip.proto",
+            "ipv6.nxt",
+            "tcp.flags.reset",
+            "tcp.flags.fin",
+            "tcp.len",
+            "tcp.window_size_value",
+            "tcp.window_size",
+            "tcp.window_size_scalefactor",
+            "tcp.options.wscale.shift",
+            "tcp.options.mss_val",
+            "tcp.analysis.retransmission",
+            "tcp.analysis.fast_retransmission",
+            "tcp.analysis.spurious_retransmission",
+            "tcp.analysis.duplicate_ack",
+            "tcp.analysis.out_of_order",
+            "tcp.analysis.ack_rtt",
+            "tcp.analysis.acks_frame",
+            "tcp.analysis.bytes_in_flight",
+            "tcp.analysis.zero_window",
+            "tcp.analysis.zero_window_probe",
+            "tcp.analysis.window_full",
+            "dns.id",
+            "dns.flags.response",
+            "dns.flags.rcode",
+            "dns.qry.type",
+            "dns.qry.name",
+            "dns.cname",
+            "dns.response_in",
+            "dns.response_to",
+            "dns.time",
+            "dns.retransmit_request",
+            "dns.retransmit_request_in",
+            "dns.flags.truncated",
+            "ip.len",
+            "ip.id",
+            "ip.flags.df",
+            "ip.flags.mf",
+            "ip.frag_offset",
+            "ipv6.plen",
+            "ipv6.fraghdr.offset",
+            "ipv6.fraghdr.more",
+            "ipv6.fraghdr.ident",
+            "icmp.type",
+            "icmp.code",
+            "icmp.mtu",
+            "icmpv6.type",
+            "icmpv6.code",
+            "icmpv6.mtu",
+            "tls.handshake.type",
+            "tls.record.content_type",
+            "tls.alert_message.level",
+            "tls.alert_message.desc",
+            "tls.handshake.extensions.supported_version",
+            "tcp.segment",
+            "tls.segment"
+          ],
+          "diagnostic_limits": {
+            "max_evidence_bytes": 16777216,
+            "max_evidence_items": 5000,
+            "max_field_occurrences": 64,
+            "max_frame_refs": 256,
+            "max_records": 20000
+          },
+          "fields": [
+            "frame.number",
+            "frame.time_epoch",
+            "frame.len",
+            "frame.cap_len",
+            "frame.protocols",
+            "ip.src",
+            "ip.dst",
+            "ipv6.src",
+            "ipv6.dst",
+            "tcp.srcport",
+            "tcp.dstport",
+            "udp.srcport",
+            "udp.dstport",
+            "tcp.stream",
+            "udp.stream",
+            "tcp.flags.syn",
+            "tcp.flags.ack",
+            "tcp.checksum.status",
+            "udp.checksum.status",
+            "ip.checksum.status",
+            "_ws.malformed",
+            "tcp.seq_raw",
+            "tcp.ack_raw",
+            "ip.proto",
+            "ipv6.nxt"
+          ],
+          "max_capture_bytes": 67108864,
+          "max_output_bytes": 16777216,
+          "max_packets": 100000,
+          "name_resolution": false,
+          "timeout_seconds": 30,
+          "two_pass": true
+        },
+        "evidence_ids": [
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_dns",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tcp_establishment_stream0",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tcp_health_stream0",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_rtt_stream0",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_window_behavior_stream0",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tcp_resets_stream0",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_throughput_stream0",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_mss",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_fragmentation",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_pmtud_signals",
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tls_handshakes_stream0"
+        ],
+        "created": "2026-10-09T12:59:02.676932+00:00"
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "33d7355a5113426785273a0a64d6bae7",
+        "kind": "original",
+        "sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "bytes": 94,
+        "parent_sha": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77"
+      },
+      {
+        "id": "85e99678144f485086a512d229ab4565",
+        "kind": "normalized",
+        "sha256": "12b41b7de42bb2c6c557a2000dd9f15efb589ed8ebd8a2c1c77699a1ad5e035b",
+        "bytes": 24351,
+        "parent_sha": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77"
+      },
+      {
+        "id": "b48dd13ceb5543558467964b54844260",
+        "kind": "report",
+        "sha256": "af4f5b1a0da3790f4d737135a2fb86e03e00a87b13acf9e80664c7de5db69d3f",
+        "bytes": 2323,
+        "parent_sha": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77"
+      },
+      {
+        "id": "d4c7937bc86a40eea943b7eed1476349",
+        "kind": "normalized",
+        "sha256": "d6b003a49e2f7c7e0972520467d0150892c5f347a58b947a1eb385a88e857cc8",
+        "bytes": 5588,
+        "parent_sha": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77"
+      }
+    ],
+    "evidence_count": 16,
+    "gate_boundary": "Gate 4: deterministic findings and report; model reasoning deferred",
+    "provider_mode": "none"
+  },
+  "report": {
+    "analyzer_versions": {
+      "analyzer": "0.2.0",
+      "capinfos": "4.2.2",
+      "tshark": "4.2.2"
+    },
+    "capture_quality": {
+      "evidence_ids": [
+        "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_assess_capture_quality"
+      ],
+      "limitations": [
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts"
+      ],
+      "state": "limited"
+    },
+    "case_id": "cccccccccccccccccccccccccccccccc",
+    "conclusion": {
+      "confidence": "low",
+      "evidence_ids": [],
+      "fault_domains": ["unknown"],
+      "statement": "No deterministic condition in the available evidence is sufficient to support a primary diagnosis.",
+      "type": "insufficient_evidence"
+    },
+    "findings": [
+      {
+        "affected_scope": {},
+        "alternate_explanations": [],
+        "category": "capture.quality",
+        "confidence": "medium",
+        "epistemic_class": "inferred",
+        "evidence_ids": [
+          "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_assess_capture_quality"
+        ],
+        "fault_domains": ["capture_observability"],
+        "id": "finding_001",
+        "limitations": [
+          "capture_drops",
+          "one_sided_conversations",
+          "midstream_indicators",
+          "duplicate_capture_artifacts"
+        ],
+        "recommended_validation": [
+          "Collect a complete bidirectional capture covering the full failure/slow transaction when feasible."
+        ],
+        "statement": "Capture quality is limited; material conclusions must account for the listed observability limitations.",
+        "title": "Capture observability limits the investigation",
+        "wireshark": {
+          "applicable": false,
+          "copy_filter": false,
+          "display_filter": null,
+          "evidence_capture": false,
+          "full_capture": false,
+          "show_packet_evidence": false
+        }
+      }
+    ],
+    "limitations": [
+      "capture_drops",
+      "one_sided_conversations",
+      "midstream_indicators",
+      "duplicate_capture_artifacts"
+    ],
+    "recommended_next_evidence": [
+      "Collect a complete bidirectional capture covering the full failure/slow transaction when feasible.",
+      "Capture the full request/response interval and collect application or load-balancer timing for the same transaction."
+    ],
+    "remaining_hypotheses": [
+      {
+        "evidence_ids": [],
+        "fault_domains": ["local_network", "network_path", "server_application"],
+        "next_evidence": [
+          "Capture the full request/response interval and collect application or load-balancer timing for the same transaction."
+        ],
+        "statement": "Network transport delay/loss and server/application wait remain plausible contributors to the reported slowness."
+      }
+    ],
+    "schema_version": "1.0",
+    "status": "complete",
+    "symptom": "application is slow",
+    "time_attribution": null
+  },
+  "evidence": [
+    {
+      "category": "analyze_dns",
+      "display_filter": "dns && !(icmp || icmpv6)",
+      "epistemic_class": "derived",
+      "frame_refs": [],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_dns",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+        "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+        "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_dns",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze dns",
+      "value": {
+        "ambiguous_message_frames": [],
+        "calculation": "Use reciprocal TShark DNS response_in/response_to frame links and matching ID, reverse endpoints and stream; elapsed=response timestamp-query timestamp. Rcode is observed; unanswered means no linked response in the capture.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "limitations": [
+          "Unanswered queries do not prove timeout or resolver failure; encrypted DNS is unavailable.",
+          "Raw names are never retained; unsupported DNS presentation withholds name identities and sequence correlation while numeric facts remain available. Missing query identity withholds sequence correlation. IDs and timing alone never establish name relationships.",
+          "A retry linked to an original query response has no independently attributable response interval. Multiple DNS messages in one frame are explicitly ambiguous; message boundaries are not reconstructed from parallel field arrays."
+        ],
+        "name_resolution_sequences": [],
+        "names_retained": false,
+        "orphan_response_frames": [],
+        "query_identity_design": "HMAC-SHA256(normalized ASCII name; key=SHA256(domain separator+capture SHA256 bytes)); lower case, remove one root dot. Per-capture pseudonym; no network meaning or secrecy guarantee.",
+        "transactions": []
+      }
+    },
+    {
+      "category": "analyze_fragmentation",
+      "display_filter": "frame.number == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_fragmentation",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_fragmentation",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze fragmentation",
+      "value": {
+        "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "limitations": [
+          "MSS is advertised receive capability, not measured path MTU.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+          "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+        ],
+        "packet_size_patterns": [],
+        "records": []
+      }
+    },
+    {
+      "category": "analyze_mss",
+      "display_filter": "frame.number == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_mss",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_mss",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze mss",
+      "value": {
+        "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "limitations": [
+          "MSS is advertised receive capability, not measured path MTU.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+          "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+        ],
+        "packet_size_patterns": [],
+        "records": []
+      }
+    },
+    {
+      "category": "analyze_pmtud_signals",
+      "display_filter": "frame.number == 1",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_pmtud_signals",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "MSS is advertised receive capability, not measured path MTU.",
+        "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+        "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "analyze_pmtud_signals",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze pmtud signals",
+      "value": {
+        "calculation": "MSS and fragmentation/ICMP fields are directly observed. Size range=min/max outer IPv4 total length or 40+IPv6 payload length by directional endpoint pair. Fragment offsets are encoded in 8-byte units; atomic IPv6 fragments are retained.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "limitations": [
+          "MSS is advertised receive capability, not measured path MTU.",
+          "ICMP errors describe the quoted traffic; this gate does not assign them to a TCP stream from quoted inner fields. Fragment fields are attributed only to the outer network header; quoted inner fragments are withheld. ICMPv6 PTB requires type 2/code 0.",
+          "No ICMP signal does not rule out PMTUD issues; large packets/retransmissions alone do not prove an MTU black hole."
+        ],
+        "packet_size_patterns": [
+          {
+            "destination": "192.0.2.2",
+            "df_packet_count": 0,
+            "family": "ipv4",
+            "maximum_ip_bytes": 40,
+            "maximum_size_frame": 1,
+            "minimum_ip_bytes": 40,
+            "minimum_size_frame": 1,
+            "packet_count": 1,
+            "source": "192.0.2.1"
+          }
+        ],
+        "records": []
+      }
+    },
+    {
+      "category": "analyze_rtt",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_rtt_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "ACK RTT is capture-point segment-to-ACK timing, includes delayed ACKs and may include SYN samples; not one-way path latency.",
+        "TShark 4.2.2 does not expose newer ambiguous_ack classification; these samples do not independently implement Karn's algorithm."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 1,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_rtt",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze rtt",
+      "value": {
+        "calculation": "Eligible TShark ACK RTT with a prior reverse segment in the same stream, ACK flag and nonnegative timestamps; omit segments marked retransmitted. Median midpoint; p95 nearest-rank ceil(0.95*n).",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "directions": [],
+        "limitations": [
+          "ACK RTT is capture-point segment-to-ACK timing, includes delayed ACKs and may include SYN samples; not one-way path latency.",
+          "TShark 4.2.2 does not expose newer ambiguous_ack classification; these samples do not independently implement Karn's algorithm."
+        ],
+        "max_seconds": null,
+        "median_seconds": null,
+        "min_seconds": null,
+        "p95_seconds": null,
+        "rejected_ack_frames": [],
+        "sample_count": 0,
+        "samples": []
+      }
+    },
+    {
+      "category": "analyze_tcp_establishment",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tcp_establishment_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "Incomplete means not observed before capture end, not a proven timeout.",
+        "Simultaneous-open and repeated connection epochs in one tool stream are not reconstructed."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 1,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_tcp_establishment",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze tcp establishment",
+      "value": {
+        "calculation": "Match reverse SYN/ACK acknowledgment to SYN seq+1 and final ACK seq/ack to SYN/ACK; duration=final ACK time-initial SYN time. Repeated SYN means same direction/sequence, not proven physical loss.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "establishment_seconds": null,
+        "final_ack_frame": null,
+        "limitations": [
+          "Incomplete means not observed before capture end, not a proven timeout.",
+          "Simultaneous-open and repeated connection epochs in one tool stream are not reconstructed."
+        ],
+        "reset_frame": null,
+        "state": "midstream",
+        "syn_frame": null,
+        "syn_repeated_frames": [],
+        "syn_to_synack_seconds": null,
+        "synack_frame": null,
+        "timing_reliable": true
+      }
+    },
+    {
+      "category": "analyze_tcp_health",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tcp_health_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "Expert indicators are suspected conditions, not independent proof of physical loss or its location.",
+        "Duplicate ACKs and out-of-order indicators alone do not establish loss; capture drops/offload can affect analysis."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 1,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_tcp_health",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze tcp health",
+      "value": {
+        "bytes_in_flight_samples": [],
+        "calculation": "Count frames labeled by each TShark tcp.analysis field; fraction=count/all stream frames (including control frames). Union retransmission classes without double counting. Bytes in flight are tool estimates.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "data_packets": 0,
+        "indicators": {
+          "duplicate_ack": {
+            "count": 0,
+            "fraction_of_stream_frames": 0.0,
+            "frame_refs": []
+          },
+          "fast_retransmission": {
+            "count": 0,
+            "fraction_of_stream_frames": 0.0,
+            "frame_refs": []
+          },
+          "out_of_order": {
+            "count": 0,
+            "fraction_of_stream_frames": 0.0,
+            "frame_refs": []
+          },
+          "retransmission": {
+            "count": 0,
+            "fraction_of_stream_frames": 0.0,
+            "frame_refs": []
+          },
+          "spurious_retransmission": {
+            "count": 0,
+            "fraction_of_stream_frames": 0.0,
+            "frame_refs": []
+          }
+        },
+        "limitations": [
+          "Expert indicators are suspected conditions, not independent proof of physical loss or its location.",
+          "Duplicate ACKs and out-of-order indicators alone do not establish loss; capture drops/offload can affect analysis."
+        ],
+        "packets": 1,
+        "retransmission_union_count": 0,
+        "retransmission_union_frames": []
+      }
+    },
+    {
+      "category": "analyze_tcp_resets",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tcp_resets_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 1,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_tcp_resets",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze tcp resets",
+      "value": {
+        "calculation": "RST and ACK flags are observed; lifecycle intervals subtract matching establishment timestamps.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "count": 0,
+        "establishment_state": "midstream",
+        "limitations": [
+          "Reset sender is from capture perspective; process intent, spoofing and application cause are unknown. Later SYNs are only subsequent observed attempts to the same client-address/server-address/service-port tuple; application/session continuity and causality to the prior reset are unknown."
+        ],
+        "observed_reconnect_attempts": [],
+        "resets": []
+      }
+    },
+    {
+      "category": "analyze_throughput",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_throughput_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "Unique observed payload is a delivered-payload approximation only; ACK delivery and application consumption are not proven, so application goodput is unknown.",
+        "Header frame lengths omit physical preamble/FCS/IFG where not captured; partial/midstream/truncated traces limit rates. Zero duration or timestamp regression yields null rates."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 1,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_throughput",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze throughput",
+      "value": {
+        "calculation": "Rates=8*bytes/(last stream frame time-first stream frame time), common bidirectional interval. Unique observed payload=union of per-direction TCP sequence ranges, excluding SYN/FIN sequence occupancy; unwrap 32-bit sequence changes within half-space, reject ambiguous large spans. Overlap=payload total-union; tool-marked retransmission bytes are a separate measure. ACK-confirmed approximation clips observed sequence intervals to highest reverse cumulative ACK; TCP goodput approximation=8*ACK-confirmed bytes/duration, not application goodput.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "directions": [
+          {
+            "application_goodput_bits_per_second": null,
+            "captured_bits_per_second": null,
+            "captured_bytes": 54,
+            "duration_frame_refs": [1, 1],
+            "duration_seconds": 0.0,
+            "expert_marked_retransmitted_payload_bytes": 0,
+            "observed_unique_payload_bits_per_second": null,
+            "overlapping_payload_bytes": 0,
+            "packets": 1,
+            "sender": {
+              "address": "192.0.2.1",
+              "port": 50000
+            },
+            "tcp_goodput_approx_bits_per_second": null,
+            "tcp_payload_bits_per_second": null,
+            "tcp_payload_bytes": 0,
+            "unique_acknowledged_payload_bytes": null,
+            "unique_observed_payload_bytes": 0,
+            "wire_bits_per_second": null,
+            "wire_bytes": 54
+          }
+        ],
+        "limitations": [
+          "Unique observed payload is a delivered-payload approximation only; ACK delivery and application consumption are not proven, so application goodput is unknown.",
+          "Header frame lengths omit physical preamble/FCS/IFG where not captured; partial/midstream/truncated traces limit rates. Zero duration or timestamp regression yields null rates."
+        ]
+      }
+    },
+    {
+      "category": "analyze_tls_handshakes",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_tls_handshakes_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "TLS 1.3 hides handshake content after ServerHello; TLS 1.2 Finished is normally encrypted. No decryption keys are used.",
+        "Repeated ClientHello may be HelloRetryRequest, renegotiation or transport retransmission, not proven TLS failure.",
+        "Reassembled handshakes are timestamped at their completion frame; frame references retain contributing segments where supplied by TShark."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 1,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_tls_handshakes",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze tls handshakes",
+      "value": {
+        "alerts": [],
+        "attempts": [],
+        "calculation": "Pair each visible ClientHello with next reverse ServerHello before another ClientHello. Measure message-completion-frame intervals; a visible Finished interval is separate, not proof of session usability.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "limitations": [
+          "TLS 1.3 hides handshake content after ServerHello; TLS 1.2 Finished is normally encrypted. No decryption keys are used.",
+          "Repeated ClientHello may be HelloRetryRequest, renegotiation or transport retransmission, not proven TLS failure.",
+          "Reassembled handshakes are timestamped at their completion frame; frame references retain contributing segments where supplied by TShark."
+        ],
+        "repeated_client_hello_frames": [],
+        "session_completion": "unknown",
+        "state": "not_observable",
+        "supported_version_fields": [],
+        "visible_messages": []
+      }
+    },
+    {
+      "category": "analyze_window_behavior",
+      "display_filter": "tcp.stream == 0",
+      "epistemic_class": "derived",
+      "frame_refs": [1],
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_analyze_window_behavior_stream0",
+      "limitations": [
+        "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts",
+        "A zero window constrains the peer sender, but does not prove an application cause or all idle time is window-limited.",
+        "Scale factor -1 means unknown; -2 means no scaling. Window-full is a Wireshark expert indication, not measured receiver buffer occupancy."
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "dst_ip": "192.0.2.2",
+        "dst_port": 443,
+        "end_frame": 1,
+        "protocol": "tcp",
+        "src_ip": "192.0.2.1",
+        "src_port": 50000,
+        "start_frame": 1,
+        "tcp_stream": 0
+      },
+      "source": {
+        "capability": "analyze_window_behavior",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "analyze window behavior",
+      "value": {
+        "calculation": "Observe advertised/scaled windows by sender. Zero-window interval begins at first zero advertisement and ends at next positive advertisement from that endpoint; duration is only that observed interval.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "directions": [
+          {
+            "advertiser": {
+              "address": "192.0.2.1",
+              "port": 50000
+            },
+            "extreme_frame_refs": [1],
+            "maximum_window_bytes": 65535,
+            "minimum_window_bytes": 65535,
+            "sample_count": 1,
+            "scale_options": [],
+            "scaling_factors": [-1],
+            "zero_window_intervals": []
+          }
+        ],
+        "indicators": {
+          "window_full": [],
+          "zero_window": [],
+          "zero_window_probe": []
+        },
+        "limitations": [
+          "A zero window constrains the peer sender, but does not prove an application cause or all idle time is window-limited.",
+          "Scale factor -1 means unknown; -2 means no scaling. Window-full is a Wireshark expert indication, not measured receiver buffer occupancy."
+        ]
+      }
+    },
+    {
+      "category": "assess_capture_quality",
+      "epistemic_class": "derived",
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_assess_capture_quality",
+      "limitations": [
+        "capture_drops",
+        "one_sided_conversations",
+        "midstream_indicators",
+        "duplicate_capture_artifacts"
+      ],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "assess_capture_quality",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "assess capture quality",
+      "value": {
+        "calculation": "Insufficient for empty capture; limited for observed quality indicators; good means no baseline indicator observed, not complete visibility.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "checks": {
+          "capture_drops": {
+            "count": null,
+            "frame_refs": [],
+            "state": "unknown"
+          },
+          "checksum_anomalies": {
+            "frame_refs": [],
+            "note": "Checksum validation enabled. Offload, corruption and capture artifacts cannot be distinguished here.",
+            "offload_cause": "unknown",
+            "state": "not_observed"
+          },
+          "duplicate_capture_artifacts": {
+            "frame_refs": [],
+            "note": "Repeated transport packets alone do not prove duplicate capture.",
+            "state": "unknown"
+          },
+          "incomplete_handshakes": {
+            "frame_refs": [],
+            "state": "not_observed"
+          },
+          "malformed_packets": {
+            "frame_refs": [],
+            "state": "not_observed"
+          },
+          "midstream_indicators": {
+            "frame_refs": [1],
+            "note": "Initial SYN not visible; handshake cannot be assessed.",
+            "state": "observed"
+          },
+          "one_sided_conversations": {
+            "count": 1,
+            "frame_refs": [1],
+            "note": "One observed direction may be normal; asymmetric capture is not proven.",
+            "state": "observed"
+          },
+          "timestamp_regressions": {
+            "frame_refs": [],
+            "state": "not_observed"
+          },
+          "truncation": {
+            "frame_refs": [],
+            "state": "not_observed"
+          }
+        },
+        "limitations": [
+          "capture_drops",
+          "one_sided_conversations",
+          "midstream_indicators",
+          "duplicate_capture_artifacts"
+        ],
+        "state": "limited"
+      }
+    },
+    {
+      "category": "get_capture_metadata",
+      "epistemic_class": "observed",
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_get_capture_metadata",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "get_capture_metadata",
+        "tool": "capinfos",
+        "version": "4.2.2"
+      },
+      "summary": "get capture metadata",
+      "value": {
+        "capture_drops": null,
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "duration_seconds": 0.0,
+        "encapsulation": "ether",
+        "file_bytes": 94,
+        "format": "pcap",
+        "packet_count": 1,
+        "snaplen": 65535,
+        "wire_bytes": 54
+      }
+    },
+    {
+      "category": "list_conversations",
+      "epistemic_class": "derived",
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_list_conversations",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "list_conversations",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "list conversations",
+      "value": {
+        "calculation": "Group bidirectional endpoint pairs by transport and tool stream ID; sum wire lengths; duration=max(time)-min(time).",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "conversations": [
+          {
+            "a": {
+              "address": "192.0.2.1",
+              "port": 50000
+            },
+            "a_to_b_packets": 1,
+            "b": {
+              "address": "192.0.2.2",
+              "port": 443
+            },
+            "b_to_a_packets": 0,
+            "display_filter": "tcp.stream == 0",
+            "duration_seconds": 0.0,
+            "frame_refs": [1],
+            "stream": 0,
+            "transport": "tcp",
+            "wire_bytes": 54
+          }
+        ]
+      }
+    },
+    {
+      "category": "list_endpoints",
+      "epistemic_class": "derived",
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_list_endpoints",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "list_endpoints",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "list endpoints",
+      "value": {
+        "calculation": "Sum frame wire lengths per observed IP endpoint and direction.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "endpoints": [
+          {
+            "address": "192.0.2.1",
+            "address_family": "ipv4",
+            "ports": [
+              {
+                "port": 50000,
+                "transport": "tcp"
+              }
+            ],
+            "received_packets": 0,
+            "received_wire_bytes": 0,
+            "sent_packets": 1,
+            "sent_wire_bytes": 54
+          },
+          {
+            "address": "192.0.2.2",
+            "address_family": "ipv4",
+            "ports": [
+              {
+                "port": 443,
+                "transport": "tcp"
+              }
+            ],
+            "received_packets": 1,
+            "received_wire_bytes": 54,
+            "sent_packets": 0,
+            "sent_wire_bytes": 0
+          }
+        ],
+        "excluded_non_ip_packets": 0
+      }
+    },
+    {
+      "category": "list_protocols",
+      "epistemic_class": "derived",
+      "id": "ev_425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77_list_protocols",
+      "limitations": [],
+      "schema_version": "1.0",
+      "scope": {
+        "capture": true
+      },
+      "source": {
+        "capability": "list_protocols",
+        "tool": "tshark",
+        "version": "4.2.2"
+      },
+      "summary": "list protocols",
+      "value": {
+        "calculation": "Count each protocol at most once per frame; layers overlap.",
+        "capture_sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "protocols": [
+          {
+            "packets": 1,
+            "protocol": "eth"
+          },
+          {
+            "packets": 1,
+            "protocol": "ethertype"
+          },
+          {
+            "packets": 1,
+            "protocol": "ip"
+          },
+          {
+            "packets": 1,
+            "protocol": "tcp"
+          }
+        ]
+      }
+    }
+  ]
+}

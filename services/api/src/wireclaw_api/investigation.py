@@ -385,6 +385,8 @@ def _finding_dict(number: int, finding: RuleFinding, evidence_map: dict[str, dic
         "title": finding.title,
         "category": finding.category,
         "confidence": finding.confidence,
+        "epistemic_class": "inferred",
+        "fault_domains": list(finding.fault_domains),
         "statement": finding.statement,
         "affected_scope": finding.affected_scope,
         "evidence_ids": list(finding.evidence_ids),

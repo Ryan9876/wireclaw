@@ -112,7 +112,7 @@ def main():
                 intake.raise_for_status()
                 response = client.post(f"/api/cases/{case_id}/investigate")
                 response.raise_for_status()
-                assert response.json()["state"] == "INVESTIGATING"
+                assert response.json()["state"] == "COMPLETE"
                 evidence = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
                 for item in evidence:
                     validator.validate(item)

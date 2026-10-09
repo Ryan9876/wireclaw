@@ -86,14 +86,16 @@ The analyzer and web application are containerized. A small optional host bridge
 
 ## Current status
 
-Gates 1 and 2 are approved and merged. Gate 3 adds the local API and case model
-for independent review. Gate 4 and later behavior is not implemented. The product
-specification remains authoritative; start with `specs/v1/constitution.md`.
+Gates 1 through 4 are merged. Gate 5 implements the local browser workflow and
+is awaiting PR approval. See [web startup instructions](apps/web/README.md) and
+[Gate 5 verification](docs/gate5-verification.md). Gates 6 and later remain
+unimplemented. The product specification remains authoritative; start with
+`specs/v1/constitution.md`.
 
 ## Gate 1 analyzer
 
 The deterministic Python analyzer is implemented. See [developer instructions](services/analyzer/README.md), [Gate 1 verification](docs/gate1-verification.md), and [Gate 2 verification](docs/gate2-verification.md).
 
 The [local API](services/api/README.md) provides bounded intake, persistence,
-analysis and case deletion. Findings/reports, UI, LLM, host bridge and Docker
-packaging remain later gates.
+analysis, rules-only findings/reports and case deletion. The [web UI](apps/web/README.md)
+presents that API. LLM adapters, host bridge and Docker packaging remain later gates.

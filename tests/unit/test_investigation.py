@@ -513,3 +513,36 @@ def test_candidate_ranking_includes_nonstream_ip_conversation():
     assert ranked[0].stream is None
     assert ranked[0].tcp_stream is None
     assert "explicit_endpoint_match" in ranked[0].reasons
+
+
+def test_finding_domain_and_epistemic_class_expose_existing_rules_without_new_diagnosis():
+    evidence = [
+        quality(),
+        ev(
+            "ev_rtt_domain",
+            "analyze_rtt",
+            {"median_seconds": 0.2, "sample_count": 8},
+            0,
+            filt="tcp.stream == 0",
+        ),
+    ]
+    report = build_investigation_result(
+        case_id="a" * 32, symptom="application is slow", evidence=evidence
+    )
+    finding = report["findings"][0]
+    assert finding["fault_domains"] == report["conclusion"]["fault_domains"]
+    assert finding["epistemic_class"] == "inferred"
+    assert finding["confidence"] == report["conclusion"]["confidence"]
+    check_shape(report)
+
+
+def test_report_schema_remains_compatible_with_persisted_gate4_findings():
+    report = build_investigation_result(
+        case_id="a" * 32,
+        symptom="users disconnect",
+        evidence=[quality(), ev("ev_reset_legacy", "analyze_tcp_resets", {"count": 1}, 0)],
+    )
+    for finding in report["findings"]:
+        finding.pop("fault_domains")
+        finding.pop("epistemic_class")
+    check_shape(report)
