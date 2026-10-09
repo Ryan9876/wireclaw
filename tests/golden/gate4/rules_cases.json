@@ -1,0 +1,82 @@
+{
+  "clean_tcp": {
+    "capture_quality": "good",
+    "conclusion_type": "insufficient_evidence",
+    "confidence": "low",
+    "fault_domains": ["unknown"],
+    "primary_category": null,
+    "finding_categories": [],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": true
+  },
+  "high_rtt": {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["local_network", "network_path"],
+    "primary_category": "tcp.rtt",
+    "finding_categories": ["tcp.rtt"],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": false
+  },
+  "window_tcp": {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "high",
+    "fault_domains": ["unknown"],
+    "primary_category": "tcp.receive_window",
+    "finding_categories": ["tcp.receive_window"],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": false
+  },
+  "reset_tcp": {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["unknown"],
+    "primary_category": "tcp.reset",
+    "finding_categories": ["tcp.reset"],
+    "time_segments": ["tcp_establishment"],
+    "has_remaining_hypotheses": false
+  },
+  "dns_delay": {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["dns"],
+    "primary_category": "dns.timing",
+    "finding_categories": ["dns.timing"],
+    "time_segments": ["dns"],
+    "has_remaining_hypotheses": false
+  },
+  "tls_delay": {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["server_application", "local_network", "network_path"],
+    "primary_category": "tls.handshake",
+    "finding_categories": ["tls.handshake"],
+    "time_segments": ["tcp_establishment", "tls_establishment"],
+    "has_remaining_hypotheses": false
+  },
+  "failed_tcp": {
+    "capture_quality": "good",
+    "conclusion_type": "supported_finding",
+    "confidence": "medium",
+    "fault_domains": ["local_network", "network_path", "server_application"],
+    "primary_category": "tcp.establishment_failure",
+    "finding_categories": ["tcp.establishment_failure", "tcp.reset"],
+    "time_segments": [],
+    "has_remaining_hypotheses": false
+  },
+  "midstream": {
+    "capture_quality": "limited",
+    "conclusion_type": "insufficient_evidence",
+    "confidence": "low",
+    "fault_domains": ["unknown"],
+    "primary_category": null,
+    "finding_categories": ["capture.quality"],
+    "time_segments": [],
+    "has_remaining_hypotheses": true
+  }
+}
