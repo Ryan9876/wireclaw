@@ -59,6 +59,10 @@ def test_report_persists_validates_and_is_stable_across_restart_and_rerun(tmp_pa
         assert response.status_code == 200, response.text
         report = response.json()
         validator.validate(report)
+        tool_versions = client.app.state.service.analyzer(case_id).versions
+        assert report["analyzer_versions"]["analyzer"] == "0.2.0"
+        assert report["analyzer_versions"]["tshark"] == tool_versions["tshark"]["version"]
+        assert report["analyzer_versions"]["capinfos"] == tool_versions["capinfos"]["version"]
         findings = client.get(f"/api/cases/{case_id}/findings")
         assert findings.status_code == 200
         assert findings.json()["findings"] == report["findings"]
