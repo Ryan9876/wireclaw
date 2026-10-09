@@ -60,7 +60,7 @@ def test_web_csp_uses_configured_validated_bridge_port(tmp_path):
     ):
         csp = client.get("/").headers["content-security-policy"]
         assert "connect-src 'self' http://127.0.0.1:18766" in csp
-        assert "8766" not in csp
+        assert "http://127.0.0.1:8766" not in csp
 
 
 @pytest.mark.parametrize(
