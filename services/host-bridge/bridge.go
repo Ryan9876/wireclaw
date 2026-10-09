@@ -77,7 +77,7 @@ func newServer(dataRoot, wireshark string) (*server, error) {
 		allowedOrigins: map[string]struct{}{
 			"http://127.0.0.1:8765": {},
 			"http://localhost:8765": {},
-			"http://[::1]:8765":    {},
+			"http://[::1]:8765":     {},
 		},
 		launch: func(executable string, args ...string) error {
 			command := exec.Command(executable, args...)
