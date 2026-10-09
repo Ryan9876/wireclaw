@@ -279,5 +279,5 @@ def create_app(data_root: Path, policy: Policy | None = None):
         with service().admission():
             return service().delete(case_id)
 
-    register_web(app)
+    register_web(app, bridge_port=policy.bridge_port)
     return app

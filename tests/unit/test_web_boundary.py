@@ -1,10 +1,10 @@
-"""Gate 5 static UI serving preserves loopback and fixed-path boundaries."""
+"""Gate 5/6 static UI serving preserves loopback and fixed-path boundaries."""
 
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from wireclaw_api import create_app
+from wireclaw_api import Policy, create_app
 
 
 @pytest.fixture
@@ -22,16 +22,19 @@ def web_client(tmp_path):
         yield client, dist
 
 
-def test_web_same_origin_security_headers_and_unchanged_api(web_client):
+def test_web_same_origin_security_headers_and_narrow_bridge_connect(web_client):
     client, _ = web_client
     response = client.get("/")
     assert response.status_code == 200
     assert "Wireclaw" in response.text
     csp = response.headers["content-security-policy"]
-    assert "connect-src 'self'" in csp
+    assert "connect-src 'self' http://127.0.0.1:8766" in csp
     assert "script-src 'self'" in csp
     assert "frame-ancestors 'none'" in csp
     assert "unsafe-inline" not in csp
+    assert "http://localhost:8766" not in csp
+    assert "https:" not in csp
+    assert "*" not in csp
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     asset = client.get("/assets/index-abc123.js")
@@ -41,6 +44,23 @@ def test_web_same_origin_security_headers_and_unchanged_api(web_client):
     assert client.get("/", headers={"origin": "http://evil.invalid"}).status_code == 403
     assert client.get("/api/health").json()["provider_mode"] == "none"
     assert "/" not in client.app.openapi()["paths"]
+
+
+def test_web_csp_uses_configured_validated_bridge_port(tmp_path):
+    dist = tmp_path / "web"
+    dist.mkdir()
+    (dist / "assets").mkdir()
+    (dist / "index.html").write_text("<!doctype html><h1>Wireclaw</h1>")
+    with (
+        patch("wireclaw_api.web.WEB_DIST", dist),
+        TestClient(
+            create_app(tmp_path / "data", Policy(bridge_port=18766)),
+            base_url="http://127.0.0.1:8765",
+        ) as client,
+    ):
+        csp = client.get("/").headers["content-security-policy"]
+        assert "connect-src 'self' http://127.0.0.1:18766" in csp
+        assert "8766" not in csp
 
 
 @pytest.mark.parametrize(
