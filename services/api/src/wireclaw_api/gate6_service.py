@@ -151,7 +151,9 @@ class Service(Gate4Service):
                     with suppress(OSError):
                         path.chmod(0o600)
                     path.unlink(missing_ok=True)
-            code = error.code if isinstance(error, (ApiError, AnalyzerError)) else "operation_failed"
+            code = (
+                error.code if isinstance(error, (ApiError, AnalyzerError)) else "operation_failed"
+            )
             self.log(case_id, "evidence_capture", started, "failed", code)
             if isinstance(error, ApiError):
                 raise
