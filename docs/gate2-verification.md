@@ -432,3 +432,19 @@ expert labels and later SYNs do not establish root cause or application continui
 Gate 2 validation passes. PR #3 remains unmerged pending direct merge authorization;
 PR #2 remains a superseded draft and must not be merged. All Gate 2 task checkboxes
 remain complete; Gate 3 and later tasks remain unchecked. No Gate 3+ work was included.
+
+## Approved Gate 2 closeout — 2026-10-08 UTC
+
+The explicit Gate 3 work instruction authorized merging the independently approved
+PR #3 at `7795e8ffb8c9df58534b365d940ada2a7bffd342`. Live metadata confirmed
+that exact head, mergeability, three expected commits and unchanged base/main
+`3eb988f84bb2ccdf1f193e4be6464d4d0d9c50e5`. The final record reported 250 passed,
+96 real integration passes, zero skips, 40 semantic goldens, schema, lint/format,
+compilation, repeatability and immutability. Diff inspection confirmed no Gate 3+
+implementation. G2.1–G2.11 remained checked, all G3 tasks unchecked at merge.
+
+PR #3 merged as `059d6b27e8518571d7dbe229d524773d58234e8a`. Superseded PR #2
+closed without merging. A clean local checkout was updated to that main and
+`gate3-local-api-case-model` was created from it. The unchanged analyzer suite was
+then rerun locally: 250 passed, zero skipped, real TShark/capinfos 4.2.2.
+Earlier unmerged-state statements remain historical review records.

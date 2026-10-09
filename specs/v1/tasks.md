@@ -80,17 +80,17 @@ Requirements: R-F002, R-F022 through R-F026, R-S001 through R-S010.
 
 Tasks:
 
-- [ ] G3.1 Create FastAPI service.
-- [ ] G3.2 Implement case state machine.
-- [ ] G3.3 Implement SQLite schema/migrations.
-- [ ] G3.4 Implement artifact registry and path confinement.
-- [ ] G3.5 Implement capture upload/intake API.
-- [ ] G3.6 Implement baseline analysis orchestration.
-- [ ] G3.7 Implement analyzer capability API.
-- [ ] G3.8 Implement bounded execution/resource policy.
-- [ ] G3.9 Implement case retrieval/deletion.
-- [ ] G3.10 Add structured safe logging.
-- [ ] G3.11 Add API contract/integration tests.
+- [x] G3.1 Create FastAPI service.
+- [x] G3.2 Implement case state machine.
+- [x] G3.3 Implement SQLite schema/migrations.
+- [x] G3.4 Implement artifact registry and path confinement.
+- [x] G3.5 Implement capture upload/intake API.
+- [x] G3.6 Implement baseline analysis orchestration.
+- [x] G3.7 Implement analyzer capability API.
+- [x] G3.8 Implement bounded execution/resource policy.
+- [x] G3.9 Implement case retrieval/deletion.
+- [x] G3.10 Add structured safe logging.
+- [x] G3.11 Add API contract/integration tests.
 
 Exit criteria:
 - localhost API can create, analyze, retrieve, and delete a case safely

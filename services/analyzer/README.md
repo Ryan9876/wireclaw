@@ -146,9 +146,7 @@ are in `diagnostics.py`. No API, RCA/report, UI, host bridge, model or packaging
 from wireclaw_analyzer import Capability, DiagnosticLimits, DiagnosticRequest
 
 result = analyzer.diagnose(capture_id)
-rtt = analyzer.run_diagnostic(
-    DiagnosticRequest(capture_id, Capability.RTT, tcp_stream=0)
-)
+rtt = analyzer.run_diagnostic(DiagnosticRequest(capture_id, Capability.RTT, tcp_stream=0))
 ```
 
 `DiagnosticRequest` accepts only a validated capture hash, `Capability` enum and
