@@ -15,7 +15,6 @@ from jsonschema import Draft202012Validator, ValidationError
 from .investigation import build_investigation_result
 from .models import TRANSITIONS, State
 from .service import Service as Gate3Service
-from .service import now
 from .storage import ApiError, encode
 
 
@@ -31,7 +30,9 @@ class Service(Gate3Service):
 
     def get(self, case_id):
         case = super().get(case_id)
-        case["gate_boundary"] = "Gate 4: deterministic findings and report; model reasoning deferred"
+        case["gate_boundary"] = (
+            "Gate 4: deterministic findings and report; model reasoning deferred"
+        )
         return case
 
     def evidence_records(self, case_id):
@@ -117,9 +118,7 @@ class Service(Gate3Service):
                     )
                     artifact_id = existing["id"]
                 else:
-                    artifact_id = self.register(
-                        conn, case_id, path, "report", case["capture_sha"]
-                    )
+                    artifact_id = self.register(conn, case_id, path, "report", case["capture_sha"])
         except BaseException:
             path.chmod(0o600) if path.exists() else None
             path.unlink(missing_ok=True)
