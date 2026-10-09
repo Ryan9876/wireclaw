@@ -104,14 +104,14 @@ Requirements: R-F012 through R-F015, R-F021, R-U002, R-U004, R-U006.
 
 Tasks:
 
-- [ ] G4.1 Implement deterministic candidate-conversation ranking.
-- [ ] G4.2 Implement basic time-attribution engine.
-- [ ] G4.3 Implement evidence-based fault-domain rules.
-- [ ] G4.4 Implement evidence sufficiency checks.
-- [ ] G4.5 Implement `insufficient_evidence` result.
-- [ ] G4.6 Implement finding/report assembler.
-- [ ] G4.7 Implement confidence policy based on evidence conditions.
-- [ ] G4.8 Create golden RCA cases with expected findings/unknown outcomes.
+- [x] G4.1 Implement deterministic candidate-conversation ranking.
+- [x] G4.2 Implement basic time-attribution engine.
+- [x] G4.3 Implement evidence-based fault-domain rules.
+- [x] G4.4 Implement evidence sufficiency checks.
+- [x] G4.5 Implement `insufficient_evidence` result.
+- [x] G4.6 Implement finding/report assembler.
+- [x] G4.7 Implement confidence policy based on evidence conditions.
+- [x] G4.8 Create golden RCA cases with expected findings/unknown outcomes.
 
 Exit criteria:
 - Wireclaw can explain representative cases without model access
