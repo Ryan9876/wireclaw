@@ -1,0 +1,67 @@
+name: Gate 4 review remediation v3
+
+on:
+  push:
+    branches:
+      - gate4-rules-investigation-report
+
+permissions:
+  contents: write
+
+jobs:
+  remediate-and-validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Apply review remediation
+        run: |
+          python scripts/gate4_review_remediation.py
+          python scripts/gate4_review_expectation_fix.py
+      - name: Install packet tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tshark
+          tshark --version
+          capinfos --version
+      - name: Install test toolchain
+        run: python -m pip install -e '.[test]'
+      - name: Format and regenerate OpenAPI
+        run: |
+          ruff check . --fix
+          ruff format services/api/src tests/unit tests/integration
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from wireclaw_api import create_app
+          snapshot = create_app(Path('/tmp/wireclaw-openapi-contract')).openapi()
+          Path('contracts/api.openapi.json').write_text(json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
+          PY
+      - name: Static validation
+        run: |
+          ruff check .
+          ruff format --check services/api/src tests/unit tests/integration
+          python -m compileall -q services tests
+          git diff --check
+      - name: Full validation
+        run: pytest -q
+      - name: Unit count
+        run: pytest tests/unit -q
+      - name: Integration count
+        run: pytest tests/integration -q
+      - name: Commit remediation
+        shell: bash
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add services tests contracts docs
+            git commit -m "fix: remediate Gate 4 independent review findings"
+            git push
+          fi
