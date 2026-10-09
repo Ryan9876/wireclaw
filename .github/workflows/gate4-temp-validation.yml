@@ -80,6 +80,10 @@ jobs:
           git diff --check
       - name: Run full tests with real packet tools
         run: pytest -q
+      - name: Run unit suite count
+        run: pytest tests/unit -q
+      - name: Run integration suite count with real packet tools
+        run: pytest tests/integration -q
       - name: Commit generated and formatter changes
         shell: bash
         run: |
