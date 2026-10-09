@@ -56,10 +56,17 @@ class Service(Gate3Service):
             )
             for row in rows:
                 current = json.loads(row["versions"])
-                if isinstance(current, dict):
-                    for key, value in sorted(current.items()):
-                        if isinstance(key, str) and isinstance(value, (str, int, float)):
-                            versions[key] = str(value)
+                if not isinstance(current, dict):
+                    continue
+                for key, value in sorted(current.items()):
+                    if not isinstance(key, str):
+                        continue
+                    if isinstance(value, (str, int, float)):
+                        versions[key] = str(value)
+                    elif isinstance(value, dict):
+                        version = value.get("version")
+                        if isinstance(version, (str, int, float)):
+                            versions[key] = str(version)
         return versions
 
     def _report_row(self, case_id):
