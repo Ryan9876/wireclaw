@@ -6,7 +6,7 @@ Status: **implementation prepared; release validation incomplete**
 
 - Starting `main` SHA: `128c508443a4dd6606fce3b2c2faf5773d387012`
 - Branch: `gate7-reasoning-provider`
-- Validated commit SHA: recorded after the implementation commit.
+- Validated implementation commit SHA: `9609b4d9614687b48edf78f6c09d8e6b7384d6cf`.
 - Gate 8: not started.
 
 ## Task matrix
