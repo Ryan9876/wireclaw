@@ -206,15 +206,67 @@ class _ScriptedProvider:
     def __init__(self, actions):
         self.actions = iter(actions)
         self.calls = 0
+        self.requests = []
 
     def propose(self, request):
         self.calls += 1
+        self.requests.append(request)
         value = next(self.actions)
         return (
             value
             if isinstance(value, ProviderResult)
             else ProviderResult(content=json.dumps(value))
         )
+
+
+def test_iterative_capability_adds_deterministic_evidence_before_finalize(monkeypatch):
+    new_evidence_id = "ev_" + "d" * 64 + "_analyze_rtt_stream0_detail"
+    provider = _ScriptedProvider(
+        [
+            {
+                "action": "request_capability",
+                "capability": "analyze_rtt",
+                "parameters": {"tcp_stream": 0},
+            },
+            {
+                "action": "finalize",
+                "hypotheses": [
+                    {
+                        "category": "tcp.rtt",
+                        "evidence_ids": [new_evidence_id],
+                        "fault_domains": ["network_path"],
+                        "summary": "This prose is never copied to the report.",
+                    }
+                ],
+                "remaining_hypotheses": [],
+            },
+        ]
+    )
+    monkeypatch.setattr(loop, "make_provider", lambda policy: provider)
+    service = _StubService()
+
+    def analyze(case_id, request):
+        service.calls += 1
+        observation = {
+            "id": new_evidence_id,
+            "category": "analyze_rtt",
+            "epistemic_class": "derived",
+            "source": {"capability": "analyze_rtt", "tool": "tshark", "version": "4.2"},
+            "scope": {"tcp_stream": 0, "protocol": "tcp"},
+            "value": {"median_seconds": 0.25},
+            "frame_refs": [3, 4],
+            "limitations": [],
+        }
+        service.evidence.append(observation)
+        service.report["findings"][0]["evidence_ids"] = [new_evidence_id]
+        return {"evidence": [observation]}
+
+    service.run_reasoning_capability = analyze
+    result, ranking, _ = loop.run_loop(service, "case1", service.report)
+    assert result["mode"] == "model_assisted"
+    assert ranking == ["tcp.rtt"]
+    assert service.calls == 1
+    assert new_evidence_id in provider.requests[1].context_json
 
 
 def test_duplicate_capability_request_executes_once(monkeypatch):
@@ -233,7 +285,8 @@ def test_duplicate_capability_request_executes_once(monkeypatch):
     assert provider.calls == 2
 
 
-def test_fabricated_evidence_and_unsupported_summary_are_not_accepted(monkeypatch):
+def test_fabricated_or_cross_case_evidence_and_unsupported_summary_are_not_accepted(monkeypatch):
+    other_case_evidence_id = "ev_" + "e" * 64 + "_analyze_rtt_stream0"
     provider = _ScriptedProvider(
         [
             {
@@ -244,7 +297,13 @@ def test_fabricated_evidence_and_unsupported_summary_are_not_accepted(monkeypatc
                         "evidence_ids": ["ev_" + "f" * 64 + "_fake"],
                         "fault_domains": ["network_path"],
                         "summary": "The packet proves an unrelated outage.",
-                    }
+                    },
+                    {
+                        "category": "tcp.rtt",
+                        "evidence_ids": [other_case_evidence_id],
+                        "fault_domains": ["network_path"],
+                        "summary": "Evidence from another case is not in this case's evidence set.",
+                    },
                 ],
                 "remaining_hypotheses": [],
             }
@@ -255,7 +314,7 @@ def test_fabricated_evidence_and_unsupported_summary_are_not_accepted(monkeypatc
     result, ranking, _ = loop.run_loop(service, "case1", service.report)
     assert result["mode"] == "model_assisted"
     assert ranking == []
-    assert result["rejected_proposals"] == 1
+    assert result["rejected_proposals"] == 2
     assert service.calls == 0
 
 
