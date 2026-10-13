@@ -245,9 +245,11 @@ The host bridge and analyzer shall reject path traversal and constrain artifact 
 
 The web UI, API/orchestrator, and analyzer shall run via Docker-compatible packaging.
 
-### R-D002 — Cross-platform hosts
+### R-D002 — V1 supported host
 
-Supported host platforms are macOS, Windows, and Linux.
+The supported V1 release host platform is macOS.
+
+Windows and Linux are post-V1 roadmap targets. Automated compilation, discovery, or protocol tests on those platforms do not constitute V1 release support.
 
 ### R-D003 — Native Wireshark
 
@@ -255,11 +257,13 @@ Wireshark GUI remains a native host dependency for the Open-in-Wireshark actions
 
 ### R-D004 — Native host bridge
 
-Wireclaw shall provide equivalent host-bridge behavior for macOS, Windows, and Linux.
+Wireclaw V1 shall provide native host-bridge behavior on macOS.
+
+Platform-specific bridge code shall remain isolated and portable so Windows and Linux can be release-qualified in future versions. Existing Windows/Linux CI coverage may be retained as non-release portability evidence.
 
 ### R-D005 — Simple startup
 
-A user who has Docker and Wireshark installed should be able to start Wireclaw through a documented launcher without understanding the internal service topology.
+A macOS user who has Docker and Wireshark installed should be able to start Wireclaw through a documented launcher without understanding the internal service topology.
 
 ### R-D006 — Reproducible analyzer image
 
@@ -327,6 +331,8 @@ Tool/provider/platform-specific code shall be isolated behind interfaces rather 
 
 The following are not V1 requirements:
 
+- Windows release qualification/support
+- Linux release qualification/support
 - centralized multi-user server deployment
 - continuous packet capture appliance
 - full NPM/APM replacement
@@ -339,4 +345,6 @@ The following are not V1 requirements:
 - cloud storage of raw captures
 - training a custom PCAP LLM
 
-These may be reconsidered only through a future specification.
+Windows and Linux support are planned post-V1 roadmap items and require their own release qualification before being described as supported.
+
+Other non-goals may be reconsidered only through a future specification.
