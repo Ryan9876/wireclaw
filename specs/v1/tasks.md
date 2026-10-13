@@ -154,7 +154,7 @@ Tasks:
 - [x] G6.4 Enforce loopback/authentication/origin restrictions and one-time bounded grants.
 - [x] G6.5 Implement logical-artifact resolution/path confinement.
 - [x] G6.6 Implement configured Wireshark executable discovery/selection.
-- [x] G6.7 Implement macOS launcher behavior; discovery and argv verified in macOS CI. Native GUI acceptance remains pending.
+- [x] G6.7 Implement macOS launcher behavior; discovery and argv verified in macOS CI. Native GUI accepted on macOS 27.0.1 arm64 with Wireshark 4.6.9.
 - [x] G6.8 Implement Windows launcher behavior; discovery and argv verified in Windows CI. Native GUI acceptance remains pending.
 - [x] G6.9 Implement Linux launcher behavior; discovery and argv verified in Linux CI. Native GUI acceptance remains pending.
 - [x] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
@@ -164,7 +164,7 @@ Tasks:
 
 Exit criteria:
 - both Wireshark actions are always visible together when applicable
-- both are manually accepted in native desktop sessions on macOS, Windows, and Linux (pending; CI proves build, discovery, protocol, and argv behavior only)
+- both are manually accepted in native desktop sessions on macOS (passed), Windows, and Linux (pending); CI proves build, discovery, protocol, and argv behavior only
 - the bridge cannot be used for arbitrary command execution
 
 ## Gate 7 — Reasoning provider and iterative investigation

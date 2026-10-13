@@ -4,16 +4,17 @@ Date: 2026-10-13
 
 Branch: `gate6-wireshark-evidence-bridge`
 
-Validated product commit: `a27f35c5c9a0ffbdd4b7ed093c0da892f8d7bb63`
+Last CI-validated handoff SHA: `965033512afe5d130090b01980fd6b70a7397012`
 
 Main/base SHA: `29505bb5069be135292d5d6f30ea398552518d0c`
 
-Pull request: [#8](https://github.com/Ryan9876/wireclaw/pull/8)
-GitHub Actions: [Gate 6 validation run 38416799149](https://github.com/Ryan9876/wireclaw/actions/runs/38416799149) — all jobs passed
+Pull request: [#8](https://github.com/Ryan9876/wireclaw/pull/8) (open, targets `main`)
+GitHub Actions: [Gate 6 validation run 38417675722](https://github.com/Ryan9876/wireclaw/actions/runs/38417675722) — all jobs passed on the handoff SHA
 
 Gate 6 implementation and automated proof are recorded separately from native
-desktop acceptance. The Gate 6 exit criteria are **not fully demonstrated**
-until manual Wireshark GUI acceptance is recorded on macOS, Windows, and Linux.
+desktop acceptance. macOS native acceptance is now recorded below. The Gate 6
+exit criteria are **not fully demonstrated** until manual Wireshark GUI
+acceptance is recorded on Windows and Linux as well.
 
 ## Scope and requirements
 
@@ -32,7 +33,7 @@ R-N002, R-N005, R-N006, and Constitution C6, C7, C8, C12, C13, and C14.
 | G6.4 Loopback, auth, origin, bounded requests, replay resistance | Numeric loopback validation; strict administrator-configured Wireclaw UI port allowlist (`--app-port`); strict JSON/body limits; short-lived one-use grants with hashed token material and constant-time comparison | Complete; live origin-handler and bridge security tests passed on all three runners |
 | G6.5 Logical IDs and path confinement | API grants resolve case/finding/artifact logical IDs; bridge confines resolved files under the case directory and rejects traversal, symlink escape, unknown IDs, cross-case substitution, and hash mismatch | Complete; API and bridge isolation tests passed |
 | G6.6 Wireshark executable selection | Admin configuration or OS-specific discovery; canonical executable path; request schema cannot select executable | Complete; discovery and exact argv tests passed on all three runners |
-| G6.7 macOS behavior | macOS application executable discovery; direct native process argument vector | Complete for discovery/selection/argv validation on `macos-14`; GUI launch requires manual acceptance |
+| G6.7 macOS behavior | macOS application executable discovery; direct native process argument vector | Complete; discovery/selection/argv validated in `macos-14` CI and native GUI accepted locally on macOS 27.0.1 arm64 |
 | G6.8 Windows behavior | Program Files discovery; direct process argument vector, including paths with spaces | Complete for discovery/selection/argv validation on `windows-2025`; GUI launch requires manual acceptance |
 | G6.9 Linux behavior | Administrator PATH and standard-location discovery; direct process argument vector | Complete for discovery/selection/argv validation on `ubuntu-24.04`; GUI launch requires manual acceptance |
 | G6.10 Full Capture action | Visible action requests the backend-approved immutable original artifact with a finding-specific approved display filter (TCP stream or exact DNS transaction frames where available) | Complete; unit, API, and browser tests passed |
@@ -91,9 +92,9 @@ backend evidence generation remain available.
 
 ### Automated validation
 
-All commands below ran in the Ubuntu 24.04 `linux-full` job of [workflow run
-38416799149](https://github.com/Ryan9876/wireclaw/actions/runs/38416799149),
-which also ran on the validated product commit above:
+The following baseline ran in the Ubuntu 24.04 `linux-full` job of [workflow
+run 38417675722](https://github.com/Ryan9876/wireclaw/actions/runs/38417675722)
+on the handoff SHA:
 
 - Packet tools: `command -v tshark` and `command -v capinfos` both succeeded;
   real-tool checks did not silently skip.
@@ -108,7 +109,7 @@ which also ran on the validated product commit above:
 - Go 1.23.12 Linux: gofmt check, `go test ./...` (13 test functions, including
   six table-driven cases), `go vet ./...`, and `go build ./...` — passed.
 - Web: `npm ci --prefix apps/web`, lint, format check, production build, and
-  `npm test --prefix apps/web` — passed; **40 unit tests passed**.
+  `npm test --prefix apps/web` — passed; **40 unit tests passed** on the handoff SHA.
 - Production browser: fixture preparation, Chromium installation, and
   `npm run test:e2e --prefix apps/web` with Playwright retries disabled —
   **9 cases passed** (six workflow tests plus three viewport variants).
@@ -119,31 +120,99 @@ The same workflow's `bridge-platform` jobs passed `go test ./...`,
 
 The OS matrix validates compilation, platform-specific executable discovery,
 logical request handling, and deterministic argv construction. It does not
-claim that a native Wireshark GUI was opened in CI. The validation ran in CI:
-this working container does not provide the Go toolchain or installed Python
-test dependencies, and `npm ci` was blocked by the network proxy.
+claim that a native Wireshark GUI was opened in CI.
+
+### Handoff continuation on macOS
+
+On 2026-10-13, the Gate 6 checks were repeated on this macOS ARM64 workstation.
+The `api_unavailable` report state was found to offer an impossible “Create
+evidence capture without opening Wireshark” action. That action is now hidden
+in this state; a focused UI regression test confirms Copy Filter and Show
+Packet Evidence remain available.
+
+- Python full suite with real TShark/capinfos 4.6.9: **404 passed, 5 failed,
+  1 warning**. The 5 failures were environment/version-sensitive tests outside
+  Gate 6: the subprocess pipe-bound test exceeded its 50 ms timeout while
+  starting a child, and four Gate 2/4 expectations differed in TShark 4.6.9's
+  TCP expert classification for reordered/PMTUD fixtures. Gate 6 integration
+  tests passed separately: **5 passed, 1 deprecation warning**.
+- `ruff check .`, `ruff format --check services scripts tests`,
+  `python -m compileall -q services scripts tests`, and Gate 3 validation —
+  passed. Gate 3 reported 447 schema checks, evidence counts `[5, 11]`, and
+  successful live loopback API, repeat request, evidence capture, bridge grant,
+  and deletion checks.
+- Go format, `go test ./...`, `go vet ./...`, and `go build ./...` — passed on
+  macOS ARM64 with Go 1.26.5.
+- Web lint, Prettier, production build, and unit tests — passed; **41 unit
+  tests passed**, including the new API-unavailable regression.
+- Production Playwright browser suite — **9 passed** with retries disabled.
+- OpenAPI and generated web contracts matched the checked-in files.
+
+The local Python suite's five failures do not occur in the latest Linux CI
+baseline. They should be rechecked with the CI TShark version if investigating
+those pre-existing cross-version expectations.
+
+### Native desktop acceptance matrix
+
+| Platform | Full | Evidence | Filter | Spaces | Degraded | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| macOS 27.0.1 arm64, Wireshark 4.6.9 | Pass | Pass | Pass | Pass | Pass | **Accepted** |
+| Windows | Pending manual acceptance | Pending manual acceptance | Pending manual acceptance | Pending manual acceptance | Pending manual acceptance | **PENDING MANUAL ACCEPTANCE** |
+| Linux | Pending manual acceptance | Pending manual acceptance | Pending manual acceptance | Pending manual acceptance | Pending manual acceptance | **PENDING MANUAL ACCEPTANCE** |
+
+macOS acceptance record:
+
+```text
+OS/version: macOS 27.0.1
+Architecture: arm64
+Wireshark version: 4.6.9
+Wireclaw SHA: 965033512afe5d130090b01980fd6b70a7397012 plus the local UI regression change
+Fixture: high_rtt.pcap, uploaded as "trace with spaces.pcap"
+Finding ID/category: finding_001 / tcp.rtt
+Display filter: tcp.stream == 0
+Original SHA before/after: 72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c (unchanged)
+Full Capture result: native Wireshark window opened with the immutable original path and -Y tcp.stream == 0
+Evidence Capture result: native Wireshark window opened with the derived PCAPNG path and -Y tcp.stream == 0
+Evidence provenance: parent SHA, finding_001, evidence ID, tcp_stream mode, and filter recorded; 5 packets / 584 bytes
+Path-with-spaces result: passed; both data root and uploaded filename contained spaces
+Degraded-state result: with bridge stopped, API healthy, both Wireshark actions disabled; local evidence generation, packet evidence, and Copy Filter passed
+GUI inspection: macOS accessibility returned the Wireshark window title; process argv confirmed original/evidence paths and filter. Screenshot capture was unavailable in this session.
+```
 
 ## Manual acceptance still required
 
-Before release, run the following on a desktop with Wireshark installed on
-macOS, Windows, and Linux:
+Before release, run the following on Windows and Linux desktops with Wireshark
+installed (macOS is recorded above):
 
-1. Start Wireclaw and its host bridge; investigate a fixture with an applicable
-   packet-level finding.
-2. Confirm **Open Full Capture in Wireshark** and **Open Evidence Capture in
-   Wireshark** appear together. Open each and verify the expected original or
-   derived capture and approved filter.
-3. Repeat with the Wireclaw data directory and capture filenames containing
-   spaces. Confirm the native application receives a single path argument
-   without shell interpretation.
-4. Stop the bridge and confirm both open actions visibly report unavailable,
-   while **Copy Wireshark Display Filter**, **Show Packet Evidence**, and
-   evidence-capture generation still work.
+1. Install Python 3.11+, Go, Node.js, and Wireshark with `tshark`/`capinfos`;
+   from the repository root run `python -m pip install -e '.[api]'`,
+   `npm ci --prefix apps/web`, `npm run build --prefix apps/web`, and
+   `python scripts/prepare_web_fixtures.py`.
+2. Start the API in one terminal, then the bridge from `services/host-bridge`
+   in a second terminal. Use the same data root and an administrator-approved
+   Wireshark executable:
+
+   ```sh
+   python -m wireclaw_api.cli --data-root "<data root>" --port 8765
+   go run . --data-root "<same data root>" --listen 127.0.0.1:8766 --app-port 8765 --wireshark "<approved Wireshark executable>"
+   ```
+
+3. Open `http://127.0.0.1:8765`, upload
+   `artifacts/web-captures/high_rtt.pcap` under a filename containing spaces,
+   and investigate `application is slow`. Record OS/architecture, Wireshark
+   version, Wireclaw SHA, finding ID/category, filter, and original SHA-256.
+4. Open both capture actions. Inspect the original and derived capture contents,
+   filter, evidence provenance, and process argv; verify the original SHA-256
+   is unchanged. Repeat with a data-root directory containing spaces.
+5. Stop the bridge while leaving the API running. Confirm both open actions are
+   disabled and Copy Filter, Show Packet Evidence, and evidence generation
+   remain usable. Record each matrix cell and result.
 
 ## Not tested / limitations
 
-- A real native GUI launch was not automated or observed on any OS; the manual
-  procedure above remains necessary to demonstrate desktop-session behavior.
+- Native GUI acceptance remains pending on Windows and Linux. The macOS
+  acceptance used a real Wireshark 4.6.9 process and active application window;
+  OS-level screenshot capture was unavailable in this session.
 - User-specific Wireshark installation layouts outside the supported discovery
   candidates and administrator-configured executable path were not tested.
 - No Gate 7 provider/model behavior, Gate 8 packaging, or Gate 9 release

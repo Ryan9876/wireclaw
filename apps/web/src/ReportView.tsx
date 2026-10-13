@@ -217,11 +217,13 @@ function Finding({
                     ? 'The local API is unavailable. Packet evidence and copied filters remain available in this report.'
                     : 'Native Wireshark bridge unavailable. Packet evidence remains usable and focused capture generation remains available.'}
           </p>
-          {bridgeAvailable !== 'ready' && bridgeAvailable !== 'checking' && (
-            <button className="quiet" disabled={busy} onClick={() => void createEvidence(false)}>
-              Create evidence capture without opening Wireshark
-            </button>
-          )}
+          {bridgeAvailable !== 'ready' &&
+            bridgeAvailable !== 'checking' &&
+            bridgeAvailable !== 'api_unavailable' && (
+              <button className="quiet" disabled={busy} onClick={() => void createEvidence(false)}>
+                Create evidence capture without opening Wireshark
+              </button>
+            )}
           {finding.wireshark.display_filter && (
             <>
               <p className="eyebrow">Wireshark display filter</p>
