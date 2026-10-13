@@ -63,7 +63,11 @@ jobs:
       - name: Go validation
         working-directory: services/host-bridge
         run: |
-          test -z "$(gofmt -l *.go)"
+          unformatted="$(gofmt -l *.go)"
+          if [ -n "$unformatted" ]; then
+            gofmt -d $unformatted
+            exit 1
+          fi
           go test ./...
           go vet ./...
           go build ./...
