@@ -142,7 +142,7 @@ Exit criteria:
 
 ## Gate 6 — Evidence capture and Wireshark integration
 
-Goal: make native Wireshark validation a first-class path.
+Goal: make native Wireshark validation a first-class path on the supported V1 host.
 
 Requirements: R-F018 through R-F020, R-D003, R-D004, R-U003.
 
@@ -154,9 +154,9 @@ Tasks:
 - [ ] G6.4 Enforce loopback/authentication/origin restrictions.
 - [ ] G6.5 Implement logical-artifact resolution/path confinement.
 - [ ] G6.6 Implement configured Wireshark executable discovery/selection.
-- [ ] G6.7 Implement macOS launcher behavior.
-- [ ] G6.8 Implement Windows launcher behavior.
-- [ ] G6.9 Implement Linux launcher behavior.
+- [ ] G6.7 Implement and natively accept macOS launcher behavior.
+- [ ] G6.8 Preserve Windows bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification deferred.
+- [ ] G6.9 Preserve Linux bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification deferred.
 - [ ] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
 - [ ] G6.11 Add **Open Evidence Capture in Wireshark** beside it on every applicable finding.
 - [ ] G6.12 Add Copy Display Filter and Show Packet Evidence.
@@ -164,8 +164,10 @@ Tasks:
 
 Exit criteria:
 - both Wireshark actions are always visible together when applicable
-- both work on macOS, Windows, and Linux
+- both work in a real native macOS desktop session
 - the bridge cannot be used for arbitrary command execution
+
+Windows/Linux are post-V1 release-qualification targets and do not block Gate 6.
 
 ## Gate 7 — Reasoning provider and iterative investigation
 
@@ -196,15 +198,15 @@ Exit criteria:
 - model prose cannot fabricate evidence records
 - decodable request/response timing is measured deterministically while opaque transport silence is not mislabeled as application wait
 
-## Gate 8 — Docker packaging and cross-platform release
+## Gate 8 — Docker packaging and macOS release
 
-Goal: make the product easy to run and share.
+Goal: make the V1 product easy to run and share on macOS.
 
 Execution specification: `specs/v1/gate8-execution.md`.
 
-Architecture decision: `docs/decisions/ADR-0005-v1-container-topology-and-loopback-publication.md`.
+Architecture decision: `docs/decisions/ADR-0005-v1-container-topology-and-loopback-publication.md`; platform scope is macOS-first per ADR-0006 after reconciliation with Gate 6.
 
-Requirements: R-D001 through R-D006 plus the applicable security/privacy/resource requirements preserved by packaging.
+Requirements: R-D001 through R-D006 plus applicable security/privacy/resource requirements preserved by packaging.
 
 Tasks:
 
@@ -214,20 +216,20 @@ Tasks:
 - [ ] G8.4 Define bind-mounted data root.
 - [ ] G8.5 Create `.env.example` with safe defaults.
 - [ ] G8.6 macOS start/stop launcher.
-- [ ] G8.7 Windows start/stop launcher.
-- [ ] G8.8 Linux start/stop launcher.
-- [ ] G8.9 host-bridge install/uninstall scripts for each OS.
-- [ ] G8.10 first-run prerequisite checks for Docker and Wireshark.
-- [ ] G8.11 release smoke tests on all three host OS families.
+- [ ] G8.9 macOS host-bridge install/uninstall scripts.
+- [ ] G8.10 first-run prerequisite checks for Docker and Wireshark on macOS.
+- [ ] G8.11 macOS release smoke tests.
+
+Legacy task IDs G8.7 (Windows launcher) and G8.8 (Linux launcher) are deferred post-V1 and are not Gate 8 V1 tasks.
 
 Exit criteria:
-- a user with Docker and Wireshark can start Wireclaw without a developer toolchain
-- equivalent core workflow works on macOS, Windows, and Linux
+- a macOS user with Docker and Wireshark can start Wireclaw without a developer toolchain
+- the packaged core workflow and native Wireshark integration work on macOS
 - release packaging preserves loopback-only host exposure, local-first data handling, and Gate 7 rules-only/provider privacy behavior
 
 ## Gate 9 — V1 acceptance and hardening
 
-Goal: demonstrate that Wireclaw solves representative troubleshooting problems safely and reproducibly.
+Goal: demonstrate that Wireclaw solves representative troubleshooting problems safely and reproducibly on the supported V1 release target.
 
 Acceptance specification: `specs/v1/gate9-acceptance.md`.
 
@@ -248,8 +250,8 @@ Tasks:
 - [ ] G9.13 cloud-provider privacy inspection.
 - [ ] G9.14 host-bridge security review.
 - [ ] G9.15 end-to-end macOS acceptance.
-- [ ] G9.16 end-to-end Windows acceptance.
-- [ ] G9.17 end-to-end Linux acceptance.
+
+Legacy task IDs G9.16 (Windows acceptance) and G9.17 (Linux acceptance) are deferred post-V1.
 
 V1 release gate:
 
@@ -258,12 +260,14 @@ V1 release gate:
 - ambiguous cases do not produce forced root-cause claims
 - raw captures are not transmitted to cloud model under default policy
 - both Wireshark actions work and remain visible together
-- cross-platform Docker workflow passes
+- macOS Docker/release workflow passes
 
 ## Deferred post-V1 candidates
 
 Do not pull these into V1 without specification change:
 
+- Windows release qualification: native Wireshark acceptance, launcher/installer, packaged Docker smoke, and Gate 9-equivalent end-to-end acceptance
+- Linux release qualification: native Wireshark acceptance, launcher/installer, packaged Docker smoke, and Gate 9-equivalent end-to-end acceptance
 - browser HAR correlation
 - interface/SNMP counters
 - traceroute/MTR/ping/HTTP active testing
