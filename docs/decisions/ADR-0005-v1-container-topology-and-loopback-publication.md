@@ -16,6 +16,8 @@ There is also a deployment wording ambiguity that must be resolved explicitly ra
 
 Current Wireclaw implementation already serves the compiled React application and API from one FastAPI origin, and deterministic analyzer wrappers run as part of the local core rather than through a separate analyzer RPC service.
 
+Platform release scope is governed separately. V1 is macOS-first; Windows/Linux are post-V1 qualification targets.
+
 ## Decision
 
 ### 1. V1 ships one Dockerized core application container
@@ -36,7 +38,7 @@ This decision satisfies R-D001 because web, API/orchestrator, and analyzer all r
 
 ### 2. Host exposure is loopback-only by default
 
-Inside the isolated `wireclaw-core` container, the application process may listen on the container interface necessary for Docker port publication (for example `0.0.0.0:8765`).
+Inside the isolated `wireclaw-core` container, the application process may listen on the container interface necessary for Docker port publication, for example `0.0.0.0:8765`.
 
 The release boundary required by R-S001/R-S002 is enforced at host publication:
 
@@ -69,19 +71,23 @@ Application metadata continues to use logical artifact IDs and relative case pat
 
 ### 5. Native bridge remains separate
 
-The Go host bridge:
+For V1, the Go host bridge:
 
-- runs natively on macOS, Windows, and Linux
-- binds only to numeric host loopback
-- is not placed inside the Docker container
-- is not exposed through the Docker network
-- keeps the Gate 6 one-time-grant/path-confinement/executable restrictions
+- runs natively on macOS;
+- binds only to numeric host loopback;
+- is not placed inside the Docker container;
+- is not exposed through the Docker network;
+- keeps the Gate 6 one-time-grant/path-confinement/executable restrictions.
+
+Existing Windows/Linux bridge implementations may continue to compile/test as portability groundwork, but they are not V1 release artifacts or support claims.
 
 ### 6. Same-host local model endpoints
 
-When Gate 7 is configured for an OpenAI-compatible model server running on the same host, the Dockerized core cannot treat container `127.0.0.1` as the host.
+When Gate 7 is configured for an OpenAI-compatible model server running on the same macOS host, the Dockerized core cannot treat container `127.0.0.1` as the host.
 
-Gate 8 therefore documents `host.docker.internal` as the same-host provider address. On Linux Compose must add the supported host-gateway mapping when required by the target Docker runtime.
+Gate 8 therefore documents `host.docker.internal` as the same-host provider address on macOS.
+
+Linux-specific host-gateway mapping belongs to future Linux release qualification and is not required for V1.
 
 This networking accommodation is for outbound provider access only and does not broaden Wireclaw's inbound host exposure.
 
@@ -96,13 +102,15 @@ Positive:
 - native Wireshark integration stays outside Docker
 - artifact mapping stays explicit and consistent with ADR-0001
 - local model servers remain reachable after containerization
+- Gate 8 can focus on one release-qualified host while preserving portability boundaries
 
 Negative:
 
 - web/API/analyzer do not scale independently in V1
 - application process binding inside the container differs from native-development loopback binding
-- launchers must coordinate one host data-root path between Docker and the native bridge
+- the launcher must coordinate one host data-root path between Docker and the native bridge
 - same-host local model configuration must use a host-reachable Docker hostname rather than container loopback
+- Windows/Linux packaging and host-networking details remain future qualification work
 
 ## Security invariants
 
@@ -115,7 +123,7 @@ This ADR does not relax:
 - R-S009 host-bridge restriction
 - R-S010 path confinement
 
-Compose must not use host networking, privileged mode, Docker-socket mounting, or a wildcard host port publication as a convenience workaround.
+Compose must not use host networking, privileged mode, Docker-socket mounting, or wildcard host port publication as a convenience workaround.
 
 ## Rejected alternatives
 
@@ -129,8 +137,8 @@ Rejected because the current architecture does not require an analyzer RPC bound
 
 ### Host networking
 
-Rejected because it weakens the explicit host-loopback publication boundary and behaves inconsistently across supported platforms.
+Rejected because it weakens the explicit host-loopback publication boundary and behaves inconsistently across platforms.
 
 ### Native-only release
 
-Rejected by ADR-0001 and R-D001/R-D006 because it would reintroduce platform-specific analyzer dependency installation and version drift.
+Rejected by ADR-0001 and R-D001/R-D006 because it would reintroduce host-specific analyzer dependency installation and version drift.
