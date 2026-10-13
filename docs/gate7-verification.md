@@ -1,12 +1,14 @@
 # Gate 7 verification record
 
-Status: **implementation prepared; release validation incomplete**
+Status: **implementation and CI validation complete; automated security scan unavailable**
 
 ## Source and branch
 
 - Starting `main` SHA: `128c508443a4dd6606fce3b2c2faf5773d387012`
 - Branch: `gate7-reasoning-provider`
 - Validated implementation commit SHA: `9609b4d9614687b48edf78f6c09d8e6b7384d6cf`.
+- CI-validated branch head SHA: `9ea2d5949e626ac16024e3031e955f32d13ecacc` (the code implementation plus this verification record).
+- CI merge commit: `6d6e50284faa72624a7673c1d06f01741129b940`.
 - Gate 8: not started.
 
 ## Task matrix
@@ -24,7 +26,7 @@ Status: **implementation prepared; release validation incomplete**
 | G7.9 | Provider prose is not copied into findings; only existing deterministic categories can be ranked, and next-evidence text comes from fixed server-side codes. |
 | G7.10 | Normalized timeout/connection/response failures fall back to deterministic findings and bounded audit metadata. |
 | G7.11 | Adversarial capture-derived strings and unsafe model action cases are covered by deterministic tests. |
-| G7.12 | HTTP/1.x timing capability and positive/opaque fixture assertions are implemented. The real TShark integration assertions were skipped locally because TShark/capinfos are unavailable. |
+| G7.12 | HTTP/1.x timing capability and positive/opaque fixture assertions pass in CI with real TShark/capinfos. |
 
 ## Provider, privacy, and fallback
 
@@ -38,7 +40,7 @@ Status: **implementation prepared; release validation incomplete**
 
 - Positive `http_server_wait` fixture contains a decodable HTTP/1.x request and delayed response; unit/integration assertions expect an approximately 2.1 second request-to-first-response interval and frame references.
 - The existing `server_wait` fixture remains transport-only. Assertions require it to remain insufficient for application-wait attribution.
-- Fixture generation and TShark-backed integration were not executable in this environment because real TShark/capinfos are missing. The local suite therefore does not establish a real analyzer run for this capability.
+- Fixture generation and TShark-backed integration pass in CI on Linux with real TShark/capinfos. The local macOS environment lacks those tools, so the local suite skipped packet-tool integration cases.
 
 ## Validation results
 
@@ -48,12 +50,13 @@ Status: **implementation prepared; release validation incomplete**
 - Python compileall: passed.
 - Go: gofmt, `go test ./...`, `go vet ./...`, and `go build ./...` passed.
 - Web: `npm ci`, lint, format check, production build, and tests passed (`2` files, `41` tests).
-- `scripts/validate_gate3.py`: blocked by `real_packet_tools_required` (TShark/capinfos unavailable).
-- Web fixture preparation: blocked by the same real packet-tool requirement. Playwright browser installation did not complete, so production browser tests were not run.
-- CI run identity: none available during this validation; no GitHub Actions run was produced.
+- GitHub Actions: [run 38462907708, run number 76](https://github.com/Ryan9876/wireclaw/actions/runs/38462907708), triggered for PR #10 at branch head `9ea2d5949e626ac16024e3031e955f32d13ecacc`; all four jobs succeeded (linux-full, macOS bridge, Linux bridge, Windows bridge).
+- CI Linux Python validation: `436 passed, 1 warning`; real packet tools were installed, and Gate 3 validation passed.
+- CI production browser tests: `9 passed`; web unit tests: `41 passed` across 2 files. Contract regeneration check, Go validation, web lint/format/build, and Python lint/format/compile all passed in the full job.
+- Local-only limitations: the macOS workstation lacks TShark/capinfos, so local Python had 147 packet-tool skips and local Gate 3/browser-fixture commands could not run. CI covered those checks successfully.
 
 ## Security review and limitations
 
 - Manual source review covered provider URL/configuration boundaries, redirect handling, context projection, strict action parsing, capability dispatch, proposal evidence checks, persistence, and fallback. No confirmed vulnerability was identified in this review.
-- The required Codex Security diff scan did not start: its launcher failed before issuing a scan ID because the security backend Python runtime could not import `tomllib` or `tomli`. No canonical scan artifact or scan result exists; this is not represented as a clean automated scan.
-- This record does not claim Gate 7 release acceptance. TShark-backed verification, browser E2E, CI, and the automated security diff scan remain unverified in this environment.
+- The Codex Security diff scan did not start: its launcher failed before issuing a scan ID because the security backend Python runtime could not import `tomllib` or `tomli`. No canonical scan artifact or scan result exists; this is not represented as a clean automated scan.
+- CI acceptance criteria passed. The automated scan is the sole outstanding review limitation; manual review found no confirmed issue. No real provider service was exercised, by design; provider behavior was tested with controlled mocks.
