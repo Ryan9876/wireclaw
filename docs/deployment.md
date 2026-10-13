@@ -1,10 +1,13 @@
 # Deployment Design
 
-Wireclaw V1 is a local application distributed as a Dockerized core plus a small native Wireshark host bridge.
+Wireclaw V1 is a local macOS application distributed as a Dockerized core plus a small native Wireshark host bridge.
+
+Windows and Linux are post-V1 release targets. Existing bridge code and CI coverage on those platforms are portability groundwork only until native release qualification is completed.
 
 ## User prerequisites
 
 Required:
+- macOS
 - Docker Desktop or compatible Docker/Compose runtime
 - native Wireshark installation
 
@@ -58,7 +61,7 @@ The API stores logical artifact IDs and container-relative paths. The bridge map
 
 ## Release contents
 
-Target release bundle:
+Target V1 release bundle:
 
 ```text
 wireclaw/
@@ -66,14 +69,12 @@ wireclaw/
 ├── .env.example
 ├── README.md
 ├── launch/
-│   ├── macos/
-│   ├── windows/
-│   └── linux/
+│   └── macos/
 └── host-bridge/
-    ├── macos/
-    ├── windows/
-    └── linux/
+    └── macos/
 ```
+
+Future Windows/Linux release bundles should preserve the same logical core/data/bridge boundaries while adding platform-specific launch/install behavior.
 
 ## First-run behavior
 
@@ -92,23 +93,20 @@ Failure should identify the exact missing prerequisite and corrective action.
 
 ## Platform specifics
 
-### macOS
+### macOS — V1 supported host
 
 - discover standard Wireshark application path first
-- native bridge distributed for supported architectures
+- native bridge distributed for supported architecture(s)
 - launcher may use a `.command` wrapper or packaged installer, but product behavior should not depend on Terminal expertise
+- release smoke and native Wireshark acceptance are required before V1 signoff
 
-### Windows
+### Windows — post-V1 roadmap
 
-- discover common Wireshark installation path and registry information where appropriate
-- bridge distributed as native executable
-- launcher should not require PowerShell policy changes for ordinary use when avoidable
+Existing bridge discovery/build coverage may remain in CI, but Windows is not a supported V1 release target. Future qualification must add packaged launcher/install behavior, real native Wireshark acceptance, Docker/core smoke testing, and Gate 9-equivalent end-to-end/security acceptance.
 
-### Linux
+### Linux — post-V1 roadmap
 
-- support common Docker/Compose installations
-- resolve Wireshark from configured path/PATH with validation
-- account for display/session differences only in host bridge; analyzer remains containerized
+Existing bridge discovery/build coverage may remain in CI, but Linux is not a supported V1 release target. Future qualification must add packaged launcher/install behavior, real native Wireshark acceptance, Docker/core smoke testing, and Gate 9-equivalent end-to-end/security acceptance.
 
 ## Configuration
 

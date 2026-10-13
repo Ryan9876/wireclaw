@@ -54,9 +54,18 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
 }) => {
   const errors: string[] = [];
   const remoteRequests: string[] = [];
+  const bridgeHealthRequests: string[] = [];
+  const apiOrigin = 'http://127.0.0.1:8765';
+  const bridgeOrigin = 'http://127.0.0.1:8766';
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('request', (request) => {
-    if (!request.url().startsWith('http://127.0.0.1:8765/')) remoteRequests.push(request.url());
+    const url = new URL(request.url());
+    if (url.origin === apiOrigin) return;
+    if (url.origin === bridgeOrigin && url.pathname === '/v1/health') {
+      bridgeHealthRequests.push(request.url());
+      return;
+    }
+    remoteRequests.push(request.url());
   });
   const id = await analyze(page, 'high_rtt');
   await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
@@ -67,10 +76,23 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await expect(
     page.getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
   ).toBeDisabled();
+  await expect(page.getByText(/Native Wireshark bridge unavailable/)).toBeVisible();
+  await expect(page.locator('.validation-actions .button-row button')).toHaveCount(2);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Copy Wireshark Display Filter' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Display filter copied.' }),
+  ).toBeVisible();
+  const reportFinding = report.findings.find(
+    (item: { wireshark: { applicable: boolean } }) => item.wireshark.applicable,
+  );
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    reportFinding.wireshark.display_filter,
+  );
   await axe(page);
   await noOverflow(page);
   await page.screenshot({ path: resolve(visuals, 'supported-desktop.png'), fullPage: true });
-  const evidenceButton = page.getByRole('button', { name: 'Show packet evidence' });
+  const evidenceButton = page.getByRole('button', { name: 'Show Packet Evidence' });
   await evidenceButton.click();
   const drawer = page.getByRole('dialog', { name: 'Expert evidence' });
   await expect(drawer.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
@@ -80,6 +102,14 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await page.keyboard.press('Escape');
   await expect(drawer).not.toBeVisible();
   await expect(evidenceButton).toBeFocused();
+  await page
+    .getByRole('button', { name: 'Create evidence capture without opening Wireshark' })
+    .click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Focused evidence capture created locally' }),
+  ).toBeVisible();
+  await axe(page);
+  await noOverflow(page);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Delete case', exact: true }).click();
@@ -96,6 +126,7 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await remove(page);
   expect((await request.get(`/api/cases/${id}`)).status()).toBe(404);
   expect(errors).toEqual([]);
+  expect(bridgeHealthRequests.length).toBeGreaterThan(0);
   expect(remoteRequests).toEqual([]);
 });
 
@@ -188,7 +219,7 @@ for (const width of [390, 768, 1024]) {
     await noOverflow(page);
     await axe(page);
     await page.screenshot({ path: resolve(visuals, `supported-${width}.png`), fullPage: true });
-    await page.getByRole('button', { name: 'Show packet evidence' }).click();
+    await page.getByRole('button', { name: 'Show Packet Evidence' }).click();
     await expect(page.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
     await noOverflow(page);
     await axe(page);

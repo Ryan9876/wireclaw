@@ -39,6 +39,19 @@ describe('fixed same-origin API contract', () => {
       supported.evidence[0],
     );
   });
+  it('distinguishes bridge health from missing Wireshark and API failure', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(response({ bridge: { origin: 'http://127.0.0.1:8766' } }))
+      .mockResolvedValueOnce(response({ status: 'ok', wireshark_available: false }))
+      .mockResolvedValueOnce(response({ bridge: { origin: 'http://127.0.0.1:8766' } }))
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockRejectedValueOnce(new Error('offline'));
+    vi.stubGlobal('fetch', fetch);
+    await expect(api.bridgeHealth()).resolves.toBe('wireshark_unavailable');
+    await expect(api.bridgeHealth()).resolves.toBe('bridge_unavailable');
+    await expect(api.bridgeHealth()).resolves.toBe('api_unavailable');
+  });
   it('accepts persisted Gate 4 finding fields without inventing domains', async () => {
     const report = structuredClone(supported.report);
     for (const finding of report.findings) {

@@ -45,7 +45,8 @@ The design intentionally separates:
 ### Host bridge
 
 - Go
-- native small binary per supported OS
+- native small binary for the supported V1 host, macOS
+- platform-specific code remains isolated so Windows/Linux can be qualified in a future release
 - loopback-only authenticated interface
 - initial responsibility: launch native Wireshark with an approved case artifact and display filter
 
@@ -53,7 +54,8 @@ The design intentionally separates:
 
 - Docker Compose for web/API/analyzer
 - bind-mounted local data directory for captures, evidence, and reports
-- platform-specific launcher/installer for the host bridge
+- macOS launcher/installer for the V1 host bridge
+- Windows/Linux launcher/installers are post-V1 roadmap work
 
 ### Model abstraction
 
@@ -690,23 +692,21 @@ wireclaw-release/
 ├── compose.yaml
 ├── .env.example
 ├── launch/
-│   ├── macos/
-│   ├── windows/
-│   └── linux/
+│   └── macos/
 ├── host-bridge/
-│   ├── macos/
-│   ├── windows/
-│   └── linux/
+│   └── macos/
 └── README.md
 ```
 
 The user experience should be:
 
-1. install Docker/Desktop-compatible runtime
-2. install Wireshark
-3. run platform launcher/installer
+1. install a Docker/Desktop-compatible runtime on macOS
+2. install native Wireshark
+3. run the macOS launcher/installer
 4. open Wireclaw localhost UI
 5. investigate captures
+
+Windows and Linux release bundles, installers, and native qualification are post-V1 roadmap work. Existing platform-specific bridge code and CI coverage may be retained as portability groundwork.
 
 ## 25. Architectural decisions intentionally deferred
 
@@ -719,10 +719,12 @@ These should not block V1 scaffolding but require ADRs before implementation bec
 - optional active tests such as ping/MTR/HTTP from the host
 - import of HAR/log/interface-counter evidence
 - centralized/team mode
+- Windows release qualification
+- Linux release qualification
 
 ## 26. V1 success criteria
 
-V1 is successful when a technically capable user can take representative captures for common performance/failure scenarios and:
+V1 is successful when a technically capable macOS user can take representative captures for common performance/failure scenarios and:
 
 - start the app locally without custom development setup
 - submit the capture and symptom
@@ -731,4 +733,6 @@ V1 is successful when a technically capable user can take representative capture
 - understand why the system reached that conclusion
 - open either the full capture or a focused evidence capture in native Wireshark directly from every relevant finding
 - reproduce/validate findings independently
-- run the same workflow on macOS, Windows, and Linux
+- complete the packaged release workflow on macOS
+
+The architecture should preserve a clear path to later Windows/Linux qualification, but those hosts are not part of the V1 release gate.

@@ -6,7 +6,7 @@ Date: 2026-10-13
 
 ## Context
 
-Wireclaw's original V1 plan required equivalent release behavior on macOS, Windows, and Linux. Gate 6 has complete native desktop acceptance on macOS, while Windows and Linux have automated bridge build/discovery/argv coverage but have not completed real native Wireshark GUI acceptance.
+Wireclaw's original V1 plan required equivalent release behavior on macOS, Windows, and Linux. Gate 6 now has complete native desktop acceptance on macOS, while Windows and Linux have automated bridge build/discovery/argv coverage but have not completed real native Wireshark GUI acceptance.
 
 Requiring all three host operating systems before proceeding would delay the V1 product validation work in Gates 7–9 without improving the macOS release path. The codebase already isolates host-specific integration behind interfaces, so Windows and Linux can remain portability targets without being V1 release blockers.
 

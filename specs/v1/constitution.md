@@ -72,9 +72,11 @@ The UI must also make the corresponding display filter and packet/stream referen
 
 The original capture remains immutable.
 
-## C8. Cross-platform V1
+## C8. macOS-first V1 with portable architecture
 
-The primary application must run on macOS, Windows, and Linux using Docker-compatible packaging. Native host integration may be platform-specific but must preserve equivalent behavior.
+The supported V1 release host is macOS using Docker-compatible packaging plus native host integration.
+
+Platform-specific code must remain isolated so Windows and Linux can be qualified in future post-V1 releases without redesigning the analyzer, API, evidence model, or host-bridge protocol. Windows/Linux build or portability checks may remain in CI, but they are not V1 release-support claims.
 
 ## C9. Explainable conclusions
 

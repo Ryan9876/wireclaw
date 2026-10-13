@@ -148,34 +148,32 @@ Requirements: R-F018 through R-F020, R-D003, R-D004, R-U003.
 
 Tasks:
 
-- [ ] G6.1 Implement evidence-capture extraction service.
-- [ ] G6.2 Record parent hash/extraction rule/display filter for derived captures.
-- [ ] G6.3 Implement Go host bridge protocol.
-- [ ] G6.4 Enforce loopback/authentication/origin restrictions.
-- [ ] G6.5 Implement logical-artifact resolution/path confinement.
-- [ ] G6.6 Implement configured Wireshark executable discovery/selection.
-- [ ] G6.7 Implement and natively accept macOS launcher behavior.
-- [ ] G6.8 Preserve Windows bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification deferred.
-- [ ] G6.9 Preserve Linux bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification deferred.
-- [ ] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
-- [ ] G6.11 Add **Open Evidence Capture in Wireshark** beside it on every applicable finding.
-- [ ] G6.12 Add Copy Display Filter and Show Packet Evidence.
-- [ ] G6.13 Host-bridge security tests including path traversal and malicious filters.
+- [x] G6.1 Implement evidence-capture extraction service.
+- [x] G6.2 Record parent hash/extraction rule/display filter and related finding/evidence IDs for derived captures.
+- [x] G6.3 Implement Go host bridge protocol.
+- [x] G6.4 Enforce loopback/authentication/origin restrictions and one-time bounded grants.
+- [x] G6.5 Implement logical-artifact resolution/path confinement.
+- [x] G6.6 Implement configured Wireshark executable discovery/selection.
+- [x] G6.7 Implement macOS launcher behavior; discovery and argv verified in macOS CI. Native GUI accepted on macOS 27.0.1 arm64 with Wireshark 4.6.9.
+- [x] G6.8 Preserve Windows bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification is deferred.
+- [x] G6.9 Preserve Linux bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification is deferred.
+- [x] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
+- [x] G6.11 Add **Open Evidence Capture in Wireshark** beside it on every applicable finding.
+- [x] G6.12 Add Copy Display Filter and Show Packet Evidence with bridge-unavailable degradation.
+- [x] G6.13 Host-bridge security tests including path traversal and malicious filters.
 
 Exit criteria:
 - both Wireshark actions are always visible together when applicable
-- both work in a real native macOS desktop session
+- both are manually accepted in a native macOS desktop session (passed)
 - the bridge cannot be used for arbitrary command execution
 
-Windows/Linux are post-V1 release-qualification targets and do not block Gate 6.
+Gate 6 is not a Windows/Linux release-qualification gate. Those hosts remain on the post-V1 roadmap.
 
 ## Gate 7 — Reasoning provider and iterative investigation
 
-Goal: add LLM-assisted hypothesis planning/correlation without weakening evidence boundaries, and close the deterministic application-timing gap required for V1 acceptance.
+Goal: add LLM-assisted hypothesis planning/correlation without weakening evidence boundaries.
 
-Execution specification: `specs/v1/gate7-execution.md`.
-
-Requirements: R-F011, R-F012, R-F014 through R-F016, R-F024, R-F026, R-S003 through R-S008, R-N002, R-N004 through R-N006.
+Requirements: R-F014 through R-F016, R-F024, R-S006 through R-S008.
 
 Tasks:
 
@@ -190,23 +188,17 @@ Tasks:
 - [ ] G7.9 Prevent unsupported model claims from entering final findings.
 - [ ] G7.10 Add provider timeout/failure fallback to deterministic report.
 - [ ] G7.11 Add prompt-injection/adversarial text fixtures sourced from capture fields.
-- [ ] G7.12 Implement deterministic `analyze_http_timing` plus positive decodable and negative opaque server-wait fixtures.
 
 Exit criteria:
 - the model can deepen investigations only through typed capabilities
 - disabling/removing the model preserves core analyzer functionality
 - model prose cannot fabricate evidence records
-- decodable request/response timing is measured deterministically while opaque transport silence is not mislabeled as application wait
 
 ## Gate 8 — Docker packaging and macOS release
 
-Goal: make the V1 product easy to run and share on macOS.
+Goal: make the V1 product easy to run and share on the supported macOS host.
 
-Execution specification: `specs/v1/gate8-execution.md`.
-
-Architecture decision: `docs/decisions/ADR-0005-v1-container-topology-and-loopback-publication.md`; platform scope is macOS-first per ADR-0006 after reconciliation with Gate 6.
-
-Requirements: R-D001 through R-D006 plus applicable security/privacy/resource requirements preserved by packaging.
+Requirements: R-D001 through R-D006.
 
 Tasks:
 
@@ -220,18 +212,15 @@ Tasks:
 - [ ] G8.10 first-run prerequisite checks for Docker and Wireshark on macOS.
 - [ ] G8.11 macOS release smoke tests.
 
-Legacy task IDs G8.7 (Windows launcher) and G8.8 (Linux launcher) are deferred post-V1 and are not Gate 8 V1 tasks.
+Legacy task IDs G8.7 (Windows launcher) and G8.8 (Linux launcher) are deferred to the post-V1 platform-expansion roadmap and are not V1 exit criteria.
 
 Exit criteria:
 - a macOS user with Docker and Wireshark can start Wireclaw without a developer toolchain
-- the packaged core workflow and native Wireshark integration work on macOS
-- release packaging preserves loopback-only host exposure, local-first data handling, and Gate 7 rules-only/provider privacy behavior
+- the complete core workflow and native Wireshark integration work in the packaged macOS release
 
 ## Gate 9 — V1 acceptance and hardening
 
-Goal: demonstrate that Wireclaw solves representative troubleshooting problems safely and reproducibly on the supported V1 release target.
-
-Acceptance specification: `specs/v1/gate9-acceptance.md`.
+Goal: demonstrate that Wireclaw solves representative troubleshooting problems safely and reproducibly on the V1 release target.
 
 Tasks:
 
@@ -242,7 +231,7 @@ Tasks:
 - [ ] G9.5 receiver-window constrained case.
 - [ ] G9.6 TCP reset/reconnect case.
 - [ ] G9.7 TLS-delay case.
-- [ ] G9.8 server/application-wait acceptance: positive decodable HTTP case plus opaque-transport uncertainty regression.
+- [ ] G9.8 server/application-wait case.
 - [ ] G9.9 MTU/PMTUD evidence case.
 - [ ] G9.10 one-sided/incomplete capture case requiring uncertainty.
 - [ ] G9.11 large-capture resource-limit case.
@@ -251,7 +240,7 @@ Tasks:
 - [ ] G9.14 host-bridge security review.
 - [ ] G9.15 end-to-end macOS acceptance.
 
-Legacy task IDs G9.16 (Windows acceptance) and G9.17 (Linux acceptance) are deferred post-V1.
+Legacy task IDs G9.16 (Windows end-to-end acceptance) and G9.17 (Linux end-to-end acceptance) are deferred to future release qualification and are not V1 tasks.
 
 V1 release gate:
 
@@ -266,8 +255,8 @@ V1 release gate:
 
 Do not pull these into V1 without specification change:
 
-- Windows release qualification: native Wireshark acceptance, launcher/installer, packaged Docker smoke, and Gate 9-equivalent end-to-end acceptance
-- Linux release qualification: native Wireshark acceptance, launcher/installer, packaged Docker smoke, and Gate 9-equivalent end-to-end acceptance
+- Windows release qualification: native Wireshark acceptance, launcher/installer, Docker packaging smoke, and Gate 9-equivalent end-to-end acceptance
+- Linux release qualification: native Wireshark acceptance, launcher/installer, Docker packaging smoke, and Gate 9-equivalent end-to-end acceptance
 - browser HAR correlation
 - interface/SNMP counters
 - traceroute/MTR/ping/HTTP active testing

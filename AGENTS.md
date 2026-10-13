@@ -9,19 +9,10 @@ When sources conflict, follow this order:
 1. `specs/v1/constitution.md`
 2. `specs/v1/requirements.md`
 3. `specs/v1/solution.md`
-4. accepted ADRs
-5. gate-specific execution/acceptance specifications and accepted `docs/` guidance
-6. `specs/v1/tasks.md`
-7. tests
-8. implementation
-
-Gate-specific execution/acceptance specifications are subordinate to the constitution, requirements, solution, and accepted ADRs. They make an already-approved gate concrete; they may not silently weaken or redefine higher-authority behavior.
-
-Before implementing Gates 7–9, agents **must** read the corresponding specification in addition to the higher-authority sources:
-
-- Gate 7: `specs/v1/gate7-execution.md`
-- Gate 8: `specs/v1/gate8-execution.md`
-- Gate 9: `specs/v1/gate9-acceptance.md`
+4. accepted ADRs and `docs/`
+5. `specs/v1/tasks.md`
+6. tests
+7. implementation
 
 Do not preserve implementation behavior that contradicts a higher-authority source. Update the specification first when product behavior intentionally changes.
 

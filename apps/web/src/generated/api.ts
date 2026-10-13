@@ -1,4 +1,38 @@
 export interface paths {
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities */
+        get: operations["capabilities_api_config_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cases": {
         parameters: {
             query?: never;
@@ -16,35 +50,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cases/{case_id}": {
+    "/api/cases/{case_id}/capture": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Case */
-        get: operations["get_case_api_cases__case_id__get"];
+        get?: never;
         put?: never;
-        post?: never;
-        /** Delete */
-        delete: operations["delete_api_cases__case_id__delete"];
+        /** Capture */
+        post: operations["capture_api_cases__case_id__capture_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/cases/{case_id}/artifacts/{artifact_id}": {
+    "/api/cases/{case_id}/investigate": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Artifact Metadata */
-        get: operations["artifact_metadata_api_cases__case_id__artifacts__artifact_id__get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Investigate */
+        post: operations["investigate_api_cases__case_id__investigate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -68,7 +101,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cases/{case_id}/capture": {
+    "/api/cases/{case_id}/artifacts/evidence-capture": {
         parameters: {
             query?: never;
             header?: never;
@@ -77,9 +110,44 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Capture */
-        post: operations["capture_api_cases__case_id__capture_post"];
+        /** Evidence Capture */
+        post: operations["evidence_capture_api_cases__case_id__artifacts_evidence_capture_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/bridge-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bridge Grant */
+        post: operations["bridge_grant_api_cases__case_id__bridge_grants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Case */
+        get: operations["get_case_api_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_api_cases__case_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -136,23 +204,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/cases/{case_id}/investigate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Investigate */
-        post: operations["investigate_api_cases__case_id__investigate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/cases/{case_id}/report": {
         parameters: {
             query?: never;
@@ -170,32 +221,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/config/capabilities": {
+    "/api/cases/{case_id}/artifacts/{artifact_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Capabilities */
-        get: operations["capabilities_api_config_capabilities_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Health */
-        get: operations["health_api_health_get"];
+        /** Artifact Metadata */
+        get: operations["artifact_metadata_api_cases__case_id__artifacts__artifact_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -210,16 +244,34 @@ export interface components {
     schemas: {
         /** ArtifactResponse */
         ArtifactResponse: {
-            /** Bytes */
-            bytes: number;
             /** Id */
             id: string;
             /** Kind */
             kind: string;
-            /** Parent Sha */
-            parent_sha: string;
             /** Sha256 */
             sha256: string;
+            /** Bytes */
+            bytes: number;
+            /** Parent Sha */
+            parent_sha: string;
+        };
+        /** BridgeGrantRequest */
+        BridgeGrantRequest: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Finding Id */
+            finding_id: string;
+        };
+        /** BridgeGrantResponse */
+        BridgeGrantResponse: {
+            /** Request Id */
+            request_id: string;
+            /** Token */
+            token: string;
+            /** Bridge Origin */
+            bridge_origin: string;
+            /** Expires Unix */
+            expires_unix: number;
         };
         /** CapabilityRequest */
         CapabilityRequest: {
@@ -235,36 +287,36 @@ export interface components {
         };
         /** CaseResponse */
         CaseResponse: {
-            /** Artifacts */
-            artifacts: components["schemas"]["ArtifactResponse"][];
-            /** Capture Sha */
-            capture_sha: string | null;
+            /** Id */
+            id: string;
+            /** Symptom */
+            symptom: string;
+            /** State */
+            state: string;
             /** Created */
             created: string;
+            /** Updated */
+            updated: string;
+            /** Capture Sha */
+            capture_sha: string | null;
+            /** Original Id */
+            original_id: string | null;
+            /** Quality */
+            quality: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** History */
+            history: components["schemas"]["HistoryResponse"][];
+            /** Runs */
+            runs: components["schemas"]["RunResponse"][];
+            /** Artifacts */
+            artifacts: components["schemas"]["ArtifactResponse"][];
             /** Evidence Count */
             evidence_count: number;
             /** Gate Boundary */
             gate_boundary: string;
-            /** History */
-            history: components["schemas"]["HistoryResponse"][];
-            /** Id */
-            id: string;
-            /** Last Error */
-            last_error: string | null;
-            /** Original Id */
-            original_id: string | null;
             /** Provider Mode */
             provider_mode: string;
-            /** Quality */
-            quality: string | null;
-            /** Runs */
-            runs: components["schemas"]["RunResponse"][];
-            /** State */
-            state: string;
-            /** Symptom */
-            symptom: string;
-            /** Updated */
-            updated: string;
         };
         /** CreateCase */
         CreateCase: {
@@ -273,14 +325,58 @@ export interface components {
         };
         /** DeletionResponse */
         DeletionResponse: {
-            /** Cleanup Pending */
-            cleanup_pending: boolean;
             /** Deleted */
             deleted: boolean;
             /** Original Deleted */
             original_deleted: boolean;
             /** Registered Artifacts Deleted */
             registered_artifacts_deleted: boolean;
+            /** Cleanup Pending */
+            cleanup_pending: boolean;
+        };
+        /** EvidenceCaptureProvenance */
+        EvidenceCaptureProvenance: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Parent Sha256 */
+            parent_sha256: string;
+            /** Case Id */
+            case_id: string;
+            /** Finding Id */
+            finding_id: string;
+            /** Related Finding Ids */
+            related_finding_ids: string[];
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Extraction Mode */
+            extraction_mode: string;
+            /** Extraction Rule */
+            extraction_rule: {
+                [key: string]: unknown;
+            };
+            /** Display Filter */
+            display_filter: string;
+            /** Created */
+            created: string;
+            /** Tool Versions */
+            tool_versions: {
+                [key: string]: string;
+            };
+        };
+        /** EvidenceCaptureRequest */
+        EvidenceCaptureRequest: {
+            /** Finding Id */
+            finding_id: string;
+        };
+        /** EvidenceCaptureResponse */
+        EvidenceCaptureResponse: {
+            /** Artifact Id */
+            artifact_id: string;
+            /** Sha256 */
+            sha256: string;
+            /** Bytes */
+            bytes: number;
+            provenance: components["schemas"]["EvidenceCaptureProvenance"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -289,56 +385,56 @@ export interface components {
         };
         /** HistoryResponse */
         HistoryResponse: {
-            /** At */
-            at: string;
             /** Seq */
             seq: number;
             /** State */
             state: string;
+            /** At */
+            at: string;
         };
         /** RunResponse */
         RunResponse: {
-            /** Capability */
-            capability: string;
-            /** Case Id */
-            case_id: string;
-            /** Configuration */
-            configuration: {
-                [key: string]: unknown;
-            } | null;
-            /** Created */
-            created: string;
-            /** Error */
-            error: string | null;
-            /** Evidence Ids */
-            evidence_ids: string[];
             /** Id */
             id: string;
+            /** Case Id */
+            case_id: string;
+            /** Request Key */
+            request_key: string;
+            /** Capability */
+            capability: string;
             /** Parameters */
             parameters: {
                 [key: string]: unknown;
             };
-            /** Request Key */
-            request_key: string;
             /** Status */
             status: string;
+            /** Error */
+            error: string | null;
             /** Versions */
             versions: {
                 [key: string]: unknown;
             } | null;
+            /** Configuration */
+            configuration: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /** Created */
+            created: string;
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -349,6 +445,46 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    health_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    capabilities_api_config_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     create_api_cases_post: {
         parameters: {
             query?: never;
@@ -369,6 +505,177 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capture_api_cases__case_id__capture_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    investigate_api_cases__case_id__investigate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    capability_api_cases__case_id__capabilities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CapabilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evidence_capture_api_cases__case_id__artifacts_evidence_capture_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceCaptureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceCaptureResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_grant_api_cases__case_id__bridge_grants_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BridgeGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BridgeGrantResponse"];
                 };
             };
             /** @description Validation Error */
@@ -431,108 +738,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeletionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    artifact_metadata_api_cases__case_id__artifacts__artifact_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-                artifact_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArtifactResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    capability_api_cases__case_id__capabilities_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CapabilityRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    capture_api_cases__case_id__capture_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/octet-stream": string;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseResponse"];
                 };
             };
             /** @description Validation Error */
@@ -646,37 +851,6 @@ export interface operations {
             };
         };
     };
-    investigate_api_cases__case_id__investigate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     report_api_cases__case_id__report_get: {
         parameters: {
             query?: never;
@@ -708,11 +882,14 @@ export interface operations {
             };
         };
     };
-    capabilities_api_config_capabilities_get: {
+    artifact_metadata_api_cases__case_id__artifacts__artifact_id__get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                case_id: string;
+                artifact_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -723,27 +900,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ArtifactResponse"];
                 };
             };
-        };
-    };
-    health_api_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -546,3 +546,33 @@ def test_report_schema_remains_compatible_with_persisted_gate4_findings():
         finding.pop("fault_domains")
         finding.pop("epistemic_class")
     check_shape(report)
+
+
+def test_finding_filters_use_finding_scope_and_exact_dns_transaction_frames():
+    report = build_investigation_result(
+        case_id="f" * 32,
+        symptom="dns lookup is slow",
+        evidence=[
+            quality(),
+            ev(
+                "ev_dns",
+                "analyze_dns",
+                {
+                    "transactions": [
+                        {"query_frame": 10, "response_frame": 11, "elapsed_seconds": 1.5},
+                        {"query_frame": 100, "response_frame": 101, "elapsed_seconds": 0.1},
+                    ]
+                },
+                filt="dns",
+            ),
+        ],
+    )
+    finding = next(item for item in report["findings"] if item["category"] == "dns.timing")
+    assert finding["wireshark"]["display_filter"] == "(frame.number >= 10 && frame.number <= 11)"
+
+    tcp = build_investigation_result(
+        case_id="e" * 32,
+        symptom="application is slow",
+        evidence=[quality(), ev("ev_rtt", "analyze_rtt", {"median_seconds": 0.2}, 7)],
+    )
+    assert tcp["findings"][0]["wireshark"]["display_filter"] == "tcp.stream == 7"

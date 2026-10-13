@@ -20,6 +20,7 @@ STAGE_DELAY_SECONDS = 1.000
 MAX_CANDIDATES = 8
 MAX_FINDINGS = 16
 MIN_PRIMARY_CONFIDENCE = "medium"
+DEFAULT_MAX_DISPLAY_FILTER_CHARS = 2_048
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class RuleFinding:
     alternate_explanations: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
     recommended_validation: tuple[str, ...] = ()
+    display_filter: str | None = None
 
 
 _SYMPTOM_TERMS = {
@@ -370,16 +372,93 @@ def _stream_item(index: dict[int, list[dict[str, Any]]], stream: int, category: 
     return next((item for item in index.get(stream, []) if item.get("category") == category), None)
 
 
-def _packet_applicable(items: list[dict[str, Any]]) -> tuple[bool, str | None]:
-    filters = [
-        item.get("display_filter") for item in items if isinstance(item.get("display_filter"), str)
+def _frame_filter(frames: Iterable[int], max_chars: int) -> str | None:
+    ordered = sorted({frame for frame in frames if type(frame) is int and frame > 0})
+    if not ordered:
+        return None
+    runs: list[tuple[int, int]] = []
+    first = previous = ordered[0]
+    for frame in ordered[1:]:
+        if frame == previous + 1:
+            previous = frame
+            continue
+        runs.append((first, previous))
+        first = previous = frame
+    runs.append((first, previous))
+    clauses = [
+        f"frame.number == {start}"
+        if start == end
+        else f"(frame.number >= {start} && frame.number <= {end})"
+        for start, end in runs
     ]
-    return bool(filters), filters[0] if filters else None
+    exact = " || ".join(clauses)
+    if len(exact) <= max_chars:
+        return exact
+    # A bounded frame interval is the deterministic last resort for large sparse
+    # evidence sets. The interval is capped so it cannot become a capture-wide filter.
+    end = min(ordered[-1], ordered[0] + 4095)
+    bounded = f"frame.number >= {ordered[0]} && frame.number <= {end}"
+    return bounded if len(bounded) <= max_chars else None
 
 
-def _finding_dict(number: int, finding: RuleFinding, evidence_map: dict[str, dict[str, Any]]):
+def _value_frames(value: Any) -> list[int]:
+    found: set[int] = set()
+
+    def visit(node: Any, depth: int = 0):
+        if depth > 8:
+            return
+        if isinstance(node, dict):
+            for key, child in node.items():
+                if key == "frame_refs" and isinstance(child, list):
+                    found.update(frame for frame in child if type(frame) is int and frame > 0)
+                elif key in {"query_frame", "response_frame"} and type(child) is int and child > 0:
+                    found.add(child)
+                elif isinstance(child, (dict, list)):
+                    visit(child, depth + 1)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child, depth + 1)
+
+    visit(value)
+    return sorted(found)
+
+
+def _safe_evidence_filter(items: list[dict[str, Any]], max_chars: int) -> str | None:
+    filters = [
+        item.get("display_filter")
+        for item in items
+        if isinstance(item.get("display_filter"), str)
+        and item.get("display_filter")
+        and len(item["display_filter"]) <= max_chars
+        and not any(ord(char) < 32 or ord(char) == 127 for char in item["display_filter"])
+    ]
+    return filters[0] if filters else None
+
+
+def _finding_filter(finding: RuleFinding, cited: list[dict[str, Any]], max_chars: int):
+    if (
+        finding.display_filter
+        and len(finding.display_filter) <= max_chars
+        and not any(ord(char) < 32 or ord(char) == 127 for char in finding.display_filter)
+    ):
+        return finding.display_filter
+    stream = finding.affected_scope.get("tcp_stream")
+    if type(stream) is int and stream >= 0:
+        return f"tcp.stream == {stream}"
+    frames = _value_frames([item.get("value") for item in cited])
+    precise = _frame_filter(frames, max_chars)
+    return precise or _safe_evidence_filter(cited, max_chars)
+
+
+def _finding_dict(
+    number: int,
+    finding: RuleFinding,
+    evidence_map: dict[str, dict[str, Any]],
+    max_display_filter_chars: int,
+):
     cited = [evidence_map[eid] for eid in finding.evidence_ids if eid in evidence_map]
-    applicable, display_filter = _packet_applicable(cited)
+    display_filter = _finding_filter(finding, cited, max_display_filter_chars)
+    applicable = bool(display_filter)
     return {
         "id": f"finding_{number:03d}",
         "title": finding.title,
@@ -404,7 +483,24 @@ def _finding_dict(number: int, finding: RuleFinding, evidence_map: dict[str, dic
     }
 
 
-def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
+def _transaction_filter(transactions: list[dict[str, Any]], max_chars: int) -> str | None:
+    frames = _value_frames(transactions)
+    precise = _frame_filter(frames, max_chars)
+    if precise:
+        return precise
+    for transaction in transactions:
+        value = transaction.get("display_filter")
+        if (
+            isinstance(value, str)
+            and value
+            and len(value) <= max_chars
+            and not any(ord(char) < 32 or ord(char) == 127 for char in value)
+        ):
+            return value
+    return None
+
+
+def _dns_findings(grouped, quality, families, max_display_filter_chars) -> list[RuleFinding]:
     findings: list[RuleFinding] = []
     for item in grouped.get("analyze_dns", []):
         value = item.get("value") if isinstance(item.get("value"), dict) else {}
@@ -445,6 +541,7 @@ def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
                     (
                         "Align the affected application transaction with this DNS lookup to confirm user-impact timing.",
                     ),
+                    _transaction_filter([tx for tx, _ in slow], max_display_filter_chars),
                 )
             )
         if eid and failures:
@@ -467,6 +564,7 @@ def _dns_findings(grouped, quality, families) -> list[RuleFinding]:
                     (
                         "Correlate the failed lookup with the affected connection attempt and resolver-side logs if available.",
                     ),
+                    _transaction_filter(failures, max_display_filter_chars),
                 )
             )
     return findings
@@ -1046,6 +1144,7 @@ def build_investigation_result(
     symptom: str,
     evidence: list[dict[str, Any]],
     analyzer_versions: dict[str, str] | None = None,
+    max_display_filter_chars: int = DEFAULT_MAX_DISPLAY_FILTER_CHARS,
 ) -> dict[str, Any]:
     """Assemble a deterministic, schema-shaped investigation result.
 
@@ -1066,7 +1165,7 @@ def build_investigation_result(
 
     findings = []
     findings.extend(_capture_findings(grouped, quality, quality_limitations, quality_ids))
-    findings.extend(_dns_findings(grouped, quality, families))
+    findings.extend(_dns_findings(grouped, quality, families, max_display_filter_chars))
     findings.extend(_stream_findings(candidates, stream_index, quality, families))
     findings.sort(
         key=lambda finding: (
@@ -1087,7 +1186,7 @@ def build_investigation_result(
         item["id"]: item for item in evidence if isinstance(item.get("id"), str) and item.get("id")
     }
     rendered = [
-        _finding_dict(number, finding, evidence_map)
+        _finding_dict(number, finding, evidence_map, max_display_filter_chars)
         for number, finding in enumerate(findings, start=1)
     ]
     conclusion = _primary(findings, quality)
