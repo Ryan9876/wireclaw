@@ -1,11 +1,16 @@
 # Gate 5 verification — local web workflow
 
 Date: 2026-10-09. PR: [#6](https://github.com/Ryan9876/wireclaw/pull/6).
-Branch: `gate5-web-ui`. Status: implemented, validated and separately reviewed;
-open and unmerged for owner merge approval.
+Branch: `gate5-web-ui`. Status: implemented, validated, separately reviewed and
+**merged into `main` on 2026-10-09** as merge commit
+`29505bb5069be135292d5d6f30ea398552518d0c`.
 
 Final validated product commit: `187ec13861fec504bb0ae37669f81d18d6cf35c3`.
 Closeout changes after that commit only record verification and check Gate 5 tasks.
+
+> Historical-scope note: statements below about later gates describe the repository
+> at the time Gate 5 was validated. For current delivery state, see the root README
+> and `docs/roadmap.md`.
 
 ## Gate 4 prerequisite
 
@@ -176,7 +181,8 @@ frontend security, raw data/path handling, diagnostic duplication, scope creep
 and tests that could bypass the real workflow. No unresolved blocking findings.
 The review is recorded as a COMMENT anchored to that product commit. This was a
 separate review pass by the implementation agent, not a second human approval or
-GitHub APPROVE. Owner merge approval remains outstanding.
+GitHub APPROVE. Owner merge approval was subsequently granted and PR #6 was merged
+into `main` on 2026-10-09.
 
 ## Environment and limits
 
