@@ -2,6 +2,25 @@
 
 This roadmap is directional. `specs/v1/` remains authoritative for V1 scope.
 
+## Current delivery status — 2026-10-13
+
+| Gate | Status | Notes |
+| --- | --- | --- |
+| 0 — repository/spec baseline | Complete | Accepted on `main` |
+| 1 — deterministic analyzer | Complete | Accepted on `main` |
+| 2 — TCP/DNS/TLS diagnostics | Complete | Accepted on `main` |
+| 3 — local API/case model | Complete | Accepted on `main` |
+| 4 — rules-only investigation/report | Complete | Accepted on `main` |
+| 5 — web UI | Complete | PR #6 merged 2026-10-09 |
+| 6 — evidence capture/Wireshark integration | In progress | Implemented on `gate6-wireshark-evidence-bridge`; not merged |
+| 7 — reasoning provider/iterative investigation | Not started | Follows Gate 6 acceptance |
+| 8 — Docker packaging/cross-platform release | Not started | Follows provider/integration work |
+| 9 — V1 acceptance/hardening | Not started | Final V1 release gate |
+
+Gate 6 is the active delivery gate. Its branch is 19 commits ahead of `main`. The latest workflow at commit `d21ceae8047db7c28f45ba7a12b4100ba6585e4e` passed Python, Go and web validation and passed host-bridge test/build jobs on Ubuntu, macOS and Windows. The remaining CI blocker is the Linux full job's production browser validation. See [Gate 6 progress](gate6-progress.md) for the current evidence and acceptance boundary.
+
+Task checkboxes in `specs/v1/tasks.md` should be read as accepted mainline delivery state, not merely code existing on a development branch. Gate 6 tasks should remain unchecked until the gate's validation and merge criteria are satisfied.
+
 ## V1 — PCAP investigator
 
 Goal: make a single local capture useful for defensible troubleshooting.
