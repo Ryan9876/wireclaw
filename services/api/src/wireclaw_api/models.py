@@ -45,7 +45,7 @@ BASELINE = (
     "list_endpoints",
     "list_conversations",
 )
-CAPABILITIES = (*BASELINE, *(c.value for c in Capability))
+CAPABILITIES = (*BASELINE, *(c.value for c in Capability), "analyze_http_timing")
 
 
 class CapabilityRequest(StrictModel):

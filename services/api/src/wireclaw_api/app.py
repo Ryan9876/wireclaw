@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from wireclaw_analyzer import AnalyzerError
 
 from .config import Policy
-from .gate6_service import Service
+from .gate7_service import Service
 from .models import (
     CAPABILITIES,
     ArtifactResponse,
@@ -101,7 +101,7 @@ class Boundary:
 
 
 def create_app(data_root: Path, policy: Policy | None = None):
-    policy = policy or Policy()
+    policy = policy or Policy.from_environment()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -112,7 +112,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
         finally:
             service.close()
 
-    app = FastAPI(title="Wireclaw local API", version="0.6.0", lifespan=lifespan)
+    app = FastAPI(title="Wireclaw local API", version="0.7.0", lifespan=lifespan)
     app.add_middleware(Boundary, policy=policy)
 
     @app.exception_handler(ApiError)
@@ -140,13 +140,13 @@ def create_app(data_root: Path, policy: Policy | None = None):
 
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "gate": 6, "provider_mode": "none"}
+        return {"status": "ok", "gate": 7, "provider_mode": policy.provider_mode.value}
 
     @app.get("/api/config/capabilities")
     def capabilities():
         return {
             "capabilities": list(CAPABILITIES),
-            "provider_mode": "none",
+            "provider_mode": policy.provider_mode.value,
             "provider_modes_supported_by_interface": [
                 "none",
                 "openai_compatible_cloud",

@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
-    policy = Policy(host=args.host, port=args.port)
+    policy = Policy.from_environment(host=args.host, port=args.port)
     # No request/access/exception logs: these can include sensitive URLs/bodies.
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("uvicorn.error").disabled = True

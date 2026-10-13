@@ -17,6 +17,7 @@ from wireclaw_analyzer import (
     DiagnosticRequest,
 )
 from wireclaw_analyzer.runner import Operation
+from wireclaw_api.investigation import build_investigation_result
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("tshark") or not shutil.which("capinfos"),
@@ -142,12 +143,56 @@ def test_window_constraint_and_server_wait_are_distinct(tmp_path):
         "state": "reopened",
     }
     assert window["directions"][1]["advertiser"]["address"] == "192.0.2.2"
-    wait = analyzer.diagnose(analyzer.ingest_capture(Path("incoming/server_wait.capture")))
+    server_wait_identity = analyzer.ingest_capture(Path("incoming/server_wait.capture"))
+    wait = analyzer.diagnose(server_wait_identity)
+    http_wait = analyzer.run_http_timing(server_wait_identity)
+    assert value(http_wait, "analyze_http_timing")["transactions"] == []
+    assert value(http_wait, "analyze_http_timing")["state"] == "not_observable"
     assert value(wait, "analyze_window_behavior")["indicators"]["zero_window"] == []
     assert value(wait, "analyze_rtt")["median_seconds"] == 0.01
     high = analyzer.diagnose(analyzer.ingest_capture(Path("incoming/high_rtt.capture")))
     assert value(high, "analyze_rtt")["median_seconds"] == 0.2
     assert value(high, "analyze_tcp_establishment")["establishment_seconds"] == 0.4
+
+
+def test_http_server_wait_is_measured_but_opaque_tcp_silence_is_not(tmp_path):
+    analyzer, identity = prepare(tmp_path, "http_server_wait")
+    baseline = analyzer.analyze(identity)
+    diagnostics = analyzer.diagnose(identity)
+    http = analyzer.run_http_timing(identity)
+    evidence = baseline["evidence"] + diagnostics["evidence"] + http["evidence"]
+    report = build_investigation_result(
+        case_id="case-http",
+        symptom="The HTTP request is slow",
+        evidence=evidence,
+        analyzer_versions={"tshark": analyzer.versions["tshark"]["version"]},
+    )
+    timing = http["evidence"][0]
+    transaction = timing["value"]["transactions"][0]
+    assert transaction["request_to_first_response_seconds"] == pytest.approx(2.1, abs=0.01)
+    assert transaction["frame_refs"] == [4, 5]
+    finding = next(
+        item for item in report["findings"] if item["category"] == "server.application_wait"
+    )
+    assert finding["epistemic_class"] == "inferred"
+    assert finding["fault_domains"] == ["server_application"]
+    assert "downstream dependency" in " ".join(finding["limitations"])
+    assert any(
+        item["name"] == "server_application_wait" for item in report["time_attribution"]["segments"]
+    )
+
+    opaque, opaque_id = prepare(tmp_path / "opaque", "server_wait")
+    opaque_report = build_investigation_result(
+        case_id="case-opaque",
+        symptom="The TCP transfer is slow",
+        evidence=opaque.analyze(opaque_id)["evidence"]
+        + opaque.diagnose(opaque_id)["evidence"]
+        + opaque.run_http_timing(opaque_id)["evidence"],
+        analyzer_versions={"tshark": opaque.versions["tshark"]["version"]},
+    )
+    assert not any(
+        item["category"] == "server.application_wait" for item in opaque_report["findings"]
+    )
 
 
 def test_dns_delay_failure_retry_and_no_timeout_claim(tmp_path):

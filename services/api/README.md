@@ -1,6 +1,6 @@
-# Local API — Gates 3, 4, and 6
+# Local API — Gates 3, 4, 6, and 7
 
-FastAPI owns case lifecycle, SQLite metadata, artifact registration, bounded analyzer orchestration, deterministic rules-only investigation/report assembly, and Gate 6 evidence-capture/bridge-grant orchestration. The analyzer remains the packet-fact authority. The API does not run model reasoning or provide release packaging.
+FastAPI owns case lifecycle, SQLite metadata, artifact registration, bounded analyzer orchestration, deterministic reports, optional Gate 7 reasoning, and Gate 6 evidence-capture/bridge-grant orchestration. The analyzer remains the packet-fact authority. Model reasoning runs only in the API boundary through typed capabilities. Release packaging is deferred to Gate 8.
 
 ## Developer startup
 
@@ -19,15 +19,15 @@ OpenAPI is served at `/openapi.json`, documentation at `/docs`, and the checked-
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/health` | Service health, Gate 4, provider mode `none` |
+| `GET /api/health` | Service health, Gate 7, configured provider mode |
 | `GET /api/config/capabilities` | Existing deterministic analyzer capabilities and public bounds |
 | `POST /api/cases` | Create a case from a bounded symptom string |
 | `POST /api/cases/{case_id}/capture` | Stream PCAP/PCAPNG bytes into immutable intake |
-| `POST /api/cases/{case_id}/investigate` | Run deterministic baseline/diagnostics, assemble report, reach `COMPLETE` |
+| `POST /api/cases/{case_id}/investigate` | Run deterministic baseline/diagnostics, optional bounded reasoning, assemble report, reach `COMPLETE` |
 | `POST /api/cases/{case_id}/capabilities` | Re-run a typed deterministic capability against the registered original |
 | `GET /api/cases/{case_id}` | Case state/history, capture quality, artifacts, runs and metadata |
 | `GET /api/cases/{case_id}/findings` | Prioritized deterministic findings from the persisted report |
-| `GET /api/cases/{case_id}/report` | Schema-valid persisted Gate 4 investigation report |
+| `GET /api/cases/{case_id}/report` | Schema-valid persisted report with rules-only/model-assisted/fallback status |
 | `GET /api/cases/{case_id}/evidence` | Bounded evidence page |
 | `GET /api/cases/{case_id}/evidence/{evidence_id}` | Exact normalized evidence record |
 | `GET /api/cases/{case_id}/artifacts/{artifact_id}` | Integrity-checked artifact metadata; never a caller filesystem path |
@@ -37,7 +37,19 @@ Capability requests remain typed and cannot contain executable names, arbitrary 
 
 ## Investigation behavior
 
-Every investigation starts with capture quality and deterministic Gate 1/2 evidence. Gate 4 then runs a rules-only investigation over normalized evidence; it does not parse packet bytes itself and does not call any model provider.
+Every investigation starts with capture quality and deterministic Gate 1/2 evidence. The deterministic report is assembled from normalized evidence. If configured, the optional reasoner receives a canonical allowlisted context and may request only a registered analyzer capability or finalize a proposal. Provider failure leaves the deterministic report usable. `none` is the default.
+
+Configure a provider at process startup only:
+
+```text
+WIRECLAW_PROVIDER_MODE=none|openai_compatible_cloud|openai_compatible_local
+WIRECLAW_PROVIDER_BASE_URL=https://provider.example/v1
+WIRECLAW_PROVIDER_MODEL=model-name
+WIRECLAW_PROVIDER_TIMEOUT_SECONDS=60
+WIRECLAW_PROVIDER_API_KEY=<secret>
+```
+
+The API key is read from the environment, excluded from reports and audit records, and never accepted from investigation requests. Cloud endpoints require HTTPS; local endpoints may use HTTP or HTTPS. Redirects and ambient HTTP proxies are disabled. Both modes receive the same minimized normalized evidence; neither receives PCAP bytes or payloads. Requests, responses, evidence count, and reasoning steps are bounded.
 
 The rules engine:
 
@@ -54,9 +66,9 @@ Important conservative boundaries are intentional: a reset proves termination bu
 
 ## Time attribution
 
-Gate 4 emits only stages the deterministic evidence can measure without overlap. Current attribution may include DNS, TCP establishment and the visible TLS establishment milestone. Measurement class and evidence IDs accompany each segment.
+The deterministic attribution can include DNS, TCP establishment, the visible TLS establishment milestone, and decodable HTTP request-to-first-response timing. Measurement class and evidence IDs accompany each segment.
 
-The result is a measured subtotal, not necessarily complete user-visible elapsed time. Application/server wait and request/response transfer attribution require deterministic application timing evidence that is not implemented yet. A capture with an idle interval but no decodable request/response timing therefore remains unresolved rather than being labeled server delay.
+The result is a measured subtotal, not necessarily complete user-visible elapsed time. Plaintext HTTP/1.x timing uses TShark-correlated request/response frames and includes contributing TCP frames when reassembly references are available. Response transfer intervals are included when those frame boundaries are determinable. Opaque TCP silence remains unresolved and is not labeled server delay.
 
 ## Findings and uncertainty
 
@@ -69,7 +81,7 @@ Findings are concise, prioritized, and include:
 - recommended validation
 - packet-level applicability and display filter where available
 
-The investigation-result contract is `contracts/investigation-result.schema.json`. Applicable packet-level findings expose both native Wireshark actions and approved display-filter metadata.
+The investigation-result contract is `contracts/investigation-result.schema.json`. Applicable packet-level findings expose both native Wireshark actions and approved display-filter metadata. Reasoning can rank only existing deterministic findings with same-case evidence references; provider prose is not copied into authoritative findings.
 
 ## Gate 6 evidence and bridge grants
 
@@ -107,7 +119,7 @@ NEW
 
 Failures preserve prior deterministic evidence and immutable input. A report-assembly failure transitions the case to `FAILED` without deleting analyzer results. A completed case can be re-run from its preserved original.
 
-SQLite continues to store metadata, runs and evidence indexes while packet/report bytes remain as confined case artifacts. A completed report is serialized deterministically, validated against the investigation-result schema, stored under `reports/<sha256>.json`, registered as a logical artifact, and made read-only. Re-running an unchanged case produces the same report content and reuses the report artifact identity. Restart recovery preserves registered reports and removes unregistered report debris.
+SQLite stores case metadata, analyzer runs, evidence indexes, and bounded reasoning-step audit metadata while packet/report bytes remain as confined case artifacts. Reasoning records omit raw prompts/responses, credentials, and chain-of-thought. A completed report is serialized deterministically, validated against the investigation-result schema, stored under `reports/<sha256>.json`, registered as a logical artifact, and made read-only. Restart recovery preserves registered reports and removes unregistered report debris.
 
 Reports include the deterministic analyzer, TShark and capinfos versions recovered from completed run metadata. The report endpoint re-validates the report schema, case identity and registered artifact integrity before returning it.
 
@@ -132,12 +144,12 @@ data/
 
 ## Resource and privacy policy
 
-Existing Gate 1–3 execution, capture, pipe, evidence, request, run and case bounds remain unchanged. Gate 4 additionally caps candidate and finding counts and validates report size before persistence.
+Existing Gate 1–3 execution, capture, pipe, evidence, request, run and case bounds remain unchanged. Gate 4 caps candidate and finding counts. Gate 7 bounds provider context/response sizes, reasoning turns, and repeated capability requests.
 
-Raw captures and payload bytes remain local. Structured logs contain case/component/capability/duration/status/static error code only. Symptoms, packet payload, DNS raw names, credentials, arbitrary exceptions and request bodies are not emitted to logs. Active provider mode remains `none`; Gate 4 has no model transport or model credentials.
+Raw captures and payload bytes remain local. Structured logs contain case/component/capability/duration/status/static error code only. Symptoms, packet payload, DNS raw names, credentials, arbitrary exceptions and request bodies are not emitted to logs. Provider requests use an explicit context allowlist; API keys are neither stored nor returned.
 
 ## Validation
 
-Gate 4 validation requires real TShark/capinfos with zero relevant skips, the full Gate 1–4 regression suite, schema/OpenAPI checks, Ruff lint/format, compileall, and `git diff --check`. Real-capture Gate 4 RCA goldens live in `tests/golden/gate4/rules_cases.json` and intentionally include healthy and ambiguous outcomes that must return `insufficient_evidence`.
+Gate validation uses deterministic fake-provider tests; a paid or live model is not required. Real TShark/capinfos are required to validate packet-tool semantics, including the positive HTTP server-wait fixture and opaque negative fixture. See `docs/gate7-verification.md` for the exact Gate 7 evidence and environment limitations.
 
 See `docs/gate4-verification.md` for the exact validated environment, counts, task mapping, RCA cases, and known limitations.

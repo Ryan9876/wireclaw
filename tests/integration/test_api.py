@@ -217,7 +217,7 @@ def test_case_lifecycle_restart_cached_determinism_schema_and_deletion(environme
         ]
         assert record["quality"] == "good"
         evidence = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
-        assert len(evidence) == 16
+        assert len(evidence) == 17
         for item in evidence:
             client.app.state.service.analyzer(case_id).validator.validate(item)
         response = client.post(f"/api/cases/{case_id}/capabilities", json=request_for(record))
@@ -321,7 +321,7 @@ def test_diagnostic_failure_retains_completed_baseline_and_recovery(environment)
         assert len(client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]) == 5
     with client_for(root) as client:
         assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
-        assert len(client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]) == 16
+        assert len(client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]) == 17
 
 
 def test_real_unknown_stream_failure_and_cross_case_isolation(environment):

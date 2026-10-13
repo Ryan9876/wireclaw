@@ -378,6 +378,31 @@ def generate(directory: Path):
             (100_000, tcp(SERVER, CLIENT, seq=201, ack=121, flags=20)),
             (200_000, tcp(seq=900, ack=0, flags=2, sport=50009)),
         ],
+        "http_server_wait": [
+            (0, tcp(seq=100, ack=0, flags=2)),
+            (10_000, tcp(SERVER, CLIENT, seq=200, ack=101, flags=18)),
+            (20_000, tcp(seq=101, ack=201, flags=16)),
+            (
+                30_000,
+                tcp(
+                    seq=101,
+                    ack=201,
+                    flags=24,
+                    payload=b"GET / HTTP/1.1\r\nHost: example.invalid\r\nConnection: close\r\n\r\n",
+                ),
+            ),
+            (
+                2_130_000,
+                tcp(
+                    SERVER,
+                    CLIENT,
+                    seq=201,
+                    ack=161,
+                    flags=24,
+                    payload=b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                ),
+            ),
+        ],
         "dns_tcp_fallback": fallback,
         "tls_clean": clean_tls,
         "tls12_clean": tls12,

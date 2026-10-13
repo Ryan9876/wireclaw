@@ -54,4 +54,8 @@ EXTRA_FIELDS = (
     "tls.handshake.extensions.supported_version",
     "tcp.segment",
     "tls.segment",
+    "http.request",
+    "http.response",
+    "http.request_in",
+    "http.response_in",
 )
