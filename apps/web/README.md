@@ -29,8 +29,13 @@ reload. Recovered idle/failed cases require an explicit continue/retry action.
 Deletion identifies the case and its stored files before confirmation, and reports
 pending cleanup accurately. The source file outside Wireclaw is unchanged.
 
-Both Wireshark actions are visible on applicable findings and disabled with an
-explanation until Gate 6. No bridge or extraction endpoint is simulated.
+Applicable packet-level findings show the adjacent **Open Full Capture in
+Wireshark** and **Open Evidence Capture in Wireshark** actions, followed by
+**Copy Wireshark Display Filter** and **Show Packet Evidence**. The API approves
+the artifact, filter and one-time bridge grant. If the native bridge is
+unavailable, its two actions stay visible and explain their unavailable state;
+filter copying, packet evidence, and backend evidence-capture generation remain
+available.
 
 For local edits, run `npm run build:watch --prefix apps/web` beside the API process.
 The API serves the updated production assets. Production serving requires the build;
@@ -61,4 +66,5 @@ rejects incompatible responses, foreign case IDs and evidence IDs rather than
 rendering unvalidated diagnostic data. Reports publish only between matching
 COMPLETE case snapshots and disappear on revision, run or connectivity changes.
 
-See [Gate 5 verification](../../docs/gate5-verification.md) for evidence and limits.
+See [Gate 5 verification](../../docs/gate5-verification.md) and
+[Gate 6 verification](../../docs/gate6-verification.md) for evidence and limits.

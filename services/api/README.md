@@ -1,6 +1,6 @@
-# Local API — Gate 4
+# Local API — Gates 3, 4, and 6
 
-FastAPI owns case lifecycle, SQLite metadata, artifact registration, bounded analyzer orchestration, and deterministic rules-only investigation/report assembly. The analyzer remains the packet-fact authority. Gate 4 does not add a UI, model reasoning, host bridge, Wireshark launch integration, or release packaging.
+FastAPI owns case lifecycle, SQLite metadata, artifact registration, bounded analyzer orchestration, deterministic rules-only investigation/report assembly, and Gate 6 evidence-capture/bridge-grant orchestration. The analyzer remains the packet-fact authority. The API does not run model reasoning or provide release packaging.
 
 ## Developer startup
 
@@ -69,7 +69,27 @@ Findings are concise, prioritized, and include:
 - recommended validation
 - packet-level applicability and display filter where available
 
-The investigation-result contract is `contracts/investigation-result.schema.json`. Packet-level findings expose the future Wireshark-action availability fields required by the shared result model, but Gate 6 host-bridge/evidence-capture launch behavior is not implemented in Gate 4.
+The investigation-result contract is `contracts/investigation-result.schema.json`. Applicable packet-level findings expose both native Wireshark actions and approved display-filter metadata.
+
+## Gate 6 evidence and bridge grants
+
+The API extracts a focused evidence capture from the immutable original, subject
+to the configured evidence-capture byte bound. A derived artifact is registered
+only after it parses successfully. Failure leaves the original capture and
+previous findings intact. Provenance records the parent SHA-256, extraction mode
+and rule, display filter, creation time, related finding IDs, and evidence IDs.
+Repeated requests for the same finding reuse a capture only after both the
+registered derived bytes and paired provenance verify against the current
+parent, finding, evidence IDs, extraction mode, and approved filter.
+
+The evidence-capture and bridge-grant routes accept logical case, finding and
+artifact IDs. They do not accept filesystem paths, caller-authored display
+filters, executable names, or argument vectors. Before granting a native open,
+the API verifies the case-scoped registered artifact and writes a short-lived
+one-time grant manifest containing only the token hash. Case deletion removes
+its grants. See [the host bridge instructions](../host-bridge/README.md) for the
+native trust boundary and [Gate 6 verification](../../docs/gate6-verification.md)
+for validated behavior.
 
 ## Lifecycle and persistence
 

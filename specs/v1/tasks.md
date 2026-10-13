@@ -142,30 +142,32 @@ Exit criteria:
 
 ## Gate 6 — Evidence capture and Wireshark integration
 
-Goal: make native Wireshark validation a first-class path.
+Goal: make native Wireshark validation a first-class path on the supported V1 host.
 
 Requirements: R-F018 through R-F020, R-D003, R-D004, R-U003.
 
 Tasks:
 
-- [ ] G6.1 Implement evidence-capture extraction service.
-- [ ] G6.2 Record parent hash/extraction rule/display filter for derived captures.
-- [ ] G6.3 Implement Go host bridge protocol.
-- [ ] G6.4 Enforce loopback/authentication/origin restrictions.
-- [ ] G6.5 Implement logical-artifact resolution/path confinement.
-- [ ] G6.6 Implement configured Wireshark executable discovery/selection.
-- [ ] G6.7 Implement macOS launcher behavior.
-- [ ] G6.8 Implement Windows launcher behavior.
-- [ ] G6.9 Implement Linux launcher behavior.
-- [ ] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
-- [ ] G6.11 Add **Open Evidence Capture in Wireshark** beside it on every applicable finding.
-- [ ] G6.12 Add Copy Display Filter and Show Packet Evidence.
-- [ ] G6.13 Host-bridge security tests including path traversal and malicious filters.
+- [x] G6.1 Implement evidence-capture extraction service.
+- [x] G6.2 Record parent hash/extraction rule/display filter and related finding/evidence IDs for derived captures.
+- [x] G6.3 Implement Go host bridge protocol.
+- [x] G6.4 Enforce loopback/authentication/origin restrictions and one-time bounded grants.
+- [x] G6.5 Implement logical-artifact resolution/path confinement.
+- [x] G6.6 Implement configured Wireshark executable discovery/selection.
+- [x] G6.7 Implement macOS launcher behavior; discovery and argv verified in macOS CI. Native GUI accepted on macOS 27.0.1 arm64 with Wireshark 4.6.9.
+- [x] G6.8 Preserve Windows bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification is deferred.
+- [x] G6.9 Preserve Linux bridge build/discovery/argv coverage as post-V1 portability groundwork; native release qualification is deferred.
+- [x] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
+- [x] G6.11 Add **Open Evidence Capture in Wireshark** beside it on every applicable finding.
+- [x] G6.12 Add Copy Display Filter and Show Packet Evidence with bridge-unavailable degradation.
+- [x] G6.13 Host-bridge security tests including path traversal and malicious filters.
 
 Exit criteria:
 - both Wireshark actions are always visible together when applicable
-- both work on macOS, Windows, and Linux
+- both are manually accepted in a native macOS desktop session (passed)
 - the bridge cannot be used for arbitrary command execution
+
+Gate 6 is not a Windows/Linux release-qualification gate. Those hosts remain on the post-V1 roadmap.
 
 ## Gate 7 — Reasoning provider and iterative investigation
 
@@ -192,9 +194,9 @@ Exit criteria:
 - disabling/removing the model preserves core analyzer functionality
 - model prose cannot fabricate evidence records
 
-## Gate 8 — Docker packaging and cross-platform release
+## Gate 8 — Docker packaging and macOS release
 
-Goal: make the product easy to run and share.
+Goal: make the V1 product easy to run and share on the supported macOS host.
 
 Requirements: R-D001 through R-D006.
 
@@ -206,19 +208,19 @@ Tasks:
 - [ ] G8.4 Define bind-mounted data root.
 - [ ] G8.5 Create `.env.example` with safe defaults.
 - [ ] G8.6 macOS start/stop launcher.
-- [ ] G8.7 Windows start/stop launcher.
-- [ ] G8.8 Linux start/stop launcher.
-- [ ] G8.9 host-bridge install/uninstall scripts for each OS.
-- [ ] G8.10 first-run prerequisite checks for Docker and Wireshark.
-- [ ] G8.11 release smoke tests on all three host OS families.
+- [ ] G8.9 macOS host-bridge install/uninstall scripts.
+- [ ] G8.10 first-run prerequisite checks for Docker and Wireshark on macOS.
+- [ ] G8.11 macOS release smoke tests.
+
+Legacy task IDs G8.7 (Windows launcher) and G8.8 (Linux launcher) are deferred to the post-V1 platform-expansion roadmap and are not V1 exit criteria.
 
 Exit criteria:
-- a user with Docker and Wireshark can start Wireclaw without a developer toolchain
-- equivalent core workflow works on macOS, Windows, and Linux
+- a macOS user with Docker and Wireshark can start Wireclaw without a developer toolchain
+- the complete core workflow and native Wireshark integration work in the packaged macOS release
 
 ## Gate 9 — V1 acceptance and hardening
 
-Goal: demonstrate that Wireclaw solves representative troubleshooting problems safely and reproducibly.
+Goal: demonstrate that Wireclaw solves representative troubleshooting problems safely and reproducibly on the V1 release target.
 
 Tasks:
 
@@ -237,8 +239,8 @@ Tasks:
 - [ ] G9.13 cloud-provider privacy inspection.
 - [ ] G9.14 host-bridge security review.
 - [ ] G9.15 end-to-end macOS acceptance.
-- [ ] G9.16 end-to-end Windows acceptance.
-- [ ] G9.17 end-to-end Linux acceptance.
+
+Legacy task IDs G9.16 (Windows end-to-end acceptance) and G9.17 (Linux end-to-end acceptance) are deferred to future release qualification and are not V1 tasks.
 
 V1 release gate:
 
@@ -247,12 +249,14 @@ V1 release gate:
 - ambiguous cases do not produce forced root-cause claims
 - raw captures are not transmitted to cloud model under default policy
 - both Wireshark actions work and remain visible together
-- cross-platform Docker workflow passes
+- macOS Docker/release workflow passes
 
 ## Deferred post-V1 candidates
 
 Do not pull these into V1 without specification change:
 
+- Windows release qualification: native Wireshark acceptance, launcher/installer, Docker packaging smoke, and Gate 9-equivalent end-to-end acceptance
+- Linux release qualification: native Wireshark acceptance, launcher/installer, Docker packaging smoke, and Gate 9-equivalent end-to-end acceptance
 - browser HAR correlation
 - interface/SNMP counters
 - traceroute/MTR/ping/HTTP active testing

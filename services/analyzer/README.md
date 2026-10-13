@@ -93,6 +93,17 @@ provenance because capinfos 4.2.2 does not print those counters. Totals are unkn
 unless every interface reports a count. No packet payload or interface text is
 retained by that reader.
 
+## Gate 6 evidence extraction
+
+`EvidenceExtractor` creates a derived capture under the managed case root using
+only an internally approved finding filter. TShark runs without a shell and is
+bounded by the evidence-capture size and process limits. The result is parsed
+with capinfos and hashed; the immutable source hash is checked before and after
+extraction. Any failed or over-limit output is removed before the API registers
+an artifact. The API records provenance and owns case/finding/artifact mapping;
+the analyzer does not accept browser-supplied paths or filters. See
+[Gate 6 verification](../../docs/gate6-verification.md).
+
 ## Quality and limits
 
 Quality is `insufficient` for an empty capture, `limited` for observed baseline

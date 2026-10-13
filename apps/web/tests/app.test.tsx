@@ -2,7 +2,14 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
-import { api, ApiError, type Case, type Evidence, type Report } from '../src/api';
+import {
+  api,
+  ApiError,
+  type Case,
+  type Evidence,
+  type NativeBridgeState,
+  type Report,
+} from '../src/api';
 import rawSupported from './fixtures/supported.json';
 import rawInsufficient from './fixtures/insufficient.json';
 import rawLimited from './fixtures/limited.json';
@@ -12,10 +19,20 @@ const supported = rawSupported as unknown as Fixture;
 const insufficient = rawInsufficient as unknown as Fixture;
 const limited = rawLimited as unknown as Fixture;
 let current: Case;
-function fixture(value: Fixture = supported) {
+function fixture(
+  value: Fixture = supported,
+  bridgeState: NativeBridgeState = 'bridge_unavailable',
+) {
   current = structuredClone(value.case) as Case;
   vi.spyOn(api, 'get').mockImplementation(async () => structuredClone(current));
   vi.spyOn(api, 'report').mockResolvedValue(value.report as Report);
+  vi.spyOn(api, 'bridgeHealth').mockResolvedValue(bridgeState);
+  vi.spyOn(api, 'bridgeGrant').mockResolvedValue({
+    request_id: 'a'.repeat(32),
+    token: 'x'.repeat(32),
+    bridge_origin: 'http://127.0.0.1:8766',
+    expires_unix: Math.floor(Date.now() / 1000) + 30,
+  });
   vi.spyOn(api, 'evidence').mockImplementation(async (_id, evidenceId) => {
     const record = value.evidence.find((item) => item.id === evidenceId);
     if (!record) throw new ApiError('evidence_not_found');
@@ -56,8 +73,11 @@ function fixture(value: Fixture = supported) {
     cleanup_pending: false,
   });
 }
-function openExisting(value: Fixture = supported) {
-  fixture(value);
+function openExisting(
+  value: Fixture = supported,
+  bridgeState: NativeBridgeState = 'bridge_unavailable',
+) {
+  fixture(value, bridgeState);
   window.history.replaceState(null, '', `/#case=${value.case.id}`);
   return render(<App />);
 }
@@ -130,6 +150,15 @@ describe('primary intake and recovery workflow', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Retry API connection' }));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
+  it('does not offer evidence generation when the API is unavailable', async () => {
+    openExisting(supported, 'api_unavailable');
+    await waitFor(() => expect(screen.getByText(/The local API is unavailable/)).toBeVisible());
+    expect(
+      screen.queryByRole('button', { name: 'Create evidence capture without opening Wireshark' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy Wireshark Display Filter' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Show Packet Evidence' })).toBeVisible();
+  });
   it('preserves failed upload case and never calls investigation', async () => {
     fixture();
     vi.mocked(api.upload).mockImplementation(async () => {
@@ -192,6 +221,19 @@ describe('evidence and uncertainty presentation', () => {
       screen.getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
     ).toBeDisabled();
   });
+  it('keeps bridge ready after a finding or extraction API failure', async () => {
+    fixture();
+    vi.mocked(api.bridgeHealth).mockResolvedValue('ready');
+    vi.mocked(api.bridgeGrant).mockRejectedValue(new ApiError('finding_not_found', 404));
+    window.history.replaceState(null, '', `/#case=${supported.case.id}`);
+    render(<App />);
+    const full = await screen.findByRole('button', { name: 'Open Full Capture in Wireshark' });
+    await waitFor(() => expect(full).toBeEnabled());
+    await userEvent.click(full);
+    expect(await screen.findByText(/finding_not_found/)).toBeVisible();
+    expect(full).toBeEnabled();
+    expect(screen.getByText(/Native bridge available/)).toBeVisible();
+  });
   it('treats insufficient_evidence as a completed result with next evidence', async () => {
     openExisting(insufficient as Fixture);
     expect(await screen.findByRole('heading', { name: 'Insufficient evidence' })).toBeVisible();
@@ -215,7 +257,7 @@ describe('evidence and uncertainty presentation', () => {
   it('shows normalized evidence, tool version, and scope in a secondary drawer', async () => {
     openExisting();
     await screen.findByRole('heading', { name: 'Supported finding' });
-    await userEvent.click(screen.getByRole('button', { name: 'Show packet evidence' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Show Packet Evidence' }));
     const dialog = screen.getByRole('dialog', { name: 'Expert evidence' });
     expect(await within(dialog).findByRole('heading', { name: 'Normalized values' })).toBeVisible();
     expect(within(dialog).getByText('Tool / version')).toBeVisible();

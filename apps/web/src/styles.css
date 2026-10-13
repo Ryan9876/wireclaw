@@ -652,7 +652,7 @@ table button {
   font-size: 0.86rem;
 }
 .failure {
-  border-left: 3px solid #a4454c;
+  background: #fcf4f4;
 }
 .error-code {
   font-size: 0.8rem;

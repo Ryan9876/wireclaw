@@ -12,7 +12,7 @@ Its purpose is to turn ambiguous reports such as **"the application is slow"** i
 4. **Evidence is traceable.** Every finding must link back to packet numbers, streams, tool output, or derived measurements.
 5. **Uncertainty is explicit.** Wireclaw must say when a conclusion cannot be established from the available capture.
 6. **Wireshark remains available.** Every packet-level finding always exposes both **Open Full Capture in Wireshark** and **Open Evidence Capture in Wireshark**.
-7. **Cross-platform.** The analyzer runs in Docker on macOS, Windows, and Linux. Native host integration is limited to operations that must occur outside the container, such as launching Wireshark.
+7. **macOS-first V1, portable architecture.** V1 is release-qualified on macOS. Windows and Linux remain post-V1 roadmap targets; existing portability code/CI does not imply release support.
 8. **Spec first.** Product behavior is defined under `specs/` before implementation changes are made.
 
 ## Intended V1 workflow
@@ -70,7 +70,7 @@ Evidence-backed investigation result
    +--> Evidence capture -> native Wireshark host bridge
 ```
 
-The analyzer and web application are containerized. A small optional host bridge handles native Wireshark launch behavior on macOS, Windows, and Linux.
+The analyzer and web application are containerized. V1 uses a small native macOS host bridge for Wireshark launch behavior. Windows/Linux bridge implementations and CI coverage are retained as portability groundwork for future release qualification.
 
 ## Repository map
 
@@ -86,16 +86,14 @@ The analyzer and web application are containerized. A small optional host bridge
 
 ## Current status
 
-Gates 1 through 4 are merged. Gate 5 implements the local browser workflow and
-is awaiting PR approval. See [web startup instructions](apps/web/README.md) and
-[Gate 5 verification](docs/gate5-verification.md). Gates 6 and later remain
-unimplemented. The product specification remains authoritative; start with
-`specs/v1/constitution.md`.
+Gates 1 through 5 are merged. Gate 6 implementation and automated validation are in [PR #8](https://github.com/Ryan9876/wireclaw/pull/8). Native Wireshark GUI acceptance has passed on the supported V1 host, macOS. Windows and Linux release qualification are deferred to the [product roadmap](docs/roadmap.md), while their existing build/discovery/argv CI coverage remains portability evidence.
+
+Under the current macOS-first V1 specification, Gate 6 exit criteria are demonstrated; PR #8 remains open for owner review/merge. See [web startup instructions](apps/web/README.md), [Gate 5 verification](docs/gate5-verification.md), and [Gate 6 verification](docs/gate6-verification.md).
+
+Gate 7 and later remain unimplemented. The product specification remains authoritative; start with `specs/v1/constitution.md`.
 
 ## Gate 1 analyzer
 
 The deterministic Python analyzer is implemented. See [developer instructions](services/analyzer/README.md), [Gate 1 verification](docs/gate1-verification.md), and [Gate 2 verification](docs/gate2-verification.md).
 
-The [local API](services/api/README.md) provides bounded intake, persistence,
-analysis, rules-only findings/reports and case deletion. The [web UI](apps/web/README.md)
-presents that API. LLM adapters, host bridge and Docker packaging remain later gates.
+The [local API](services/api/README.md) provides bounded intake, persistence, analysis, rules-only findings/reports, evidence-capture extraction, bridge grants, and case deletion. The [web UI](apps/web/README.md) presents that API. LLM adapters and Docker packaging remain later gates.
