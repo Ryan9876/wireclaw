@@ -361,8 +361,15 @@ type fakeProcess struct {
 	waited  chan struct{}
 }
 
-func (p *fakeProcess) Start() error { close(p.started); return nil }
-func (p *fakeProcess) Wait() error  { close(p.waited); return nil }
+func (p *fakeProcess) Start() error {
+	close(p.started)
+	return nil
+}
+
+func (p *fakeProcess) Wait() error {
+	close(p.waited)
+	return nil
+}
 
 func TestProcessIsReapedWithoutBlockingRequest(t *testing.T) {
 	process := &fakeProcess{started: make(chan struct{}), waited: make(chan struct{})}
