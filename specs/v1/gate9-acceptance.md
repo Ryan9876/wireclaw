@@ -6,7 +6,7 @@ This document defines the V1 release-acceptance contract for Gate 9. It does not
 
 ## 1. Gate objective
 
-Gate 9 proves that one immutable V1 release candidate:
+Gate 9 proves that one immutable **macOS V1 release candidate**:
 
 - produces correct deterministic evidence for representative troubleshooting cases;
 - preserves uncertainty when the capture cannot establish a conclusion;
@@ -14,7 +14,9 @@ Gate 9 proves that one immutable V1 release candidate:
 - protects raw-capture privacy by default;
 - respects resource and malformed-input limits;
 - preserves the host-bridge security boundary;
-- runs the complete packaged workflow on macOS, Windows, and Linux.
+- runs the complete packaged workflow on the supported V1 host, macOS.
+
+Windows and Linux are post-V1 roadmap targets. Existing CI/build coverage on those platforms does not block V1 and does not constitute release support.
 
 Gate 9 must not become a catch-all feature-development phase. If acceptance exposes a missing required capability, return to the responsible gate/spec, implement it with tests, then restart the affected acceptance evidence against a new immutable release-candidate SHA.
 
@@ -35,8 +37,8 @@ Gate 9 must not become a catch-all feature-development phase. If acceptance expo
 - G9.13 cloud-provider privacy inspection
 - G9.14 host-bridge security review
 - G9.15 end-to-end macOS acceptance
-- G9.16 end-to-end Windows acceptance
-- G9.17 end-to-end Linux acceptance
+
+Legacy task IDs G9.16 (Windows end-to-end) and G9.17 (Linux end-to-end) are deferred to future release qualification and are not V1 tasks.
 
 ## 3. Immutable release-candidate identity
 
@@ -51,7 +53,7 @@ base image digest
 analyzer version lock
 Python version
 web build revision
-host-bridge binary SHA-256 for each tested platform/architecture
+macOS host-bridge binary SHA-256
 configuration defaults
 ```
 
@@ -74,7 +76,7 @@ NOT_RUN
 
 Only `PASS` satisfies a required release criterion.
 
-`BLOCKED` is appropriate when a required external desktop/platform environment is unavailable; it is not equivalent to pass.
+`BLOCKED` is appropriate when a required macOS desktop/release environment is unavailable; it is not equivalent to pass.
 
 `NOT_RUN` is never release-acceptable for a required G9 task.
 
@@ -122,17 +124,17 @@ A healthy/clean capture with no supported fault must not be forced into a root-c
 
 ### Must not conclude
 
-- packet loss
-- high RTT
-- receive-window constraint
-- DNS failure
-- TLS failure
-- server/application root cause
-- MTU black hole
+- packet loss;
+- high RTT;
+- receive-window constraint;
+- DNS failure;
+- TLS failure;
+- server/application root cause;
+- MTU black hole.
 
 ## 7. G9.2 — DNS delay
 
-Use the generated `dns_delay` fixture or its Gate 9 successor with the same deterministic construction.
+Use `dns_delay` or its Gate 9 successor with the same deterministic construction.
 
 Known fact:
 
@@ -143,28 +145,28 @@ UDP DNS query/response frames 1/2 separated by 1.5 seconds
 ### Must observe
 
 - exact query/response relationship;
-- approximately 1.5 second measured DNS interval according to fixture precision;
+- approximately 1.5 second measured DNS interval;
 - supporting frame references;
 - finding-specific Wireshark filter selecting the relevant transaction.
 
 ### Must conclude
 
-A DNS timing finding is supported when the symptom/context warrants it.
+A DNS timing finding is supported when symptom/context warrants it.
 
 ### Must not conclude
 
-- that DNS necessarily delayed the complete user-visible application transaction unless linkage evidence exists;
+- that DNS necessarily delayed the complete user-visible transaction unless linkage evidence exists;
 - a specific resolver/path root cause from timing alone.
 
 ### Operational acceptance
 
-Evidence Capture must focus on the relevant DNS transaction set, not all unrelated DNS in the capture.
+Evidence Capture must focus on the relevant DNS transaction set, not unrelated DNS.
 
 ## 8. G9.3 — TCP loss/retransmission
 
 Use `loss_tcp`.
 
-Known deterministic construction:
+Known construction:
 
 ```text
 retransmission-union frames: [5, 11, 13]
@@ -177,7 +179,7 @@ duplicate ACKs: [8, 9, 10]
 
 ### Must observe
 
-All applicable counts/frame references above without conflating categories.
+All applicable counts/frame references without conflating categories.
 
 ### Must conclude
 
@@ -202,7 +204,7 @@ median ACK RTT: 200 ms
 
 ### Must observe
 
-The expected establishment and RTT values within fixture precision.
+Expected establishment and RTT values within fixture precision.
 
 ### Must conclude
 
@@ -238,7 +240,7 @@ A receive-window constraint finding is supported.
 
 - network packet loss merely because throughput is poor;
 - an endpoint process/root cause not visible in the capture;
-- an endpoint role that the evidence cannot establish.
+- an endpoint role the evidence cannot establish.
 
 ## 11. G9.6 — TCP reset/reconnect
 
@@ -278,7 +280,7 @@ supported-version field: 0x0304
 
 ### Must observe
 
-- deterministic visible TLS handshake milestones;
+- deterministic visible TLS milestones;
 - approximately 80 ms TCP-to-ClientHello interval;
 - approximately 1 second ClientHello-to-ServerHello interval;
 - supporting frame references.
@@ -291,7 +293,7 @@ A TLS-handshake-delay finding may be supported.
 
 - decrypted application semantics;
 - usable encrypted-session completion solely from visible ServerHello;
-- whether the delay occurred in endpoint processing versus path RTT without further evidence.
+- endpoint-processing versus path cause without further evidence.
 
 ## 13. G9.8 — Server/application wait
 
@@ -301,7 +303,7 @@ Gate 9 must test both a positive decodable case and a negative opaque case.
 
 Gate 7 must provide a valid plaintext HTTP/1.x fixture with a complete request and delayed first response.
 
-Expected deterministic construction should include:
+Expected construction includes:
 
 - complete decodable request;
 - normal prompt transport ACK behavior;
@@ -320,15 +322,9 @@ Expected deterministic construction should include:
 
 #### Must conclude
 
-Wireclaw must be able to identify a supported server/application-wait contribution/boundary for this decodable transaction with confidence consistent with the evidence.
+Wireclaw can identify a supported server/application-wait contribution/boundary for this decodable transaction with confidence consistent with evidence.
 
-The wording must preserve the distinction between:
-
-```text
-observed delay after request completion at the server/application boundary
-```
-
-and an unsupported claim about the internal root cause of that delay.
+The wording must distinguish observed delay after request completion at the server/application boundary from an unsupported internal root cause.
 
 #### Must not conclude
 
@@ -345,7 +341,7 @@ It must remain an uncertainty regression.
 
 A server/application semantic finding solely because generic TCP payload appeared after a two-second silence interval.
 
-This pair is required to prove R-F011/R-F012 and C3/C10 simultaneously.
+This pair proves R-F011/R-F012 and C3/C10 simultaneously.
 
 ## 14. G9.9 — MTU/PMTUD evidence
 
@@ -374,7 +370,7 @@ A PMTUD/path-MTU evidence finding may be supported.
 
 ## 15. G9.10 — One-sided/incomplete capture uncertainty
 
-Use `one_sided`, `midstream`, `incomplete_handshake`, and/or `truncated` as the acceptance corpus.
+Use `one_sided`, `midstream`, `incomplete_handshake`, and/or `truncated`.
 
 ### Must observe
 
@@ -389,7 +385,7 @@ The relevant visibility limitation:
 
 Capture-quality limitations are visible and materially constrain confidence.
 
-When the available packets cannot discriminate fault domains, the primary result must be `insufficient_evidence` with meaningful next evidence.
+When packets cannot discriminate fault domains, the primary result must be `insufficient_evidence` with meaningful next evidence.
 
 ### Must not conclude
 
@@ -397,7 +393,7 @@ A forced client/network/server root cause from missing packets.
 
 ## 16. G9.11 — Large capture/resource limits
 
-Create deterministic resource-bound acceptance cases that exercise configured limits without exhausting the acceptance host.
+Create deterministic resource-bound cases that exercise configured limits without exhausting the acceptance host.
 
 Cover at least:
 
@@ -418,7 +414,7 @@ Cover at least:
 - case/original remains intact;
 - prior deterministic evidence remains available where applicable;
 - no unbounded memory/disk/process growth;
-- no automatic retry loop that defeats a configured bound.
+- no retry loop that defeats configured bounds.
 
 ### Must conclude
 
@@ -449,9 +445,9 @@ No crash, shell interpolation, arbitrary path access, or unsafe provider capabil
 
 ## 18. G9.13 — Cloud-provider privacy inspection
 
-Use the Gate 7 controlled fake cloud endpoint to inspect the exact provider HTTP requests produced by the release candidate.
+Use the Gate 7 controlled fake cloud endpoint to inspect exact provider HTTP requests produced by the release candidate.
 
-Seed sentinel values representing:
+Seed sentinels representing:
 
 - raw packet payload bytes;
 - original capture bytes/fragments;
@@ -462,7 +458,7 @@ Seed sentinel values representing:
 
 ### Must observe
 
-Provider request contains only the approved normalized context required by Gate 7.
+Provider request contains only approved normalized context.
 
 ### Must not observe
 
@@ -470,18 +466,18 @@ Any forbidden sentinel or raw capture/payload transmission.
 
 ### Scope of claim
 
-This acceptance is about Wireclaw's provider request path. Do not claim that Docker, the OS, package manager, DNS resolver, or unrelated host software generated zero network traffic.
+This acceptance is about Wireclaw's provider request path. Do not claim that Docker, macOS, DNS, package managers, or unrelated software generated zero network traffic.
 
-The test should control or mock the provider destination and inspect Wireclaw's exact request body/headers while ensuring secrets are not logged/persisted.
+The test must control/mock the provider destination and inspect exact Wireclaw request body/headers while ensuring secrets are not logged/persisted.
 
 ## 19. G9.14 — Host-bridge security review
 
-Repeat the Gate 6 trust-boundary review against the packaged release.
+Repeat the Gate 6 trust-boundary review against the packaged macOS release.
 
 Required checks:
 
 - numeric loopback listener only;
-- strict Origin allowlist for configured Wireclaw app port;
+- strict Origin allowlist for configured app port;
 - bounded strict JSON;
 - unknown fields rejected;
 - high-entropy one-time grant token;
@@ -497,13 +493,13 @@ Required checks:
 - artifact SHA tampering rejected;
 - artifact kind allowlist enforced;
 - display filter bounded/control characters rejected;
-- Wireshark executable selected only by trusted configuration/discovery;
+- Wireshark executable selected only by trusted config/discovery;
 - exact direct argv;
 - no shell;
 - no generic command/exec endpoint;
 - paths containing spaces work without argument injection.
 
-Any path to arbitrary process execution is an automatic release blocker.
+Any arbitrary process-execution path is an automatic release blocker.
 
 ## 20. Model-boundary acceptance
 
@@ -535,7 +531,7 @@ Only typed validated capability execution and deterministic evidence creation.
 - arbitrary command/process execution;
 - fabricated evidence entering final findings;
 - deterministic findings disappearing because the provider disagreed;
-- failure of optional provider erasing deterministic report usefulness.
+- optional-provider failure erasing deterministic report usefulness.
 
 ## 21. Rules-only acceptance
 
@@ -551,13 +547,13 @@ Rules-only must remain capable of:
 - evidence capture generation;
 - Full/Evidence native Wireshark actions.
 
-The V1 release must not require an LLM to be useful.
+V1 must not require an LLM to be useful.
 
 ## 22. Model-assisted acceptance
 
 Use a deterministic scripted/fake provider for release-gate correctness.
 
-A real external model may be used as an optional smoke test but must not be the source of pass/fail truth for the acceptance corpus.
+A real external model may be an optional smoke test but must not determine pass/fail truth for the acceptance corpus.
 
 Model-assisted mode must not suppress or contradict deterministic ground truth.
 
@@ -577,7 +573,7 @@ Verify deterministic evidence equivalence for:
 - parent/artifact hashes where deterministically derived;
 - analyzer version metadata.
 
-Generated timestamps/IDs that are intentionally unique may differ, but must not change deterministic packet facts.
+Intentional unique timestamps/IDs may differ, but deterministic packet facts must not.
 
 ## 24. Persistence and immutability acceptance
 
@@ -610,7 +606,7 @@ Assert they do not contain:
 - raw model chain-of-thought;
 - unbounded raw provider prompts/responses.
 
-Logs should still retain useful bounded audit fields such as case ID, capability, duration, status, and normalized failure code.
+Logs should retain useful bounded audit fields such as case ID, capability, duration, status, and normalized failure code.
 
 ## 26. Epistemic UX acceptance
 
@@ -622,7 +618,7 @@ Review representative rendered reports for:
 - `insufficient_evidence` shown as a valid completed result;
 - remaining hypotheses labeled as possibilities rather than findings;
 - next evidence clearly stated;
-- no wording such as “AI detected” used as evidence;
+- no “AI detected” wording used as evidence;
 - measured versus inferred time attribution distinguished;
 - encrypted/unsupported protocol limitations visible.
 
@@ -637,14 +633,11 @@ Open Full Capture in Wireshark
 Open Evidence Capture in Wireshark
 ```
 
-Also verify:
-
-- Copy Wireshark Display Filter
-- Show Packet Evidence
+Also verify Copy Wireshark Display Filter and Show Packet Evidence.
 
 ### Full Capture
 
-- native Wireshark opens the immutable original;
+- native macOS Wireshark opens the immutable original;
 - backend-approved relevant filter is applied;
 - original hash remains unchanged.
 
@@ -653,7 +646,7 @@ Also verify:
 - separate derived PCAPNG opens;
 - capture is bounded/focused to the finding;
 - provenance identifies parent/finding/evidence/filter/tool versions;
-- repeated exact generation reuses a valid matching artifact where specified;
+- exact repeated generation reuses a valid matching artifact where specified;
 - original remains unchanged.
 
 ## 28. G9.15 — macOS end-to-end acceptance
@@ -662,7 +655,7 @@ Run the actual Gate 8 release on a native macOS desktop with Docker-compatible r
 
 Must include:
 
-- platform launcher start/stop;
+- macOS launcher start/stop;
 - localhost-only core;
 - case intake/investigation/report;
 - rules-only mode;
@@ -674,44 +667,28 @@ Must include:
 - bridge-down degradation;
 - case deletion behavior.
 
-Record OS version, architecture, Docker version, Wireshark version, release SHA/image digest, and bridge binary hash.
+Record:
 
-## 29. G9.16 — Windows end-to-end acceptance
+```text
+macOS version
+architecture
+Docker/runtime version
+Compose version
+Wireshark version
+release source SHA
+core image digest
+bridge binary SHA-256
+```
 
-Run the same release workflow on a native Windows desktop.
+## 29. Deferred platform qualification
 
-Use packaged PowerShell launch/install scripts; do not substitute cross-compilation for desktop acceptance.
+Windows and Linux end-to-end acceptance are not V1 Gate 9 criteria.
 
-Verify Windows paths with spaces and native Wireshark argument handling.
+Before either platform is promoted to supported in a post-V1 release, perform Gate 9-equivalent acceptance on that actual host OS, including packaged launcher/install behavior, native Wireshark Full/Evidence actions, paths with spaces, persistence, provider/privacy behavior, bridge security, and release identity recording.
 
-Record the same environment/artifact identity fields as macOS.
+Cross-compilation or CI build success alone must never be treated as platform release qualification.
 
-## 30. G9.17 — Linux end-to-end acceptance
-
-Run the same release workflow on a supported Linux desktop with native Wireshark GUI.
-
-Verify Docker host mapping required for same-host local provider where tested.
-
-Record the same environment/artifact identity fields as the other OSes.
-
-## 31. Cross-platform equivalence
-
-The three OS acceptance results must demonstrate equivalent core product behavior, not identical installation internals.
-
-All platforms must support:
-
-- release startup without developer toolchain;
-- local case workflow;
-- deterministic analysis/reporting;
-- no-model mode;
-- persisted case data;
-- both native Wireshark actions;
-- bridge security boundary;
-- clear degraded behavior.
-
-Platform-specific installer paths are acceptable.
-
-## 32. Acceptance report
+## 30. Acceptance report
 
 Create `docs/v1-acceptance.md`.
 
@@ -723,10 +700,10 @@ release candidate version
 source SHA
 core image digest
 analyzer lock revision
-bridge binary hashes
+macOS bridge binary SHA-256
 ```
 
-For every G9 task include:
+For every V1 G9 task include:
 
 ```text
 Result: PASS / FAIL / BLOCKED / NOT_RUN
@@ -739,15 +716,15 @@ Evidence/test references
 Known limitations
 ```
 
-Include the macOS/Windows/Linux environment matrices.
+Include the macOS release environment matrix and explicitly state that Windows/Linux are post-V1 targets, not untested V1 support claims.
 
-## 33. Automatic release blockers
+## 31. Automatic release blockers
 
 The V1 release is blocked by any of the following:
 
 1. deterministic golden evidence differs materially from fixture ground truth without accepted spec/golden update;
 2. known analyzer or bridge arbitrary-command-execution path;
-3. host application exposed to LAN/WAN by default;
+3. host app exposed to LAN/WAN by default;
 4. raw capture/payload sent to cloud provider under default policy;
 5. secret/API key/token logged or persisted insecurely;
 6. provider can fabricate evidence accepted by the report;
@@ -756,12 +733,14 @@ The V1 release is blocked by any of the following:
 9. original capture modified by analysis/evidence/Wireshark path;
 10. evidence capture is not confined/bounded or provenance is invalid;
 11. Full/Evidence Wireshark actions missing or not functional where applicable;
-12. one required OS release workflow fails;
+12. required macOS release workflow fails;
 13. packaged release requires undeclared developer toolchain;
-14. analyzer versions not pinned/recorded;
-15. required Gate 9 case remains `FAIL`, `BLOCKED`, or `NOT_RUN` at release signoff.
+14. analyzer versions are not pinned/recorded;
+15. required V1 Gate 9 case remains `FAIL`, `BLOCKED`, or `NOT_RUN` at signoff.
 
-## 34. Full regression before signoff
+Windows/Linux not being release-qualified is not a V1 blocker because those platforms are explicitly out of V1 scope.
+
+## 32. Full regression before signoff
 
 Run all unit/integration/golden/security/web/browser/packaging suites from Gates 0–8 against the release candidate.
 
@@ -774,11 +753,13 @@ At minimum preserve:
 - web unit + production browser tests;
 - provider privacy/fallback/injection tests;
 - Docker image/Compose tests;
-- host bridge test/vet/build matrix.
+- macOS host-bridge test/vet/build.
+
+Existing Ubuntu/Windows portability CI may continue but is non-blocking for V1 platform support.
 
 Do not hide required tests behind silent skips.
 
-## 35. Release signoff checklist
+## 33. Release signoff checklist
 
 V1 may be declared accepted only when all are true:
 
@@ -801,15 +782,15 @@ V1 may be declared accepted only when all are true:
 17. model typed-capability/evidence validation passes;
 18. host-bridge security review passes;
 19. original immutability/persistence passes;
-20. both Wireshark actions pass in packaged release;
+20. both Wireshark actions pass in packaged macOS release;
 21. macOS end-to-end acceptance passes;
-22. Windows end-to-end acceptance passes;
-23. Linux end-to-end acceptance passes;
-24. analyzer/release identities are pinned and recorded;
-25. no automatic release blocker remains;
-26. `docs/v1-acceptance.md` contains exact evidence and release-candidate identity.
+22. analyzer/release identities are pinned and recorded;
+23. no automatic release blocker remains;
+24. `docs/v1-acceptance.md` contains exact evidence and release-candidate identity.
 
-## 36. V1 release gate
+Windows/Linux qualification is intentionally deferred and is not part of this checklist.
+
+## 34. V1 release gate
 
 The existing `tasks.md` release gate remains primary:
 
@@ -818,6 +799,6 @@ The existing `tasks.md` release gate remains primary:
 - ambiguous cases do not produce forced root-cause claims;
 - raw captures are not transmitted to cloud model under default policy;
 - both Wireshark actions work and remain visible together;
-- cross-platform Docker workflow passes.
+- macOS Docker/release workflow passes.
 
-This execution specification makes those criteria testable; it does not weaken them.
+This acceptance specification makes those criteria testable; it does not weaken them.
