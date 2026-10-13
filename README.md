@@ -86,16 +86,14 @@ The analyzer and web application are containerized. A small optional host bridge
 
 ## Current status
 
-Gates 1 through 4 are merged. Gate 5 implements the local browser workflow and
-is awaiting PR approval. See [web startup instructions](apps/web/README.md) and
-[Gate 5 verification](docs/gate5-verification.md). Gates 6 and later remain
-unimplemented. The product specification remains authoritative; start with
-`specs/v1/constitution.md`.
+As of 2026-10-13, Gates 0 through 5 are complete on `main`. Gate 5's local browser investigation workflow was merged through PR #6 on 2026-10-09. See [web startup instructions](apps/web/README.md) and [Gate 5 verification](docs/gate5-verification.md).
 
-## Gate 1 analyzer
+Gate 6 — evidence capture and native Wireshark integration — is actively implemented on `gate6-wireshark-evidence-bridge` but is **not yet accepted into `main`**. The branch is 19 commits ahead of `main` and contains evidence-capture extraction, API/UI integration, the Go host bridge, security-oriented bridge behavior, and cross-platform bridge tests. The latest Gate 6 workflow run at commit `d21ceae8047db7c28f45ba7a12b4100ba6585e4e` passed Python, Go and web validation and passed host-bridge test/build jobs on Ubuntu, macOS and Windows, but the Linux full job failed during production browser validation. Gate 6 therefore remains in progress rather than complete. See [Gate 6 progress](docs/gate6-progress.md).
+
+Gates 7 through 9 remain unimplemented. The authoritative V1 behavior and delivery sequence remain under `specs/v1/`; start with `specs/v1/constitution.md` and `specs/v1/tasks.md`.
+
+## Implemented foundation
 
 The deterministic Python analyzer is implemented. See [developer instructions](services/analyzer/README.md), [Gate 1 verification](docs/gate1-verification.md), and [Gate 2 verification](docs/gate2-verification.md).
 
-The [local API](services/api/README.md) provides bounded intake, persistence,
-analysis, rules-only findings/reports and case deletion. The [web UI](apps/web/README.md)
-presents that API. LLM adapters, host bridge and Docker packaging remain later gates.
+The [local API](services/api/README.md) provides bounded intake, persistence, analysis, rules-only findings/reports and case deletion. The [web UI](apps/web/README.md) presents that API. Native Wireshark integration is the active Gate 6 work; LLM provider adapters and Docker/release packaging remain later gates.
