@@ -2,9 +2,19 @@
 
 Date: 2026-10-13
 
-Branch: `gate6-wireshark-evidence-bridge`
+Status: **Accepted and merged for the macOS-first V1 scope**
 
-Pull request: [#8](https://github.com/Ryan9876/wireclaw/pull/8)
+Implementation branch: `gate6-wireshark-evidence-bridge`
+
+Pull request: [#8](https://github.com/Ryan9876/wireclaw/pull/8) — merged
+
+Final Gate 6 branch SHA: `d5118dc58cfaa62bb206f2b703162259a5c93249`
+
+Gate 6 merge commit on `main`: `7a197f44b836377abfb90f5b131763446182211d`
+
+Final Gate 6 branch validation: GitHub Actions run `38447844903` — **success**
+
+The subsequent Gate 7–9 specification merge is `011a03a759eeafb45f6dcf688dacb0ec270c7556`; it does not change the accepted Gate 6 implementation.
 
 ## V1 platform scope
 
@@ -42,7 +52,7 @@ The latest code-changing Gate 6 head before the macOS-first documentation/spec s
 
 `b9c686266c6e47576a383e294bbf1701f17bd6db`
 
-PR Actions run `38444749751` passed all jobs on that SHA.
+PR Actions run `38444749751` passed all jobs on that SHA. The final Gate 6 documentation/spec head `d5118dc58cfaa62bb206f2b703162259a5c93249` then passed run `38447844903` before merge.
 
 Validated results:
 
@@ -125,6 +135,6 @@ V1 Gate 6 exit criteria are satisfied:
 - automated security tests show no generic/arbitrary command-execution path;
 - Windows/Linux release qualification is explicitly deferred by ADR-0006 rather than falsely claimed complete.
 
-Gate 6 is therefore ready for owner merge under the current macOS-first V1 specification, subject to the final branch documentation/spec CI remaining green.
+Gate 6 was accepted and merged through PR #8. Stage 6 is closed under the current macOS-first V1 specification.
 
-No Gate 7 implementation is included in this branch.
+Gate 7 implementation begins from the merged V1 authority on `main`, including `AGENTS.md` and `specs/v1/gate7-execution.md`.
