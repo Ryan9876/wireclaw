@@ -86,15 +86,13 @@ The analyzer and web application are containerized. A small optional host bridge
 
 ## Current status
 
-Gates 1 through 4 are merged. Gate 5 implements the local browser workflow and
-is awaiting PR approval. Gate 6 implementation is in
-[PR #8](https://github.com/Ryan9876/wireclaw/pull/8); automated Linux,
-production-browser, and macOS/Windows/Linux bridge validation passed for the
-previous validated commit. Native Wireshark GUI acceptance on desktop sessions
-remains pending; current changes are being validated in PR #8. See [web startup
-instructions](apps/web/README.md), [Gate 5 verification](docs/gate5-verification.md),
-and [Gate 6 verification](docs/gate6-verification.md). Gate 7 and later remain
-unimplemented. The product specification remains authoritative; start with
+Gates 1 through 5 are merged. Gate 6 implementation and automated validation
+are in [PR #8](https://github.com/Ryan9876/wireclaw/pull/8). Native Wireshark GUI
+acceptance on macOS, Windows, and Linux remains pending, so the full Gate 6 exit
+criteria are not yet demonstrated. See [web startup instructions](apps/web/README.md),
+[Gate 5 verification](docs/gate5-verification.md), and [Gate 6 verification](docs/gate6-verification.md).
+Gate 7 and later remain unimplemented. The product specification remains
+authoritative; start with
 `specs/v1/constitution.md`.
 
 ## Gate 1 analyzer
