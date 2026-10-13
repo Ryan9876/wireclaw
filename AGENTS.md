@@ -9,10 +9,24 @@ When sources conflict, follow this order:
 1. `specs/v1/constitution.md`
 2. `specs/v1/requirements.md`
 3. `specs/v1/solution.md`
-4. accepted ADRs and `docs/`
-5. `specs/v1/tasks.md`
-6. tests
-7. implementation
+4. accepted ADRs
+5. gate-specific execution/acceptance specifications and accepted `docs/` guidance
+6. `specs/v1/tasks.md`
+7. tests
+8. implementation
+
+Gate-specific execution/acceptance specifications are subordinate to the constitution, requirements, solution, and accepted ADRs. They make an already-approved gate concrete; they may not silently weaken or redefine higher-authority behavior.
+
+Before implementing Gates 7–9, agents **must** read the corresponding specification in addition to all higher-authority sources:
+
+- Gate 7: `specs/v1/gate7-execution.md`
+- Gate 8: `specs/v1/gate8-execution.md`
+- Gate 9: `specs/v1/gate9-acceptance.md`
+
+For V1 platform scope also read:
+
+- `docs/decisions/ADR-0006-macos-first-v1-platform-scope.md`
+- `docs/roadmap.md`
 
 Do not preserve implementation behavior that contradicts a higher-authority source. Update the specification first when product behavior intentionally changes.
 
@@ -136,10 +150,12 @@ Unless the specification is deliberately amended:
 - Local API/orchestrator: Python + FastAPI
 - Analyzer: Python wrappers around pinned TShark/Wireshark CLI and Zeek versions
 - Local metadata: SQLite
-- Host bridge: Go, producing small cross-platform native binaries
-- Packaging: Docker Compose for web/API/analyzer plus native host-bridge installers/launchers
+- Host bridge: Go, producing small native binaries
+- Packaging: Docker Compose for web/API/analyzer plus a native host bridge/launcher for the supported release platform
 
 Keep provider integrations behind interfaces. Support OpenAI-compatible cloud/local endpoints without coupling core analysis to one model vendor.
+
+V1 is release-qualified on macOS. Windows/Linux code and CI may remain as portability groundwork, but they are not V1 release blockers or support claims unless the authoritative specification is changed.
 
 ## 10. Tests are product evidence
 
@@ -164,7 +180,7 @@ Before implementing a material behavior change:
 3. Add/adjust acceptance criteria.
 4. Add or revise tests.
 5. Implement the smallest change that satisfies the spec.
-6. Validate cross-platform and security implications.
+6. Validate platform and security implications.
 7. Record a new ADR for architecture choices that are difficult to reverse.
 
 Do not implement speculative infrastructure for unapproved future phases.
@@ -179,7 +195,8 @@ A change is done only when:
 - logs are useful but do not leak sensitive data
 - documentation is updated
 - Docker behavior is reproducible where relevant
-- macOS, Windows, and Linux assumptions are not silently broken
+- macOS V1 behavior is not silently broken
+- deferred Windows/Linux portability groundwork is not accidentally broken where tests already cover it
 - user-visible diagnoses identify their evidence and uncertainty
 
 ## 13. Communication style for generated UI/report text
