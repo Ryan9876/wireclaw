@@ -86,11 +86,11 @@ The analyzer and web application are containerized. V1 uses a small native macOS
 
 ## Current status
 
-Gates 1 through 5 are merged. Gate 6 implementation and automated validation are in [PR #8](https://github.com/Ryan9876/wireclaw/pull/8). Native Wireshark GUI acceptance has passed on the supported V1 host, macOS. Windows and Linux release qualification are deferred to the [product roadmap](docs/roadmap.md), while their existing build/discovery/argv CI coverage remains portability evidence.
+Gates 1 through 6 are merged. Gate 6 completed the evidence-capture and native Wireshark path and passed native GUI acceptance on the supported V1 host, macOS. Windows and Linux release qualification are deferred to the [product roadmap](docs/roadmap.md), while their existing build/discovery/argv CI coverage remains portability evidence.
 
-Under the current macOS-first V1 specification, Gate 6 exit criteria are demonstrated; PR #8 remains open for owner review/merge. See [web startup instructions](apps/web/README.md), [Gate 5 verification](docs/gate5-verification.md), and [Gate 6 verification](docs/gate6-verification.md).
+Gate 6 merged through [PR #8](https://github.com/Ryan9876/wireclaw/pull/8); see [Gate 6 verification](docs/gate6-verification.md). The implementation-grade Gate 7–9 specifications and agent guidance merged through [PR #9](https://github.com/Ryan9876/wireclaw/pull/9).
 
-Gate 7 and later remain unimplemented. The product specification remains authoritative; start with `specs/v1/constitution.md`.
+Gate 7 is the next implementation gate and remains unimplemented. Coding agents must follow `AGENTS.md` and `specs/v1/gate7-execution.md` in addition to the higher-authority V1 specification. See [web startup instructions](apps/web/README.md) and [Gate 5 verification](docs/gate5-verification.md).
 
 ## Gate 1 analyzer
 
