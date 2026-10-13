@@ -101,6 +101,16 @@ def test_evidence_capture_is_bounded_registered_parseable_and_preserves_original
         ]
         assert len(evidence_captures) == 1
 
+        _, provenance_path = service.artifact(case_id, provenance_rows[0]["id"])
+        provenance_path.chmod(0o600)
+        provenance_path.write_text("{}", encoding="utf-8")
+        rejected_candidate = client.post(
+            f"/api/cases/{case_id}/artifacts/evidence-capture",
+            json={"finding_id": finding["id"]},
+        )
+        assert rejected_candidate.status_code == 200, rejected_candidate.text
+        assert rejected_candidate.json()["artifact_id"] != body["artifact_id"]
+
 
 def test_evidence_launch_is_bound_to_registered_finding_provenance(environment, monkeypatch):
     root, captures = environment

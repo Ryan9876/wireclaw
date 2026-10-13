@@ -378,18 +378,26 @@ func TestProcessIsReapedWithoutBlockingRequest(t *testing.T) {
 }
 
 func TestConfiguredApplicationPortControlsStrictOrigins(t *testing.T) {
-	origins, err := allowedOriginsForPort(9876)
+	bridge, err := newServerWithAppPort(t.TempDir(), "", 9876)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, origin := range []string{"http://127.0.0.1:9876", "http://localhost:9876", "http://[::1]:9876"} {
-		if _, ok := origins[origin]; !ok {
-			t.Fatalf("missing approved origin %q", origin)
+		request := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+		request.Header.Set("Origin", origin)
+		response := httptest.NewRecorder()
+		bridge.health(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("rejected configured origin %q", origin)
 		}
 	}
 	for _, origin := range []string{"http://127.0.0.1:8765", "http://192.168.1.2:9876", "https://localhost:9876"} {
-		if _, ok := origins[origin]; ok {
-			t.Fatalf("unexpected approved origin %q", origin)
+		request := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+		request.Header.Set("Origin", origin)
+		response := httptest.NewRecorder()
+		bridge.health(response, request)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("accepted unexpected origin %q", origin)
 		}
 	}
 	for _, port := range []int{0, 65536} {
