@@ -34,11 +34,15 @@ Optional administrator configuration:
 
 ```text
 --listen 127.0.0.1:8766
+--app-port 8765
 --wireshark /approved/path/to/Wireshark
 WIRECLAW_WIRESHARK_PATH=/approved/path/to/Wireshark
 ```
 
 The listen address must be loopback. Caller requests cannot change the Wireshark path.
+`--app-port` configures the separate Wireclaw UI/API port accepted by the strict
+Origin allowlist; its default is `8765`. Keep it aligned with the local API
+port. The bridge listen port remains independently configured by `--listen`.
 
 Platform discovery is isolated behind `discoverWireshark`: macOS checks the native application executable, Windows checks the standard Program Files locations, and Linux supports an administrator PATH plus standard locations. The resolved executable is canonicalized before use.
 

@@ -18,12 +18,13 @@ func bridgeHandler(bridge *server) http.Handler {
 func main() {
 	dataRoot := flag.String("data-root", "data", "Wireclaw data root shared with the local core")
 	address := flag.String("listen", "127.0.0.1:8766", "loopback listen address")
+	appPort := flag.Int("app-port", defaultAppPort, "approved Wireclaw web/API port")
 	wireshark := flag.String("wireshark", os.Getenv("WIRECLAW_WIRESHARK_PATH"), "approved Wireshark executable")
 	flag.Parse()
 	if err := validateListenAddress(*address); err != nil {
 		log.Fatal("loopback_required")
 	}
-	bridge, err := newServer(*dataRoot, *wireshark)
+	bridge, err := newServerWithAppPort(*dataRoot, *wireshark, *appPort)
 	if err != nil {
 		log.Fatal("bridge_configuration_failed")
 	}

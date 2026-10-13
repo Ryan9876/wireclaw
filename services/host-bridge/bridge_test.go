@@ -355,3 +355,46 @@ func TestFilterBoundsAndIDs(t *testing.T) {
 		t.Fatal("id validation failure")
 	}
 }
+
+type fakeProcess struct {
+	started chan struct{}
+	waited  chan struct{}
+}
+
+func (p *fakeProcess) Start() error { close(p.started); return nil }
+func (p *fakeProcess) Wait() error  { close(p.waited); return nil }
+
+func TestProcessIsReapedWithoutBlockingRequest(t *testing.T) {
+	process := &fakeProcess{started: make(chan struct{}), waited: make(chan struct{})}
+	if err := startAndReap(process); err != nil {
+		t.Fatal(err)
+	}
+	<-process.started
+	select {
+	case <-process.waited:
+	case <-time.After(time.Second):
+		t.Fatal("child process was not reaped")
+	}
+}
+
+func TestConfiguredApplicationPortControlsStrictOrigins(t *testing.T) {
+	origins, err := allowedOriginsForPort(9876)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, origin := range []string{"http://127.0.0.1:9876", "http://localhost:9876", "http://[::1]:9876"} {
+		if _, ok := origins[origin]; !ok {
+			t.Fatalf("missing approved origin %q", origin)
+		}
+	}
+	for _, origin := range []string{"http://127.0.0.1:8765", "http://192.168.1.2:9876", "https://localhost:9876"} {
+		if _, ok := origins[origin]; ok {
+			t.Fatalf("unexpected approved origin %q", origin)
+		}
+	}
+	for _, port := range []int{0, 65536} {
+		if _, err := allowedOriginsForPort(port); err == nil {
+			t.Fatalf("accepted invalid app port %d", port)
+		}
+	}
+}

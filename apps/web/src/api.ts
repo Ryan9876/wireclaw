@@ -27,6 +27,12 @@ export type BridgeGrant = {
   bridge_origin: string;
   expires_unix: number;
 };
+export type NativeBridgeState =
+  | 'checking'
+  | 'ready'
+  | 'bridge_unavailable'
+  | 'wireshark_unavailable'
+  | 'api_unavailable';
 export const states = [
   'NEW',
   'INGESTING',
@@ -173,13 +179,15 @@ export const api = {
       throw new ApiError('contract_mismatch');
     return size;
   },
-  async bridgeHealth(signal?: AbortSignal): Promise<boolean> {
+  async bridgeHealth(signal?: AbortSignal): Promise<NativeBridgeState> {
     let origin: string;
     try {
       origin = await getBridgeOrigin(signal);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
-      return false;
+      return error instanceof ApiError && error.code === 'network_unavailable'
+        ? 'api_unavailable'
+        : 'bridge_unavailable';
     }
     try {
       const response = await fetch(`${origin}/v1/health`, {
@@ -189,12 +197,13 @@ export const api = {
         cache: 'no-store',
         redirect: 'error',
       });
-      if (!response.ok) return false;
+      if (!response.ok) return 'bridge_unavailable';
       const data = (await response.json()) as { status?: unknown; wireshark_available?: unknown };
-      return data.status === 'ok' && data.wireshark_available === true;
+      if (data.status !== 'ok') return 'bridge_unavailable';
+      return data.wireshark_available === true ? 'ready' : 'wireshark_unavailable';
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
-      return false;
+      return 'bridge_unavailable';
     }
   },
   async create(symptom: string): Promise<Case> {

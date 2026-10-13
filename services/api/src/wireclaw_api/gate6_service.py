@@ -51,7 +51,7 @@ class Service(Gate4Service):
         if display_filter:
             if re.fullmatch(r"\s*tcp\.stream\s*==\s*\d+\s*", display_filter):
                 mode = "tcp_stream"
-            elif "dns" in display_filter.lower():
+            elif str(finding.get("category", "")).startswith("dns."):
                 mode = "dns_transaction_set"
             elif "frame.number" in display_filter:
                 mode = "frame_set"
@@ -80,6 +80,19 @@ class Service(Gate4Service):
             raise ApiError("report_not_ready")
         finding = self._finding(case_id, finding_id)
         display_filter, mode = self._finding_filter(case_id, finding)
+        original, original_path = self.artifact(case_id, case["original_id"])
+        reusable = self._find_reusable_evidence_capture(
+            case_id, finding_id, finding, original["sha256"], display_filter, mode
+        )
+        if reusable is not None:
+            artifact, _ = reusable
+            provenance = self._evidence_capture_provenance(case_id, artifact["id"])
+            return {
+                "artifact_id": artifact["id"],
+                "sha256": artifact["sha256"],
+                "bytes": artifact["bytes"],
+                "provenance": provenance,
+            }
         with self.db.connect() as conn:
             count = conn.execute(
                 "SELECT count(*) FROM artifacts WHERE case_id=? AND kind='evidence_capture'",
@@ -88,7 +101,6 @@ class Service(Gate4Service):
         if count >= self.policy.max_evidence_captures:
             raise ApiError("evidence_capture_count_limit", 429)
 
-        original, original_path = self.artifact(case_id, case["original_id"])
         case_root = self.files.case(case_id)
         evidence_dir = self.files.store.confined(case_root / "evidence", exists=False)
         evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -160,11 +172,48 @@ class Service(Gate4Service):
                 raise
             raise ApiError(code, 422) from None
 
+    def _find_reusable_evidence_capture(
+        self, case_id, finding_id, finding, parent_sha, display_filter, mode
+    ):
+        """Reuse only a capture whose registered bytes and paired provenance both verify."""
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM artifacts WHERE case_id=? AND kind='evidence_capture' ORDER BY id",
+                (case_id,),
+            ).fetchall()
+        started = time.monotonic()
+        for row in rows:
+            try:
+                artifact, _ = self.artifact(case_id, row["id"])
+                if artifact["parent_sha"] != parent_sha:
+                    continue
+                provenance = self._evidence_capture_provenance(case_id, artifact["id"])
+                if (
+                    provenance.get("parent_sha256") == parent_sha
+                    and provenance.get("finding_id") == finding_id
+                    and provenance.get("related_finding_ids") == [finding_id]
+                    and provenance.get("evidence_ids") == list(finding["evidence_ids"])
+                    and provenance.get("extraction_mode") == mode
+                    and provenance.get("display_filter") == display_filter
+                    and provenance.get("extraction_rule")
+                    == {"mode": mode, "display_filter": display_filter}
+                ):
+                    return artifact, provenance
+            except ApiError as error:
+                self.log(
+                    case_id,
+                    "evidence_capture_reuse",
+                    started,
+                    "candidate_rejected",
+                    error.code,
+                )
+        return None
+
     def _evidence_capture_provenance(self, case_id, artifact_id):
         """Return the registered, integrity-checked provenance paired with one evidence capture."""
         with self.db.connect() as conn:
             row = conn.execute(
-                "SELECT relative_path FROM artifacts "
+                "SELECT relative_path,parent_sha FROM artifacts "
                 "WHERE id=? AND case_id=? AND kind='evidence_capture'",
                 (artifact_id, case_id),
             ).fetchone()
@@ -186,12 +235,18 @@ class Service(Gate4Service):
             value = json.loads(provenance_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             raise ApiError("evidence_provenance_invalid", 409) from None
+        capture, _ = self.artifact(case_id, artifact_id)
         if (
             not isinstance(value, dict)
             or value.get("artifact_id") != artifact_id
             or value.get("case_id") != case_id
+            or value.get("parent_sha256") != capture["parent_sha"]
             or not isinstance(value.get("finding_id"), str)
             or not isinstance(value.get("display_filter"), str)
+            or not isinstance(value.get("created"), str)
+            or not isinstance(value.get("evidence_ids"), list)
+            or not isinstance(value.get("related_finding_ids"), list)
+            or not isinstance(value.get("extraction_rule"), dict)
         ):
             raise ApiError("evidence_provenance_invalid", 409)
         return value

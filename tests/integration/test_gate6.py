@@ -87,6 +87,20 @@ def test_evidence_capture_is_bounded_registered_parseable_and_preserves_original
         assert provenance["artifact_id"] == body["artifact_id"]
         assert provenance["parent_sha256"] == before_hash
 
+        again = client.post(
+            f"/api/cases/{case_id}/artifacts/evidence-capture",
+            json={"finding_id": finding["id"]},
+        )
+        assert again.status_code == 200, again.text
+        assert again.json()["artifact_id"] == body["artifact_id"]
+        assert again.json()["sha256"] == body["sha256"]
+        evidence_captures = [
+            item
+            for item in service.get(case_id)["artifacts"]
+            if item["kind"] == "evidence_capture"
+        ]
+        assert len(evidence_captures) == 1
+
 
 def test_evidence_launch_is_bound_to_registered_finding_provenance(environment, monkeypatch):
     root, captures = environment

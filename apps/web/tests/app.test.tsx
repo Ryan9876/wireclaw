@@ -16,6 +16,7 @@ function fixture(value: Fixture = supported) {
   current = structuredClone(value.case) as Case;
   vi.spyOn(api, 'get').mockImplementation(async () => structuredClone(current));
   vi.spyOn(api, 'report').mockResolvedValue(value.report as Report);
+  vi.spyOn(api, 'bridgeHealth').mockResolvedValue('bridge_unavailable');
   vi.spyOn(api, 'evidence').mockImplementation(async (_id, evidenceId) => {
     const record = value.evidence.find((item) => item.id === evidenceId);
     if (!record) throw new ApiError('evidence_not_found');
@@ -191,6 +192,19 @@ describe('evidence and uncertainty presentation', () => {
     expect(
       screen.getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
     ).toBeDisabled();
+  });
+  it('keeps bridge ready after a finding or extraction API failure', async () => {
+    fixture();
+    vi.mocked(api.bridgeHealth).mockResolvedValue('ready');
+    vi.mocked(api.bridgeGrant).mockRejectedValue(new ApiError('finding_not_found', 404));
+    window.history.replaceState(null, '', `/#case=${supported.case.id}`);
+    render(<App />);
+    const full = await screen.findByRole('button', { name: 'Open Full Capture in Wireshark' });
+    await waitFor(() => expect(full).toBeEnabled());
+    await userEvent.click(full);
+    expect(await screen.findByText(/finding_not_found/)).toBeVisible();
+    expect(full).toBeEnabled();
+    expect(screen.getByText(/Native bridge available/)).toBeVisible();
   });
   it('treats insufficient_evidence as a completed result with next evidence', async () => {
     openExisting(insufficient as Fixture);

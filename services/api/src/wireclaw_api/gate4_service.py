@@ -166,6 +166,7 @@ class Service(Gate3Service):
                 symptom=case["symptom"],
                 evidence=self.evidence_records(case_id),
                 analyzer_versions=self.analyzer_versions(case_id),
+                max_display_filter_chars=self.policy.max_display_filter_chars,
             )
             self.save_report(case_id, result)
             self.transition(case_id, State.COMPLETE)

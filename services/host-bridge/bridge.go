@@ -21,6 +21,7 @@ import (
 
 const maxRequestBytes = 4096
 const maxFilterBytes = 2048
+const defaultAppPort = 8765
 
 type manifest struct {
 	SchemaVersion  int    `json:"schema_version"`
@@ -41,6 +42,29 @@ type openRequest struct {
 }
 
 type launcher func(string, ...string) error
+type childProcess interface {
+	Start() error
+	Wait() error
+}
+
+func startAndReap(process childProcess) error {
+	if err := process.Start(); err != nil {
+		return err
+	}
+	go func() { _ = process.Wait() }()
+	return nil
+}
+
+func allowedOriginsForPort(port int) (map[string]struct{}, error) {
+	if port < 1 || port > 65535 {
+		return nil, errors.New("invalid_app_port")
+	}
+	return map[string]struct{}{
+		fmt.Sprintf("http://127.0.0.1:%d", port): {},
+		fmt.Sprintf("http://localhost:%d", port): {},
+		fmt.Sprintf("http://[::1]:%d", port): {},
+	}, nil
+}
 
 type server struct {
 	dataRoot       string
@@ -61,6 +85,14 @@ func validateListenAddress(address string) error {
 }
 
 func newServer(dataRoot, wireshark string) (*server, error) {
+	return newServerWithAppPort(dataRoot, wireshark, defaultAppPort)
+}
+
+func newServerWithAppPort(dataRoot, wireshark string, appPort int) (*server, error) {
+	origins, err := allowedOriginsForPort(appPort)
+	if err != nil {
+		return nil, err
+	}
 	root, err := filepath.Abs(dataRoot)
 	if err != nil {
 		return nil, err
@@ -83,17 +115,13 @@ func newServer(dataRoot, wireshark string) (*server, error) {
 	return &server{
 		dataRoot:  root,
 		wireshark: wireshark,
-		allowedOrigins: map[string]struct{}{
-			"http://127.0.0.1:8765": {},
-			"http://localhost:8765": {},
-			"http://[::1]:8765":     {},
-		},
+		allowedOrigins: origins,
 		launch: func(executable string, args ...string) error {
 			command := exec.Command(executable, args...)
 			command.Stdin = nil
 			command.Stdout = nil
 			command.Stderr = nil
-			return command.Start()
+			return startAndReap(command)
 		},
 		now: time.Now,
 	}, nil

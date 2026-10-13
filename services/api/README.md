@@ -78,6 +78,9 @@ to the configured evidence-capture byte bound. A derived artifact is registered
 only after it parses successfully. Failure leaves the original capture and
 previous findings intact. Provenance records the parent SHA-256, extraction mode
 and rule, display filter, creation time, related finding IDs, and evidence IDs.
+Repeated requests for the same finding reuse a capture only after both the
+registered derived bytes and paired provenance verify against the current
+parent, finding, evidence IDs, extraction mode, and approved filter.
 
 The evidence-capture and bridge-grant routes accept logical case, finding and
 artifact IDs. They do not accept filesystem paths, caller-authored display

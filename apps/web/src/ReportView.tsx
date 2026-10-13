@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api, errorMessage, type Evidence, type Report } from './api';
+import {
+  api,
+  ApiError,
+  errorMessage,
+  type Evidence,
+  type NativeBridgeState,
+  type Report,
+} from './api';
 
 export const human = (value: string) => value.replaceAll('_', ' ').replaceAll('.', ' ');
 const domains: Record<string, string> = {
@@ -87,14 +94,14 @@ function Finding({
   caseId,
   originalId,
   bridgeAvailable,
-  onBridgeUnavailable,
+  onBridgeState,
   onEvidence,
 }: {
   finding: Report['findings'][number];
   caseId: string;
   originalId: string;
-  bridgeAvailable: boolean | null;
-  onBridgeUnavailable: () => void;
+  bridgeAvailable: NativeBridgeState;
+  onBridgeState: (state: NativeBridgeState) => void;
   onEvidence: (ids: string[]) => void;
 }) {
   const [copyStatus, setCopyStatus] = useState('');
@@ -121,7 +128,10 @@ function Finding({
       await openArtifact(originalId, 'Full capture');
     } catch (error) {
       setActionStatus(errorMessage(error));
-      onBridgeUnavailable();
+      if (error instanceof ApiError && error.code === 'bridge_unavailable')
+        onBridgeState('bridge_unavailable');
+      if (error instanceof ApiError && error.code === 'wireshark_unavailable')
+        onBridgeState('wireshark_unavailable');
     } finally {
       setBusy(false);
     }
@@ -143,12 +153,15 @@ function Finding({
       }
     } catch (error) {
       setActionStatus(errorMessage(error));
-      if (openAfter) onBridgeUnavailable();
+      if (error instanceof ApiError && error.code === 'bridge_unavailable')
+        onBridgeState('bridge_unavailable');
+      if (error instanceof ApiError && error.code === 'wireshark_unavailable')
+        onBridgeState('wireshark_unavailable');
     } finally {
       setBusy(false);
     }
   }
-  const unavailable = bridgeAvailable !== true;
+  const unavailable = bridgeAvailable !== 'ready';
   return (
     <article className="finding" aria-labelledby={`${finding.id}-title`}>
       <div className="finding-top">
@@ -194,13 +207,17 @@ function Finding({
             </button>
           </div>
           <p id={`${finding.id}-bridge`} className="muted">
-            {bridgeAvailable === null
+            {bridgeAvailable === 'checking'
               ? 'Checking the local native Wireshark bridge…'
-              : bridgeAvailable
+              : bridgeAvailable === 'ready'
                 ? 'Native bridge available. Launch grants are one-time and short-lived.'
-                : 'Native Wireshark bridge unavailable. Copy/filter evidence remains usable and a focused capture can still be generated.'}
+                : bridgeAvailable === 'wireshark_unavailable'
+                  ? 'The native bridge is running, but approved Wireshark was not found. Packet evidence remains usable and focused capture generation remains available.'
+                  : bridgeAvailable === 'api_unavailable'
+                    ? 'The local API is unavailable. Packet evidence and copied filters remain available in this report.'
+                    : 'Native Wireshark bridge unavailable. Packet evidence remains usable and focused capture generation remains available.'}
           </p>
-          {bridgeAvailable === false && (
+          {bridgeAvailable !== 'ready' && bridgeAvailable !== 'checking' && (
             <button className="quiet" disabled={busy} onClick={() => void createEvidence(false)}>
               Create evidence capture without opening Wireshark
             </button>
@@ -239,7 +256,7 @@ export function ReportView({
   onEvidence: (ids: string[]) => void;
 }) {
   const { conclusion, capture_quality: quality, time_attribution: time } = report;
-  const [bridgeAvailable, setBridgeAvailable] = useState<boolean | null>(null);
+  const [bridgeAvailable, setBridgeAvailable] = useState<NativeBridgeState>('checking');
   useEffect(() => {
     const controller = new AbortController();
     api
@@ -248,7 +265,7 @@ export function ReportView({
         if (!controller.signal.aborted) setBridgeAvailable(available);
       })
       .catch(() => {
-        if (!controller.signal.aborted) setBridgeAvailable(false);
+        if (!controller.signal.aborted) setBridgeAvailable('bridge_unavailable');
       });
     return () => controller.abort();
   }, [report.case_id]);
@@ -372,7 +389,7 @@ export function ReportView({
               caseId={report.case_id}
               originalId={originalId}
               bridgeAvailable={bridgeAvailable}
-              onBridgeUnavailable={() => setBridgeAvailable(false)}
+              onBridgeState={setBridgeAvailable}
               onEvidence={onEvidence}
             />
           ))
