@@ -95,9 +95,7 @@ def test_evidence_capture_is_bounded_registered_parseable_and_preserves_original
         assert again.json()["artifact_id"] == body["artifact_id"]
         assert again.json()["sha256"] == body["sha256"]
         evidence_captures = [
-            item
-            for item in service.get(case_id)["artifacts"]
-            if item["kind"] == "evidence_capture"
+            item for item in service.get(case_id)["artifacts"] if item["kind"] == "evidence_capture"
         ]
         assert len(evidence_captures) == 1
 
