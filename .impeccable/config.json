@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "apps/web/src/styles.css"
+        ],
+        "createdAt": "2026-10-13T18:10:48.892Z",
+        "reason": "The remaining match is the semantic blockquote marker on quoted symptom text inside the delete confirmation; it is not a card accent."
+      }
+    ]
+  }
+}
