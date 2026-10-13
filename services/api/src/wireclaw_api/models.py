@@ -85,6 +85,7 @@ class EvidenceCaptureProvenance(StrictModel):
     parent_sha256: str
     case_id: str
     finding_id: str
+    related_finding_ids: list[str]
     evidence_ids: list[str]
     extraction_mode: str
     extraction_rule: dict

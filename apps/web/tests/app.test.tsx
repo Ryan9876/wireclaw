@@ -215,7 +215,7 @@ describe('evidence and uncertainty presentation', () => {
   it('shows normalized evidence, tool version, and scope in a secondary drawer', async () => {
     openExisting();
     await screen.findByRole('heading', { name: 'Supported finding' });
-    await userEvent.click(screen.getByRole('button', { name: 'Show packet evidence' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Show Packet Evidence' }));
     const dialog = screen.getByRole('dialog', { name: 'Expert evidence' });
     expect(await within(dialog).findByRole('heading', { name: 'Normalized values' })).toBeVisible();
     expect(within(dialog).getByText('Tool / version')).toBeVisible();

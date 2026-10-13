@@ -210,7 +210,7 @@ function Finding({
               <p className="eyebrow">Wireshark display filter</p>
               <pre>{finding.wireshark.display_filter}</pre>
               <button className="quiet" onClick={copy}>
-                Copy display filter
+                Copy Wireshark Display Filter
               </button>
               <span className="copy-status" role="status">
                 {copyStatus}
@@ -218,7 +218,7 @@ function Finding({
             </>
           )}
           <button className="quiet" onClick={() => onEvidence(finding.evidence_ids)}>
-            Show packet evidence
+            Show Packet Evidence
           </button>
           <p className="copy-status" role="status">
             {actionStatus}

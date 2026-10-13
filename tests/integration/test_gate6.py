@@ -63,6 +63,7 @@ def test_evidence_capture_is_bounded_registered_parseable_and_preserves_original
         body = response.json()
         assert body["provenance"]["parent_sha256"] == before_hash == original_row["sha256"]
         assert body["provenance"]["finding_id"] == finding["id"]
+        assert body["provenance"]["related_finding_ids"] == [finding["id"]]
         assert body["provenance"]["evidence_ids"] == finding["evidence_ids"]
         assert body["provenance"]["display_filter"] == finding["wireshark"]["display_filter"]
         assert body["bytes"] <= service.policy.max_evidence_capture_bytes
@@ -161,6 +162,13 @@ def test_gate6_api_accepts_no_path_filter_or_executable_input_and_isolates_cases
             response = client.post(f"/api/cases/{first_id}/bridge-grants", json=payload)
             assert response.status_code == 422
             assert response.json() == {"error": {"code": "invalid_request"}}
+
+        unknown = client.post(
+            f"/api/cases/{first_id}/bridge-grants",
+            json={"artifact_id": "f" * 32, "finding_id": finding["id"]},
+        )
+        assert unknown.status_code == 404
+        assert unknown.json() == {"error": {"code": "artifact_not_found"}}
 
         cross_case = client.post(
             f"/api/cases/{second_id}/bridge-grants",

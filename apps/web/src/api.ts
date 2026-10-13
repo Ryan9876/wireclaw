@@ -15,6 +15,7 @@ export type EvidenceCapture = {
     parent_sha256: string;
     case_id: string;
     finding_id: string;
+    related_finding_ids: string[];
     evidence_ids: string[];
     extraction_mode: string;
     display_filter: string;
@@ -63,7 +64,8 @@ const explanations: Record<string, string> = {
   malformed_capture: 'The selected file is not a readable packet capture.',
   unsupported_capture: 'This capture format is unsupported.',
   capture_size_limit: 'The capture exceeds the configured local size limit.',
-  evidence_capture_size_limit: 'The focused evidence capture exceeds the configured local size limit.',
+  evidence_capture_size_limit:
+    'The focused evidence capture exceeds the configured local size limit.',
   evidence_capture_count_limit: 'This case reached the configured focused-capture limit.',
   request_size_limit: 'The request exceeds the configured local size limit.',
   case_not_found:

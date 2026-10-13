@@ -212,9 +212,9 @@ export function App() {
             </p>
             <blockquote>{record.symptom}</blockquote>
             <p>
-              This removes the locally stored original capture, normalized evidence, report, and
-              any derived evidence captures. Your source file outside Wireclaw is unchanged.
-              Deletion cannot be undone.
+              This removes the locally stored original capture, normalized evidence, report, and any
+              derived evidence captures. Your source file outside Wireclaw is unchanged. Deletion
+              cannot be undone.
             </p>
             {error && (
               <p className="error" role="alert">

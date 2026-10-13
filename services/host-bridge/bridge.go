@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -49,6 +50,14 @@ type server struct {
 	now            func() time.Time
 	mu             sync.Mutex
 	launches       []time.Time
+}
+
+func validateListenAddress(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
+		return errors.New("loopback_required")
+	}
+	return nil
 }
 
 func newServer(dataRoot, wireshark string) (*server, error) {
@@ -162,7 +171,7 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		safeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": map[string]string{"code": "method_not_allowed"}})
 		return
 	}
-	if !s.allowOrigin(w, r, false) {
+	if !s.allowOrigin(w, r, true) {
 		return
 	}
 	safeJSON(w, http.StatusOK, map[string]any{"status": "ok", "wireshark_available": s.wireshark != ""})
@@ -225,7 +234,7 @@ func (s *server) open(w http.ResponseWriter, r *http.Request) {
 		safeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]string{"code": "invalid_grant"}})
 		return
 	}
-	if m.ExpiresUnix < s.now().Unix() {
+	if m.ExpiresUnix <= s.now().Unix() {
 		safeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]string{"code": "grant_expired"}})
 		return
 	}
@@ -288,7 +297,16 @@ func (s *server) resolveArtifact(value manifest) (string, error) {
 	if filepath.IsAbs(value.RelativePath) || strings.ContainsRune(value.RelativePath, '\x00') {
 		return "", errors.New("absolute path")
 	}
+	for _, part := range strings.Split(filepath.ToSlash(value.RelativePath), "/") {
+		if part == ".." {
+			return "", errors.New("path traversal")
+		}
+	}
+	caseRoot := filepath.Join("cases", value.CaseID) + string(filepath.Separator)
 	clean := filepath.Clean(filepath.FromSlash(value.RelativePath))
+	if !strings.HasPrefix(clean, caseRoot) {
+		return "", errors.New("artifact case mismatch")
+	}
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", errors.New("path traversal")
 	}
