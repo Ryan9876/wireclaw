@@ -87,8 +87,11 @@ The analyzer and web application are containerized. A small optional host bridge
 ## Current status
 
 Gates 1 through 4 are merged. Gate 5 implements the local browser workflow and
-is awaiting PR approval. See [web startup instructions](apps/web/README.md) and
-[Gate 5 verification](docs/gate5-verification.md). Gates 6 and later remain
+is awaiting PR approval. Gate 6 implementation is in
+[PR #8](https://github.com/Ryan9876/wireclaw/pull/8); automated Linux,
+production-browser, and macOS/Windows/Linux bridge validation passed. See [web startup instructions](apps/web/README.md),
+[Gate 5 verification](docs/gate5-verification.md), and the forthcoming
+[Gate 6 verification](docs/gate6-verification.md). Gate 7 and later remain
 unimplemented. The product specification remains authoritative; start with
 `specs/v1/constitution.md`.
 
@@ -97,5 +100,6 @@ unimplemented. The product specification remains authoritative; start with
 The deterministic Python analyzer is implemented. See [developer instructions](services/analyzer/README.md), [Gate 1 verification](docs/gate1-verification.md), and [Gate 2 verification](docs/gate2-verification.md).
 
 The [local API](services/api/README.md) provides bounded intake, persistence,
-analysis, rules-only findings/reports and case deletion. The [web UI](apps/web/README.md)
-presents that API. LLM adapters, host bridge and Docker packaging remain later gates.
+analysis, rules-only findings/reports, evidence-capture extraction, bridge grants,
+and case deletion. The [web UI](apps/web/README.md) presents that API. LLM adapters
+and Docker packaging remain later gates.

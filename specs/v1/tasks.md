@@ -148,19 +148,19 @@ Requirements: R-F018 through R-F020, R-D003, R-D004, R-U003.
 
 Tasks:
 
-- [ ] G6.1 Implement evidence-capture extraction service.
-- [ ] G6.2 Record parent hash/extraction rule/display filter for derived captures.
-- [ ] G6.3 Implement Go host bridge protocol.
-- [ ] G6.4 Enforce loopback/authentication/origin restrictions.
-- [ ] G6.5 Implement logical-artifact resolution/path confinement.
-- [ ] G6.6 Implement configured Wireshark executable discovery/selection.
-- [ ] G6.7 Implement macOS launcher behavior.
-- [ ] G6.8 Implement Windows launcher behavior.
-- [ ] G6.9 Implement Linux launcher behavior.
-- [ ] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
-- [ ] G6.11 Add **Open Evidence Capture in Wireshark** beside it on every applicable finding.
-- [ ] G6.12 Add Copy Display Filter and Show Packet Evidence.
-- [ ] G6.13 Host-bridge security tests including path traversal and malicious filters.
+- [x] G6.1 Implement evidence-capture extraction service.
+- [x] G6.2 Record parent hash/extraction rule/display filter and related finding/evidence IDs for derived captures.
+- [x] G6.3 Implement Go host bridge protocol.
+- [x] G6.4 Enforce loopback/authentication/origin restrictions and one-time bounded grants.
+- [x] G6.5 Implement logical-artifact resolution/path confinement.
+- [x] G6.6 Implement configured Wireshark executable discovery/selection.
+- [x] G6.7 Implement macOS launcher behavior; discovery and argv verified in macOS CI.
+- [x] G6.8 Implement Windows launcher behavior; discovery and argv verified in Windows CI.
+- [x] G6.9 Implement Linux launcher behavior; discovery and argv verified in Linux CI.
+- [x] G6.10 Add **Open Full Capture in Wireshark** to every applicable finding.
+- [x] G6.11 Add **Open Evidence Capture in Wireshark** beside it on every applicable finding.
+- [x] G6.12 Add Copy Display Filter and Show Packet Evidence with bridge-unavailable degradation.
+- [x] G6.13 Host-bridge security tests including path traversal and malicious filters.
 
 Exit criteria:
 - both Wireshark actions are always visible together when applicable
