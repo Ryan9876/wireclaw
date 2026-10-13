@@ -169,9 +169,11 @@ Exit criteria:
 
 ## Gate 7 — Reasoning provider and iterative investigation
 
-Goal: add LLM-assisted hypothesis planning/correlation without weakening evidence boundaries.
+Goal: add LLM-assisted hypothesis planning/correlation without weakening evidence boundaries, and close the deterministic application-timing gap required for V1 acceptance.
 
-Requirements: R-F014 through R-F016, R-F024, R-S006 through R-S008.
+Execution specification: `specs/v1/gate7-execution.md`.
+
+Requirements: R-F011, R-F012, R-F014 through R-F016, R-F024, R-F026, R-S003 through R-S008, R-N002, R-N004 through R-N006.
 
 Tasks:
 
@@ -186,17 +188,23 @@ Tasks:
 - [ ] G7.9 Prevent unsupported model claims from entering final findings.
 - [ ] G7.10 Add provider timeout/failure fallback to deterministic report.
 - [ ] G7.11 Add prompt-injection/adversarial text fixtures sourced from capture fields.
+- [ ] G7.12 Implement deterministic `analyze_http_timing` plus positive decodable and negative opaque server-wait fixtures.
 
 Exit criteria:
 - the model can deepen investigations only through typed capabilities
 - disabling/removing the model preserves core analyzer functionality
 - model prose cannot fabricate evidence records
+- decodable request/response timing is measured deterministically while opaque transport silence is not mislabeled as application wait
 
 ## Gate 8 — Docker packaging and cross-platform release
 
 Goal: make the product easy to run and share.
 
-Requirements: R-D001 through R-D006.
+Execution specification: `specs/v1/gate8-execution.md`.
+
+Architecture decision: `docs/decisions/ADR-0005-v1-container-topology-and-loopback-publication.md`.
+
+Requirements: R-D001 through R-D006 plus the applicable security/privacy/resource requirements preserved by packaging.
 
 Tasks:
 
@@ -215,10 +223,13 @@ Tasks:
 Exit criteria:
 - a user with Docker and Wireshark can start Wireclaw without a developer toolchain
 - equivalent core workflow works on macOS, Windows, and Linux
+- release packaging preserves loopback-only host exposure, local-first data handling, and Gate 7 rules-only/provider privacy behavior
 
 ## Gate 9 — V1 acceptance and hardening
 
 Goal: demonstrate that Wireclaw solves representative troubleshooting problems safely and reproducibly.
+
+Acceptance specification: `specs/v1/gate9-acceptance.md`.
 
 Tasks:
 
@@ -229,7 +240,7 @@ Tasks:
 - [ ] G9.5 receiver-window constrained case.
 - [ ] G9.6 TCP reset/reconnect case.
 - [ ] G9.7 TLS-delay case.
-- [ ] G9.8 server/application-wait case.
+- [ ] G9.8 server/application-wait acceptance: positive decodable HTTP case plus opaque-transport uncertainty regression.
 - [ ] G9.9 MTU/PMTUD evidence case.
 - [ ] G9.10 one-sided/incomplete capture case requiring uncertainty.
 - [ ] G9.11 large-capture resource-limit case.
