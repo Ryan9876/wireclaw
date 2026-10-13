@@ -4,6 +4,10 @@ Status: **Authoritative implementation sequence**
 
 Implementation should proceed through gates. Do not skip forward merely because a later feature is easier to demonstrate.
 
+Progress snapshot as of 2026-10-13: Gates 0 through 5 are complete and accepted on `main`. Gate 6 is actively implemented on `gate6-wireshark-evidence-bridge` but has not passed all validation and is not merged. Gates 7 through 9 have not started.
+
+Task checkboxes represent **accepted mainline delivery state**, not merely code existing on a development branch. Gate 6 items therefore remain unchecked until the gate meets its exit criteria, final verification is recorded, and the implementation is merged. See `docs/gate6-progress.md` for current branch evidence.
+
 ## Gate 0 — Repository and specification baseline
 
 Goal: establish product contract before implementation.
@@ -145,6 +149,8 @@ Exit criteria:
 Goal: make native Wireshark validation a first-class path.
 
 Requirements: R-F018 through R-F020, R-D003, R-D004, R-U003.
+
+Current delivery status: **in progress** on `gate6-wireshark-evidence-bridge`. Cross-platform host-bridge test/build jobs pass on Ubuntu, macOS and Windows, and Python/Go/web validation passes in the Linux full workflow; production browser validation is still failing, so Gate 6 is not accepted or merged. See `docs/gate6-progress.md`.
 
 Tasks:
 
