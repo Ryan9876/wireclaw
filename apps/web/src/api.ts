@@ -28,11 +28,7 @@ export type BridgeGrant = {
   expires_unix: number;
 };
 export type NativeBridgeState =
-  | 'checking'
-  | 'ready'
-  | 'bridge_unavailable'
-  | 'wireshark_unavailable'
-  | 'api_unavailable';
+  'checking' | 'ready' | 'bridge_unavailable' | 'wireshark_unavailable' | 'api_unavailable';
 export const states = [
   'NEW',
   'INGESTING',
