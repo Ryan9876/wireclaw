@@ -51,7 +51,9 @@ func startAndReap(process childProcess) error {
 	if err := process.Start(); err != nil {
 		return err
 	}
-	go func() { _ = process.Wait() }()
+	go func() {
+		_ = process.Wait()
+	}()
 	return nil
 }
 
