@@ -2,6 +2,8 @@
 
 Gate 6 implements the native Go bridge used only to launch Wireshark with an approved Wireclaw capture artifact and backend-approved display filter.
 
+Wireclaw V1 release support is macOS-only. Windows and Linux bridge code remains in the repository as post-V1 portability groundwork; CI build/discovery/argv checks on those hosts do not constitute release qualification.
+
 ## Trust boundary
 
 The browser never supplies a filesystem path, executable, Wireshark argument list, or display filter to the bridge. The local API first validates the case/finding/artifact and writes a short-lived manifest under the shared data root. The browser receives only a random request ID and one-time token. The manifest stores only the SHA-256 of that token.
@@ -46,11 +48,8 @@ port. The bridge listen port remains independently configured by `--listen`.
 
 Platform discovery is isolated behind `discoverWireshark`: macOS checks the native application executable, Windows checks the standard Program Files locations, and Linux supports an administrator PATH plus standard locations. The resolved executable is canonicalized before use.
 
-The test suite injects the process launcher to verify the selected executable
-and exact argv without opening a GUI. GitHub Actions runs `go test`, `go vet`,
-and `go build` on Ubuntu, macOS, and Windows to verify equivalent bridge logic
-and platform-specific discovery. These checks do not demonstrate a real native
-Wireshark window launch; follow the manual procedure in
-[Gate 6 verification](../../docs/gate6-verification.md) on each desktop OS.
+The test suite injects the process launcher to verify the selected executable and exact argv without opening a GUI. GitHub Actions may continue to run `go test`, `go vet`, and `go build` on Ubuntu, macOS, and Windows as portability checks. V1 native release acceptance is required only on macOS and is recorded in [Gate 6 verification](../../docs/gate6-verification.md).
+
+Before Windows or Linux is described as supported in a future release, each platform must complete the native desktop, packaging, launcher/install, and end-to-end qualification defined in the product roadmap.
 
 If the bridge or Wireshark is unavailable, the web report remains usable, both native-open actions stay visible but disabled, display-filter copy and packet evidence remain available, and the API can still create a focused evidence capture.
