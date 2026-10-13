@@ -2,22 +2,24 @@
 
 Status: **Subordinate execution specification**
 
-This document defines the implementation contract for Gate 8. It is subordinate to `specs/v1/constitution.md`, `specs/v1/requirements.md`, `specs/v1/solution.md`, and accepted ADRs, including ADR-0001 and ADR-0005.
+This document defines the implementation contract for Gate 8. It is subordinate to `specs/v1/constitution.md`, `specs/v1/requirements.md`, `specs/v1/solution.md`, and accepted ADRs, including ADR-0001, ADR-0005, and the macOS-first V1 platform-scope decision recorded in ADR-0006 once this branch is reconciled with Gate 6.
 
 ## 1. Gate objective
 
-Gate 8 turns the development application into a reproducible cross-platform V1 release that a user with Docker and Wireshark can start without installing the Python/Node/analyzer development toolchain.
+Gate 8 turns the development application into a reproducible **macOS V1 release** that a user with Docker and Wireshark can start without installing the Python/Node/analyzer development toolchain.
+
+Windows and Linux are post-V1 release-qualification targets. Existing bridge code and CI on those hosts may remain as portability evidence, but Gate 8 must not build Windows/Linux launchers or block V1 on those platforms.
 
 Gate 8 does not redesign analysis, reasoning, findings, evidence, or the Gate 6 bridge. It packages the accepted Gates 0–7 behavior.
 
-## 2. Requirements and tasks
+## 2. Requirements and V1 tasks
 
 Primary requirements:
 
 - R-D001 Dockerized core
-- R-D002 macOS/Windows/Linux hosts
+- R-D002 macOS V1 host
 - R-D003 native Wireshark
-- R-D004 equivalent native host bridge
+- R-D004 native macOS host bridge
 - R-D005 simple startup
 - R-D006 reproducible analyzer image
 - R-S001 loopback default
@@ -33,7 +35,7 @@ Primary requirements:
 - R-N005 auditability
 - R-N006 maintainability
 
-Gate tasks:
+Gate 8 V1 tasks:
 
 - G8.1 pinned analyzer Docker image
 - G8.2 web/API Docker packaging
@@ -41,20 +43,18 @@ Gate tasks:
 - G8.4 bind-mounted data root
 - G8.5 `.env.example` with safe defaults
 - G8.6 macOS start/stop launcher
-- G8.7 Windows start/stop launcher
-- G8.8 Linux start/stop launcher
-- G8.9 host-bridge install/uninstall scripts for each OS
-- G8.10 first-run prerequisite checks for Docker and Wireshark
-- G8.11 release smoke tests on macOS, Windows, and Linux
+- G8.9 macOS host-bridge install/uninstall scripts
+- G8.10 first-run prerequisite checks for Docker and Wireshark on macOS
+- G8.11 macOS release smoke tests
+
+Legacy task IDs G8.7 (Windows launcher) and G8.8 (Linux launcher) are deferred post-V1 and are not Gate 8 exit criteria.
 
 ## 3. Accepted release topology
 
-ADR-0005 is binding for Gate 8.
-
-V1 release topology:
+ADR-0005 remains binding for container topology. V1 host qualification is macOS.
 
 ```text
-Host browser
+macOS browser
     |
     | http://127.0.0.1:<app-port>
     v
@@ -65,42 +65,36 @@ Docker: wireclaw-core
     - pinned TShark/capinfos/editcap/mergecap/Zeek as required
     - SQLite
     |
-    | bind-mounted host data root
+    | bind-mounted macOS data root
     v
 Host filesystem: Wireclaw data root
     ^
     |
-Native Go host bridge on 127.0.0.1:<bridge-port>
+Native macOS Go host bridge on 127.0.0.1:<bridge-port>
     |
 Native Wireshark
 ```
 
 Do not introduce a separate analyzer RPC service for V1.
 
-Do not containerize the Wireshark GUI or Gate 6 host bridge.
+Do not containerize Wireshark GUI or the Gate 6 host bridge.
 
 ## 4. Container networking contract
 
-The application process inside `wireclaw-core` may bind to the container interface required for Docker publication, e.g.:
+The application process inside `wireclaw-core` may bind to the container interface required for Docker publication, for example `0.0.0.0:8765`.
 
-```text
-0.0.0.0:8765
-```
-
-The host publication must be loopback-only by default:
+The host publication must be loopback-only:
 
 ```yaml
 ports:
   - "127.0.0.1:${WIRECLAW_PORT:-8765}:8765"
 ```
 
-Equivalent Compose syntax is acceptable.
-
 Forbidden release defaults:
 
 ```text
-0.0.0.0:<port>:8765
-::<port>:8765
+0.0.0.0:<host-port>:8765
+::<host-port>:8765
 network_mode: host
 privileged: true
 Docker socket mount
@@ -110,7 +104,7 @@ Do not publish analyzer/debug/development ports.
 
 The browser continues to use same-origin `/api/...` resources.
 
-## 5. Required repository layout
+## 5. Required V1 repository layout
 
 Gate 8 should produce or equivalent:
 
@@ -122,25 +116,15 @@ wireclaw/
 ├── docker/
 │   └── analyzer-versions.lock
 ├── launch/
-│   ├── macos/
-│   │   ├── start.sh
-│   │   ├── stop.sh
-│   │   ├── install-host-bridge.sh
-│   │   └── uninstall-host-bridge.sh
-│   ├── linux/
-│   │   ├── start.sh
-│   │   ├── stop.sh
-│   │   ├── install-host-bridge.sh
-│   │   └── uninstall-host-bridge.sh
-│   └── windows/
-│       ├── start.ps1
-│       ├── stop.ps1
-│       ├── install-host-bridge.ps1
-│       └── uninstall-host-bridge.ps1
+│   └── macos/
+│       ├── start.sh
+│       ├── stop.sh
+│       ├── install-host-bridge.sh
+│       └── uninstall-host-bridge.sh
 └── services/host-bridge/
 ```
 
-Names may differ only if documentation and tests use one consistent layout.
+Windows/Linux release directories are not required for V1.
 
 ## 6. Docker image design
 
@@ -156,39 +140,32 @@ core-runtime
 
 ### Web build stage
 
-- use a pinned Node major/version strategy consistent with CI
-- copy only files required for dependency installation first
-- run `npm ci`, never `npm install`
-- run the production web build
-- no Vite development server in final image
+- use a pinned Node major/version strategy consistent with CI;
+- copy dependency manifests before application sources where practical;
+- run `npm ci`, never `npm install`;
+- run the production web build;
+- do not ship the Vite development server in the final image.
 
 ### Core runtime stage
 
 The final image contains:
 
-- supported Python runtime
-- installed Wireclaw API/analyzer packages
-- compiled web assets
-- SQLite runtime dependencies
-- pinned packet analyzer binaries/tools
-- required CA certificates for configured HTTPS cloud providers
+- supported Python runtime;
+- installed Wireclaw API/analyzer packages;
+- compiled web assets;
+- SQLite runtime dependencies;
+- pinned packet analyzer binaries/tools;
+- CA certificates required for configured HTTPS cloud providers.
 
-The final image must not require:
+The final image must not require Node/npm, Go compiler, source checkout, test-only Python packages, or a development web server.
 
-- Node runtime
-- npm
-- Go compiler
-- source checkout at runtime
-- test-only Python packages
-- development web server
-
-Do not install Wireshark GUI into the container.
+Do not install Wireshark GUI in the container.
 
 ## 7. Analyzer version pinning
 
-R-D006 requires analyzer versions to be pinned in built releases.
+R-D006 requires exact analyzer versions to be pinned in built releases.
 
-Create `docker/analyzer-versions.lock` or an equivalent machine-readable release lock containing at least the exact release-tested versions of:
+Create `docker/analyzer-versions.lock` or equivalent containing at least:
 
 - TShark/Wireshark CLI
 - capinfos
@@ -197,17 +174,17 @@ Create `docker/analyzer-versions.lock` or an equivalent machine-readable release
 - Zeek when packaged
 - Python runtime
 
-Also pin the Docker base image by immutable digest in the release Dockerfile or release build metadata.
+Also pin the Docker base image by immutable digest in release build metadata.
 
-Do not invent version numbers in the specification. During implementation, Codex must select versions that build on supported architectures, record them in the lock, and add a build/runtime assertion that the installed versions match the release lock.
+Do not invent version numbers in this specification. During implementation, select versions that build and pass the macOS-hosted Docker release workflow, record them, and add a runtime/build assertion that installed versions match the lock.
 
-A floating `latest` analyzer image or unrecorded distro package set does not satisfy G8.1/R-D006.
+The known local macOS TShark 4.6.9 versus CI 4.2.2 classification differences are specifically why Gate 8 must pin the analyzer image instead of depending on arbitrary host TShark versions.
 
-## 8. Image security/runtime user
+## 8. Runtime hardening
 
-Run the core as a non-root user unless a documented analyzer tool proves impossible under that model. Do not grant packet-capture capabilities; Wireclaw analyzes uploaded files and does not need live-capture privileges in V1.
+Run the core as a non-root user unless a documented analyzer incompatibility requires otherwise. Wireclaw analyzes uploaded files and does not need live packet-capture privileges in V1.
 
-Compose should use, where compatible with the accepted runtime:
+Use, where compatible:
 
 ```yaml
 security_opt:
@@ -218,8 +195,6 @@ init: true
 ```
 
 Do not add privileged mode or Docker-socket access.
-
-If a hardening setting is incompatible with a required analyzer, document the specific reason and retain the smallest privilege set possible.
 
 ## 9. Data-root mapping
 
@@ -232,146 +207,126 @@ host:      ${WIRECLAW_DATA_ROOT}
 container: /var/lib/wireclaw
 ```
 
-The exact container path may differ, but it must be fixed and documented.
-
 Requirements:
 
-- one host data root is mounted read/write into `wireclaw-core`
-- case-relative layout remains unchanged logically
-- original capture immutability is preserved
-- SQLite and artifact files persist across container recreation
-- the native bridge receives the host path, not the container path
-- browser requests continue to use logical IDs, not either path
-- paths containing spaces and Unicode must work on all supported hosts
+- mount one host data root read/write into `wireclaw-core`;
+- preserve case-relative layout;
+- preserve original capture immutability;
+- persist SQLite and artifacts across container recreation;
+- pass the host path, not the container path, to the native bridge;
+- keep browser requests on logical IDs;
+- support macOS paths containing spaces and Unicode.
 
-The launcher should resolve a stable absolute host data-root path before starting the bridge.
+The launcher resolves a stable absolute host data-root path before starting the bridge.
 
 ## 10. Compose contract
 
-`compose.yaml` must define the V1 core without requiring a developer toolchain.
+`compose.yaml` must define the V1 core without a developer toolchain.
 
 Minimum behavior:
 
-- build or reference `wireclaw-core`
-- publish only the application port to host loopback
-- mount the configured data root
-- set safe provider defaults
-- define healthcheck
-- restart behavior must not create multiple API processes against one data root
-- Linux same-host provider mapping is present when needed
+- build or reference `wireclaw-core`;
+- publish only the app port to host loopback;
+- mount the configured data root;
+- set safe provider defaults;
+- define a core healthcheck;
+- avoid multiple API workers against one data root.
 
-Do not use multiple API workers because ADR-0003 enforces one service process per data root and synchronous bounded mutation semantics.
+ADR-0003 synchronous single-process case semantics remain binding.
 
 ## 11. Healthcheck
 
-The Docker healthcheck should use the Wireclaw API health endpoint from inside the container.
+Use the Wireclaw API health endpoint from inside the container.
 
-Health must reflect the core service, not require the optional native bridge or model provider to be available.
+Core health must not require the optional model provider or native bridge to be available.
 
 A missing Wireshark bridge must not mark the core container unhealthy.
 
 ## 12. Safe `.env.example`
 
-Commit an `.env.example` containing no secrets.
-
-At minimum expose documented equivalents for:
+Commit an `.env.example` with no secrets. At minimum expose documented equivalents for:
 
 ```text
 WIRECLAW_PORT=8765
-WIRECLAW_DATA_ROOT=<safe documented local path/default>
+WIRECLAW_DATA_ROOT=<safe documented macOS path/default>
 WIRECLAW_PROVIDER_MODE=none
 WIRECLAW_PROVIDER_BASE_URL=
 WIRECLAW_PROVIDER_MODEL=
 WIRECLAW_BRIDGE_PORT=8766
 ```
 
-Do not include real API keys.
-
-Secret values must come from the user's uncommitted environment/configuration.
-
 `provider_mode=none` is the release default.
 
-## 13. Cloud-provider packaging behavior
+Real API keys remain uncommitted user configuration.
 
-Gate 8 must preserve Gate 7 cloud privacy behavior unchanged.
+## 13. Provider packaging behavior
 
-The container may make outbound HTTPS requests only when a cloud provider is explicitly configured.
+Gate 8 must preserve Gate 7 privacy behavior unchanged.
 
-Raw PCAP and payload bytes remain excluded under the Gate 7 policy.
+Cloud provider mode may make outbound HTTPS requests only when explicitly configured. Raw PCAP and payload bytes remain excluded by default.
 
-Do not add a cloud file-upload path as part of packaging.
+Do not add a cloud capture/file-upload path.
 
-## 14. Same-host local model behavior
+## 14. Same-host local model on macOS
 
-When the OpenAI-compatible local provider runs on the Docker host, configure the provider base URL using:
+When an OpenAI-compatible local provider runs on the macOS Docker host, use the Docker host name rather than container loopback, for example:
 
 ```text
 http://host.docker.internal:<provider-port>/v1
 ```
 
-or the exact base-path convention accepted by the Gate 7 adapter.
+Test this behavior with a controlled fake local provider.
 
-For Linux, Compose must add the supported mapping when necessary:
+Linux-specific `host-gateway` configuration is deferred with Linux release qualification and is not a V1 Gate 8 requirement.
 
-```yaml
-extra_hosts:
-  - "host.docker.internal:host-gateway"
-```
+## 15. macOS host-bridge release binary
 
-Test this behavior with a fake local provider. Do not assume container `127.0.0.1` refers to the host.
+Build and package the native Go bridge for the macOS architecture(s) actually supported by the V1 release.
 
-## 15. Host bridge release binaries
-
-Build the Go bridge as native binaries for the supported OS families.
-
-Release artifact naming should clearly distinguish platform, e.g.:
+Example artifact naming:
 
 ```text
-wireclaw-host-bridge-darwin-<arch>
-wireclaw-host-bridge-windows-<arch>.exe
-wireclaw-host-bridge-linux-<arch>
+wireclaw-host-bridge-darwin-arm64
 ```
 
-The release must declare which architecture was tested for each OS. R-D002 requires the OS families; it does not silently create a promise for every CPU architecture.
+Do not claim an architecture is supported until its binary and release smoke test exist.
 
-Do not claim an architecture is supported unless a release binary/build and smoke test exist for it.
+Record the distributed bridge binary SHA-256 in release verification metadata.
 
-Record SHA-256 hashes for distributed bridge binaries in release verification metadata.
+Windows/Linux bridge builds may continue in CI but are not V1 release artifacts.
 
-## 16. Bridge install/uninstall scripts
+## 16. macOS bridge install/uninstall scripts
 
 Install scripts must:
 
-- operate on the packaged bridge binary only
-- select/create a per-user or otherwise documented non-privileged install location where practical
-- preserve Gate 6 executable/path/origin restrictions
-- accept the configured Wireclaw data root and application port through documented admin configuration
-- not write secrets to the repository
-- not install arbitrary executables
+- operate only on the packaged Wireclaw bridge binary;
+- use a documented per-user/non-privileged install location where practical;
+- preserve Gate 6 executable/path/origin restrictions;
+- configure the Wireclaw data root and app/bridge ports safely;
+- never write secrets to source control;
+- never install arbitrary executables.
 
-Uninstall scripts must remove only Wireclaw-managed bridge files/configuration and must not delete case data unless the user explicitly requests case/data deletion through a separate path.
+Uninstall must remove only Wireclaw-managed bridge files/config and must not delete case data by default.
 
-Do not require a background system service for V1 unless an accepted ADR adds it. A launcher-managed native bridge process is sufficient.
+A background system daemon is not required for V1 unless a later ADR explicitly adds it.
 
-## 17. Start/stop launcher contract
-
-Each platform gets a documented start and stop path.
+## 17. macOS start/stop launcher contract
 
 ### Start
 
 The launcher must:
 
 1. verify Docker/Compose availability;
-2. verify the configured data root can be created/accessed;
-3. verify/install-check the packaged host bridge;
-4. check whether Wireshark is discoverable or explain how to configure it;
+2. verify/create the configured data root;
+3. verify the packaged host bridge is present/installed;
+4. verify Wireshark is discoverable or explain how to configure its path;
 5. start `wireclaw-core` through Compose;
-6. wait for bounded core health readiness;
-7. start the native bridge with the same host data root and configured application/bridge ports;
-8. print the localhost UI URL and clear status;
-9. exit nonzero on startup failure with a bounded actionable message.
+6. wait for bounded core readiness;
+7. start the native bridge with the same host data root and configured ports;
+8. print the localhost UI URL and status;
+9. exit nonzero on failure with an actionable bounded message.
 
-Opening a browser automatically is optional; printing the URL is required.
+Opening the browser automatically is optional; printing the URL is required.
 
 ### Stop
 
@@ -379,88 +334,78 @@ The launcher must:
 
 1. stop the Wireclaw-managed bridge process;
 2. stop/remove the Compose runtime without deleting the host data root;
-3. preserve cases/artifacts for the next start;
+3. preserve cases/artifacts;
 4. report failures without deleting data.
 
-Do not make `stop` equivalent to `docker compose down -v` if that would destroy user data.
+Never make normal stop equivalent to destructive `docker compose down -v` behavior.
 
-## 18. Platform launcher constraints
+## 18. macOS launcher constraints
 
-### macOS
+Use shell behavior available in the documented macOS environment. Do not require Homebrew for Wireclaw runtime dependencies beyond the user's Docker/Wireshark installation.
 
-Use POSIX shell compatible with the documented macOS environment. Do not depend on Homebrew for Wireclaw runtime dependencies beyond the user's Docker/Wireshark installation.
+Quote paths safely and verify data roots/filenames containing spaces.
 
-### Linux
-
-Use POSIX/Bash shell as documented. Do not require a particular desktop environment for core startup. Native Wireshark acceptance still requires a GUI desktop session.
-
-### Windows
-
-Use PowerShell. Quote/resolve paths as native PowerShell argument arrays. Do not route analyzer or bridge execution through `cmd /c`.
-
-Paths containing spaces must be included in platform smoke tests.
+Windows PowerShell and Linux launcher constraints belong to the post-V1 platform qualification work.
 
 ## 19. Prerequisite checks
 
 G8.10 must detect and explain at least:
 
-- Docker not installed/unavailable
-- Compose unavailable
-- Docker daemon/runtime not running
-- configured app port already in use
-- configured bridge port already in use
-- data root inaccessible
-- host bridge missing/not installed
-- Wireshark not discoverable
+- Docker missing/unavailable;
+- Compose unavailable;
+- Docker daemon not running;
+- configured app port already in use;
+- configured bridge port already in use;
+- data root inaccessible;
+- host bridge missing/not installed;
+- Wireshark not discoverable.
 
-A missing model provider must not prevent startup when `provider_mode=none`.
+A missing model provider must not prevent startup in `provider_mode=none`.
 
 The launcher does not need to install Docker or Wireshark automatically.
 
 ## 20. Release build reproducibility
 
-A release verification record must capture:
+Record:
 
-- source commit SHA
-- Dockerfile/Compose revision
-- core image immutable digest
-- base image digest
-- analyzer version lock
-- Python version
-- built web artifact revision
-- host-bridge binary SHA-256 per platform/architecture
+- source commit SHA;
+- Dockerfile/Compose revision;
+- core image immutable digest;
+- base image digest;
+- analyzer version lock;
+- Python version;
+- compiled web revision;
+- macOS host-bridge binary SHA-256.
 
-The same source/version lock should produce equivalent deterministic evidence on supported hosts, subject to architecture/tool reproducibility limits explicitly documented.
+The same source/version lock should reproduce equivalent deterministic evidence for the supported release environment, subject to explicitly documented architecture/tool limits.
 
 ## 21. No development dependencies at runtime
 
-Acceptance must prove a clean host can operate the release without locally installed:
+Acceptance must prove a clean macOS host can operate the release without locally installed:
 
-- Python development environment
-- Node/npm
-- Go compiler
-- TShark/capinfos/Zeek
+- Python development environment;
+- Node/npm;
+- Go compiler;
+- TShark/capinfos/Zeek for analysis.
 
-Required host prerequisites are Docker-compatible runtime and native Wireshark, plus the packaged native bridge/launcher.
+Required host prerequisites are Docker-compatible runtime, native Wireshark, and the packaged Wireclaw bridge/launcher.
 
-## 22. Upgrade/restart behavior
+## 22. Restart/persistence behavior
 
 Gate 8 does not require an auto-updater.
 
-It must, however, prove that:
+It must prove:
 
-- stopping and starting the same release preserves cases;
+- stopping/starting the same release preserves cases;
 - recreating the container against the same data root preserves cases;
-- a service restart does not mutate original captures;
-- persisted case/report/evidence contracts remain readable by the same release.
-
-Cross-version migration beyond V1 is not introduced unless an existing schema change requires it.
+- service restart does not mutate original captures;
+- persisted report/evidence contracts remain readable by the same release.
 
 ## 23. Packaging security tests
 
 Required automated checks include:
 
-1. Compose publishes only `127.0.0.1` application ports by default.
+1. Compose publishes only `127.0.0.1` app ports by default.
 2. No host-network mode.
 3. No privileged mode.
 4. No Docker socket mount.
@@ -468,21 +413,21 @@ Required automated checks include:
 6. Core health succeeds with bridge absent.
 7. Browser/API still reject unapproved Host/Origin values.
 8. Raw case data stays in the configured host data root.
-9. container restart preserves immutable original hash.
-10. rules-only startup works with no provider credentials.
-11. fake local provider is reachable through the documented host mapping.
-12. cloud-provider privacy tests from Gate 7 still pass in the containerized runtime.
+9. Container restart preserves original SHA-256.
+10. Rules-only startup works without provider credentials.
+11. Fake macOS-host local provider is reachable through the documented Docker host mapping.
+12. Gate 7 cloud-provider privacy tests still pass in the containerized runtime.
 
-Tests may inspect `docker compose config` to validate publication and mounts.
+`docker compose config` may be inspected to assert publication and mounts.
 
-## 24. Cross-platform smoke-test procedure
+## 24. macOS release smoke procedure
 
-Perform G8.11 on real supported host OS environments, not only cross-compilation.
+Perform G8.11 on a real macOS host, not only inside generic CI.
 
-For each OS record:
+Record:
 
 ```text
-OS/version
+macOS version
 architecture
 Docker/runtime version
 Compose version
@@ -495,23 +440,23 @@ bridge binary SHA-256
 Then:
 
 1. start from the documented release bundle;
-2. do not use a local Python/Node/Go development environment;
-3. run the platform start launcher;
-4. open the localhost UI;
+2. do not use local Python/Node/Go development tooling;
+3. run the macOS start launcher;
+4. open localhost UI;
 5. create a case from a known fixture;
 6. investigate and view deterministic report/evidence;
 7. run one rules-only case;
-8. if Gate 7 is configured, run fake/local-provider smoke coverage;
+8. run fake/local-provider smoke coverage when Gate 7 is configured;
 9. open Full Capture in native Wireshark;
 10. open Evidence Capture in native Wireshark;
 11. verify path-with-spaces behavior;
-12. stop and restart Wireclaw;
-13. verify the case persists;
+12. restart Wireclaw;
+13. verify case persistence;
 14. stop the bridge and verify graceful degradation;
-15. run the platform stop launcher;
+15. run the stop launcher;
 16. verify user data remains.
 
-CI cross-build is useful but does not substitute for actual release smoke behavior on the three host OS families.
+Windows/Linux release smoke is deferred post-V1.
 
 ## 25. Offline/rules-only release acceptance
 
@@ -521,13 +466,13 @@ The release must work with:
 WIRECLAW_PROVIDER_MODE=none
 ```
 
-and no network access to a model provider.
+and no model-provider network access.
 
-Deterministic packet analysis, reporting, evidence capture, and native Wireshark validation must remain usable.
+Deterministic analysis, reporting, evidence capture, and native Wireshark validation remain usable.
 
-## 26. Release bundle
+## 26. V1 release bundle
 
-Produce the solution's V1 release shape or an equivalent documented artifact:
+Produce:
 
 ```text
 wireclaw-release/
@@ -535,51 +480,48 @@ wireclaw-release/
 ├── .env.example
 ├── README.md
 ├── launch/
-│   ├── macos/
-│   ├── windows/
-│   └── linux/
+│   └── macos/
 └── host-bridge/
-    ├── macos/
-    ├── windows/
-    └── linux/
+    └── macos/
 ```
 
-If the core image is published to a registry, pin/reference its immutable release tag/digest. If the release builds locally, document that workflow and still record the resulting digest.
+If the core image is registry-published, reference an immutable release tag/digest. If built locally, document the build and record the resulting digest.
 
 ## 27. CI requirements
 
-Add Gate 8 validation that at minimum:
+Gate 8 CI must at minimum:
 
-- builds `wireclaw-core` from scratch;
-- runs core health;
-- runs representative Python/analyzer integration tests in the image;
-- runs web production tests;
-- validates `docker compose config` security boundaries;
-- verifies analyzer version lock;
-- builds/tests the host bridge on Ubuntu/macOS/Windows;
-- exercises startup scripts in non-GUI portions where feasible;
-- preserves all Gate 7 privacy/fallback tests.
+- build `wireclaw-core` from scratch;
+- run core health;
+- run representative Python/analyzer integration tests in the image;
+- run web production tests;
+- validate Compose security boundaries;
+- verify analyzer version lock;
+- build/test the host bridge on macOS;
+- exercise non-GUI launcher portions where feasible;
+- preserve Gate 7 privacy/fallback tests.
 
-Do not allow a successful image build to hide skipped real packet-tool tests.
+Existing Ubuntu/Windows host-bridge build jobs may remain as portability checks but are not Gate 8 release gates.
+
+Do not hide required real packet-tool tests behind silent skips.
 
 ## 28. Verification record
 
 Create `docs/gate8-verification.md` containing:
 
-- validated source SHA
-- image digest
-- analyzer version lock
-- task matrix G8.1–G8.11
-- Compose security assertions
-- launcher/prerequisite results
-- data-root persistence results
-- local-provider host mapping result
-- rules-only result
-- macOS smoke result
-- Windows smoke result
-- Linux smoke result
-- native Wireshark acceptance references
-- known limitations/untested architectures
+- validated source SHA;
+- image digest;
+- analyzer version lock;
+- V1 task matrix;
+- Compose security assertions;
+- launcher/prerequisite results;
+- data-root persistence results;
+- local-provider host mapping result;
+- rules-only result;
+- macOS release smoke result;
+- native Wireshark acceptance reference;
+- known limitations/untested macOS architectures;
+- explicit note that Windows/Linux are not V1-supported hosts.
 
 ## 29. Gate 8 exit criteria
 
@@ -587,23 +529,23 @@ Gate 8 is complete only when:
 
 1. accepted ADR-0005 topology is implemented;
 2. the compiled web UI, API/orchestrator, and analyzer runtime run in Docker-compatible packaging;
-3. analyzer/runtime versions are pinned and verified for the release;
-4. only the application port is published to host loopback by default;
+3. analyzer/runtime versions are pinned and verified;
+4. only the app port is published to host loopback by default;
 5. no host networking/privileged/Docker-socket workaround exists;
 6. one host data root persists cases and maps correctly to the native bridge;
 7. `.env.example` contains safe defaults and no secrets;
-8. `provider_mode=none` starts successfully without a model;
+8. `provider_mode=none` starts successfully;
 9. cloud-provider privacy behavior remains unchanged;
-10. same-host local provider behavior works through the documented Docker host mapping;
+10. same-host local provider behavior works through documented macOS Docker host mapping;
 11. macOS start/stop launcher works from release artifacts;
-12. Windows start/stop launcher works from release artifacts;
-13. Linux start/stop launcher works from release artifacts;
-14. host-bridge install/uninstall path exists and is tested for all three OS families;
-15. prerequisite failures are clear and non-destructive;
-16. a user with Docker and Wireshark can run the core workflow without Python/Node/Go/analyzer development installs;
-17. stop/restart preserves case data and immutable originals;
-18. Full/Evidence Wireshark actions remain functional in release packaging;
-19. real host release smoke tests pass on macOS, Windows, and Linux;
-20. `docs/gate8-verification.md` records exact source/image/binary identities and results;
-21. all prior Gates 0–7 regressions remain green;
-22. Gate 9 acceptance has not been declared complete before Gate 8 is accepted.
+12. macOS host-bridge install/uninstall path works;
+13. prerequisite failures are clear and non-destructive;
+14. a macOS user with Docker/Wireshark can run the core workflow without developer tooling;
+15. restart preserves case data and original capture hashes;
+16. Full/Evidence Wireshark actions work in release packaging;
+17. real macOS host release smoke passes;
+18. `docs/gate8-verification.md` records exact source/image/binary identities;
+19. all prior Gates 0–7 regressions remain green;
+20. Gate 9 has not been declared complete before Gate 8 acceptance.
+
+Windows/Linux launchers, installers, and release smoke tests are explicitly deferred to the post-V1 platform roadmap.
