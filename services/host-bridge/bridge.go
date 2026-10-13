@@ -116,8 +116,8 @@ func newServerWithAppPort(dataRoot, wireshark string, appPort int) (*server, err
 		}
 	}
 	return &server{
-		dataRoot:  root,
-		wireshark: wireshark,
+		dataRoot:       root,
+		wireshark:      wireshark,
 		allowedOrigins: origins,
 		launch: func(executable string, args ...string) error {
 			command := exec.Command(executable, args...)
