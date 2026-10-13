@@ -568,7 +568,7 @@ def test_finding_filters_use_finding_scope_and_exact_dns_transaction_frames():
         ],
     )
     finding = next(item for item in report["findings"] if item["category"] == "dns.timing")
-    assert finding["wireshark"]["display_filter"] == "frame.number >= 10 && frame.number <= 11"
+    assert finding["wireshark"]["display_filter"] == "(frame.number >= 10 && frame.number <= 11)"
 
     tcp = build_investigation_result(
         case_id="e" * 32,
