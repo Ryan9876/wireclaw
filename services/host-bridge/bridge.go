@@ -61,11 +61,12 @@ func allowedOriginsForPort(port int) (map[string]struct{}, error) {
 	if port < 1 || port > 65535 {
 		return nil, errors.New("invalid_app_port")
 	}
-	return map[string]struct{}{
-		fmt.Sprintf("http://127.0.0.1:%d", port): {},
-		fmt.Sprintf("http://localhost:%d", port): {},
-		fmt.Sprintf("http://[::1]:%d", port): {},
-	}, nil
+	hosts := []string{"127.0.0.1", "localhost", "[::1]"}
+	origins := make(map[string]struct{}, len(hosts))
+	for _, host := range hosts {
+		origins[fmt.Sprintf("http://%s:%d", host, port)] = struct{}{}
+	}
+	return origins, nil
 }
 
 type server struct {
