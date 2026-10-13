@@ -7,7 +7,7 @@ Status: **implementation and CI validation complete; automated security scan una
 - Starting `main` SHA: `128c508443a4dd6606fce3b2c2faf5773d387012`
 - Branch: `gate7-reasoning-provider`
 - Validated implementation commit SHA: `9609b4d9614687b48edf78f6c09d8e6b7384d6cf`.
-- CI-validated branch head SHA: `9ea2d5949e626ac16024e3031e955f32d13ecacc` (the code implementation plus this verification record).
+- CI-validated code/test head SHA: `148e8861ec6c172e00767abbe4165e497b6d5f3d`.
 - CI merge commit: `6d6e50284faa72624a7673c1d06f01741129b940`.
 - Gate 8: not started.
 
@@ -50,8 +50,8 @@ Status: **implementation and CI validation complete; automated security scan una
 - Python compileall: passed.
 - Go: gofmt, `go test ./...`, `go vet ./...`, and `go build ./...` passed.
 - Web: `npm ci`, lint, format check, production build, and tests passed (`2` files, `41` tests).
-- GitHub Actions: [run 38462907708, run number 76](https://github.com/Ryan9876/wireclaw/actions/runs/38462907708), triggered for PR #10 at branch head `9ea2d5949e626ac16024e3031e955f32d13ecacc`; all four jobs succeeded (linux-full, macOS bridge, Linux bridge, Windows bridge).
-- CI Linux Python validation: `436 passed, 1 warning`; real packet tools were installed, and Gate 3 validation passed.
+- GitHub Actions: [run 38466032256, run number 78](https://github.com/Ryan9876/wireclaw/actions/runs/38466032256), triggered for PR #10 at branch head `148e8861ec6c172e00767abbe4165e497b6d5f3d`; all four jobs succeeded (linux-full, macOS bridge, Linux bridge, Windows bridge).
+- CI Linux Python validation: `437 passed, 1 warning`; real packet tools were installed, and Gate 3 validation passed.
 - CI production browser tests: `9 passed`; web unit tests: `41 passed` across 2 files. Contract regeneration check, Go validation, web lint/format/build, and Python lint/format/compile all passed in the full job.
 - Local-only limitations: the macOS workstation lacks TShark/capinfos, so local Python had 147 packet-tool skips and local Gate 3/browser-fixture commands could not run. CI covered those checks successfully.
 
@@ -60,3 +60,4 @@ Status: **implementation and CI validation complete; automated security scan una
 - Manual source review covered provider URL/configuration boundaries, redirect handling, context projection, strict action parsing, capability dispatch, proposal evidence checks, persistence, and fallback. No confirmed vulnerability was identified in this review.
 - The Codex Security diff scan did not start: its launcher failed before issuing a scan ID because the security backend Python runtime could not import `tomllib` or `tomli`. No canonical scan artifact or scan result exists; this is not represented as a clean automated scan.
 - CI acceptance criteria passed. The automated scan is the sole outstanding review limitation; manual review found no confirmed issue. No real provider service was exercised, by design; provider behavior was tested with controlled mocks.
+- All Gate 7 execution-spec exit criteria were demonstrated by implementation/tests and successful CI. The missing automated scanner result is recorded as a security-review limitation, not as a clean scan.
