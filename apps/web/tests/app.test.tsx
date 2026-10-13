@@ -17,6 +17,12 @@ function fixture(value: Fixture = supported) {
   vi.spyOn(api, 'get').mockImplementation(async () => structuredClone(current));
   vi.spyOn(api, 'report').mockResolvedValue(value.report as Report);
   vi.spyOn(api, 'bridgeHealth').mockResolvedValue('bridge_unavailable');
+  vi.spyOn(api, 'bridgeGrant').mockResolvedValue({
+    request_id: 'a'.repeat(32),
+    token: 'x'.repeat(32),
+    bridge_origin: 'http://127.0.0.1:8766',
+    expires_unix: Math.floor(Date.now() / 1000) + 30,
+  });
   vi.spyOn(api, 'evidence').mockImplementation(async (_id, evidenceId) => {
     const record = value.evidence.find((item) => item.id === evidenceId);
     if (!record) throw new ApiError('evidence_not_found');
