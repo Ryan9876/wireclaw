@@ -34,13 +34,17 @@ def test_release_readme_documents_staged_bundle_and_platform_scope():
     assert "Windows and Linux are future qualification targets, not supported V1 hosts" in readme
 
 
-def test_container_acceptance_reuses_the_prebuilt_image_for_release_identity():
+def test_container_acceptance_reuses_frozen_image_for_mounted_tls_privacy_test():
     assert 'command.extend(["-d", "--no-build"])' in CONTAINER_VALIDATOR
     assert 'compose(env, "up", files=host_route_files)' in CONTAINER_VALIDATOR
     assert "privacy_files = (*host_route_files, override)" in CONTAINER_VALIDATOR
     assert 'compose(env, "up", files=privacy_files)' in CONTAINER_VALIDATOR
-    assert '"wireclaw-core:gate8-privacy-test"' in CONTAINER_VALIDATOR
-    assert '"privacy_test_image_build_failed"' in CONTAINER_VALIDATOR
+    assert '"wireclaw-core:gate8"' in CONTAINER_VALIDATOR
+    assert '"candidate_certifi_bundle_unavailable"' in CONTAINER_VALIDATOR
+    assert '"candidate_default_ca_bundle_unavailable"' in CONTAINER_VALIDATOR
+    assert "target: {json.dumps(candidate_bundle_path)}\\n" in CONTAINER_VALIDATOR
+    assert '"        read_only: true\\n"' in CONTAINER_VALIDATOR
+    assert '"docker",\n                    "build"' not in CONTAINER_VALIDATOR
 
 
 def test_linux_ci_host_gateway_alias_is_opt_in_and_test_only():
