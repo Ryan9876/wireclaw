@@ -198,6 +198,8 @@ Exit criteria:
 - model prose cannot fabricate evidence records
 - decodable request/response timing is measured deterministically while opaque transport silence is not mislabeled as application wait
 
+Gate 7 is complete for V1. PR #10 merged after the full execution-spec criteria, audit-history correction, and exact-head CI validation passed.
+
 ## Gate 8 — Docker packaging and macOS release
 
 Goal: make the V1 product easy to run and share on the supported macOS host.
