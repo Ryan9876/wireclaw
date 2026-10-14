@@ -106,10 +106,22 @@ handoff steps and a final whole-branch security review are recorded.
 
 ## Security review
 
-Manual review covered the Dockerfile, Compose configuration, `.env` handling,
-macOS launch/install/uninstall scripts, PID ownership checks, port validation,
-host bridge invocation, provider routing, data-root mounts, image archive
-loading, and release staging. The Codex Security diff scan is pending.
+Codex Security diff scan launch failed before inspecting the branch. Its helper
+Python could import neither `tomllib` nor fallback `tomli` while loading the
+plugin workbench (`deep_scan_config.py`); no scan result was produced.
+
+Manual review covered the full `main...HEAD` diff and checked the Dockerfile,
+Compose configuration, `.env` handling, macOS launch/install/uninstall scripts,
+PID ownership checks, port validation, host bridge invocation, provider routes,
+data-root mounts, image archive loading, and release staging. The review found
+no shell evaluation, arbitrary process-name killing, wildcard host publication,
+host networking, privileged mode, Docker socket mount, or unbounded executable
+path/argument input. Runtime launch uses direct argv; stop verifies the stored
+PID's executable path before signaling it; image archive loading checks the
+exact image config ID before Compose starts. Compose remains loopback-only, and
+cloud privacy checks passed in the container. The Linux host-gateway alias is
+created only by the CI acceptance harness when explicitly enabled; it is absent
+from the release Compose file.
 
 ## Scope and limitations
 
