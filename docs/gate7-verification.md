@@ -1,22 +1,27 @@
 # Gate 7 verification record
 
-Status: **implementation and CI validation complete; automated security scan unavailable**
+Status: **complete for V1; merged and closed**
 
-## Source and branch
+## Source, validation, and merge
 
-- Starting `main` SHA: `128c508443a4dd6606fce3b2c2faf5773d387012`
-- Branch: `gate7-reasoning-provider`
+- Starting `main` SHA: `128c508443a4dd6606fce3b2c2faf5773d387012`.
+- Implementation branch: `gate7-reasoning-provider`.
 - Validated implementation commit SHA: `9609b4d9614687b48edf78f6c09d8e6b7384d6cf`.
 - Audit-cycle correction code/test SHA: `52a7fd6acb70e5cfa28e3669d3a2da92e7c4ff93`.
-- Gate 8: not started.
+- Final validated PR head: `03b021a16f8e4496af3966ff2a6bac6f200680a1`.
+- PR: [#10 — Implement Gate 7 reasoning provider and HTTP timing](https://github.com/Ryan9876/wireclaw/pull/10).
+- Merge commit on `main`: `7fee93497760adde54bf3568b35161b3f1fbbc9b`.
+- Final head validation: [GitHub Actions run 38491651291, run number 81](https://github.com/Ryan9876/wireclaw/actions/runs/38491651291), successful on the exact final PR head.
+- Gate 8 was not started as part of Gate 7.
 
 ## Audit-history finding and correction
 
-- Finding: the Gate 7 service cleared all reasoning rows when re-investigating a complete/failed case or rebuilding a report after a capability on a complete case. The loop also counted all case rows as active-cycle steps.
+- Finding: the initial Gate 7 implementation cleared all reasoning rows when re-investigating a complete/failed case or rebuilding a report after a capability on a complete case. The loop also counted all case rows as active-cycle steps.
 - Correction: each investigation/report rebuild now gets an opaque 32-character reasoning session ID stored in each bounded step's metadata. The loop queries only that session for step limits, duplicate fingerprints, and finalized-state reuse. The existing per-case database sequence remains globally increasing, and no schema migration was needed.
 - Earlier rows are never deleted by a new cycle. Case deletion still removes all cycle history through the existing `reasoning_steps.case_id → cases.id ON DELETE CASCADE` relationship.
 - Reports expose only the current cycle's status and step count; session IDs and historical step details are not added to the browser report contract.
 - Regression coverage verifies two investigations, repeated fingerprints across cycles, independent step limits, post-completion capability rebuild, historical secret/prompt/response exclusion, reconstructable audit fields, and case-deletion cascade.
+- API investigation/capability mutations remain serialized through the existing service admission boundary, so the temporary active reasoning-session state cannot be raced by concurrent mutation requests in the V1 service model.
 
 ## Task matrix
 
@@ -27,7 +32,7 @@ Status: **implementation and CI validation complete; automated security scan una
 | G7.3 | Local mode accepts HTTP/HTTPS and uses the same adapter; mock local HTTP chat-completions test passes. |
 | G7.4 | Deterministic allowlist context projection; payload, path, credential, bridge-token sentinels excluded; injection text remains inert data. |
 | G7.5 | Strict discriminated action schema; rejects unknown fields/actions, paths, shell/host commands, unsupported capabilities and malformed JSON. |
-| G7.6 | Eight-step default and hard maximum of 32; canonical SHA-256 request fingerprints and one execution per identical request. |
+| G7.6 | Eight-step default and hard maximum of 32; canonical SHA-256 request fingerprints and one execution per identical request per reasoning cycle. |
 | G7.7 | Typed registry and same-case TCP stream validation; invalid/unavailable requests stop before analyzer dispatch. |
 | G7.8 | Final proposals checked against current-case deterministic evidence IDs and the existing finding evidence/scope. |
 | G7.9 | Provider prose is not copied into findings; only existing deterministic categories can be ranked, and next-evidence text comes from fixed server-side codes. |
@@ -51,20 +56,23 @@ Status: **implementation and CI validation complete; automated security scan una
 
 ## Validation results
 
-- Local Python: `295 passed, 147 skipped, 1 warning`.
-- Ruff check: passed.
-- Ruff format check: 63 files already formatted.
-- Python compileall: passed.
-- Go: gofmt, `go test ./...`, `go vet ./...`, and `go build ./...` passed.
-- Web: `npm ci`, lint, format check, production build, and tests passed (`2` files, `41` tests).
-- GitHub Actions: [run 38490638854, run number 80](https://github.com/Ryan9876/wireclaw/actions/runs/38490638854), triggered for PR #10 at branch head `52a7fd6acb70e5cfa28e3669d3a2da92e7c4ff93`; all four jobs succeeded (linux-full, macOS bridge, Linux bridge, Windows bridge).
-- CI Linux Python validation: `442 passed, 1 warning`; real packet tools were installed, and Gate 3 validation passed.
-- CI production browser tests: `9 passed`; web unit tests: `41 passed` across 2 files. Contract regeneration check, Go validation, web lint/format/build, and Python lint/format/compile all passed in the full job.
-- Local-only limitations: the macOS workstation lacks TShark/capinfos, so local Python had 147 packet-tool skips and local Gate 3/browser-fixture commands could not run. CI covered those checks successfully.
+- Final GitHub Actions run: `38491651291` / run `#81`, against exact head `03b021a16f8e4496af3966ff2a6bac6f200680a1`; all four jobs succeeded.
+- CI Linux Python validation: `442 passed, 1 warning`; real TShark/capinfos were installed, and Gate 3 validation passed.
+- CI web validation: `41 passed` across 2 Vitest files; lint, formatting, generated-contract diff, typecheck, and production build passed.
+- CI production browser validation: `9 passed` with one Playwright worker.
+- Go validation passed: gofmt, `go test ./...`, `go vet ./...`, and `go build ./...`.
+- Bridge platform jobs passed on macOS, Ubuntu Linux, and Windows; these are portability/build checks and do not change the macOS-first V1 release scope.
+- Local Python after the audit-cycle correction: `295 passed, 147 skipped`; packet-tool tests were skipped because TShark/capinfos were unavailable locally. Local Ruff, compileall, Go, and web checks passed.
 
 ## Security review and limitations
 
-- Manual source review covered provider URL/configuration boundaries, redirect handling, context projection, strict action parsing, capability dispatch, proposal evidence checks, persistence, and fallback. No confirmed vulnerability was identified in this review.
-- The Codex Security diff scan did not start: its launcher failed before issuing a scan ID because the security backend Python runtime could not import `tomllib` or `tomli`. No canonical scan artifact or scan result exists; this is not represented as a clean automated scan.
-- CI acceptance criteria passed. The automated scan is the sole outstanding review limitation; manual review found no confirmed issue. No real provider service was exercised, by design; provider behavior was tested with controlled mocks.
-- All Gate 7 execution-spec exit criteria, including reasoning audit retention across cycles, were demonstrated by implementation/tests and successful CI. The missing automated scanner result is recorded as a security-review limitation, not as a clean scan.
+- Manual source review covered provider URL/configuration boundaries, redirect handling, context projection, strict action parsing, capability dispatch, proposal evidence checks, audit-cycle persistence, and deterministic fallback. No confirmed vulnerability was identified in this review.
+- The Codex Security diff scan did not start: its launcher failed before issuing a scan ID because the security backend Python runtime could not import `tomllib` or `tomli`. No canonical scan artifact or automated scan result exists; this remains a documented tooling limitation, not a clean automated scan.
+- No real provider service was exercised, by design; provider protocol/privacy/failure behavior was validated with controlled deterministic mocks.
+- All Gate 7 execution-spec exit criteria, including reasoning audit retention across cycles, were demonstrated by implementation/tests and successful CI.
+
+## Gate closure
+
+Gate 7 is accepted and closed for V1. PR #10 was merged into `main` after independent review of the provider trust boundary, deterministic HTTP timing behavior, audit-history correction, regression coverage, and successful CI on the exact final PR head.
+
+The next authorized implementation stage is Gate 8 (`specs/v1/gate8-execution.md`).
