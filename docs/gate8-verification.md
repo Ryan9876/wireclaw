@@ -1,11 +1,15 @@
 # Gate 8 Verification
 
+Status: **Complete for V1; merged and closed via PR #11.**
+
 ## Release identity
 
 | Field | Validated value |
 |---|---|
 | Starting `main` SHA | `9ac42f4130708fd145e46bac7545f980d1d804da` |
 | Gate 8 code HEAD used for final staging | `63acfe21bed2ba07c4615f5df6dfa98116857e8d` |
+| Final validated PR head | `78b78ca5c375c24daa6ee8929a7b195a8b161618` |
+| Gate 8 merge commit | `3b8f19a53612caac515be71ce347082cf5bb91d4` |
 | Fresh release source SHA | `63acfe21bed2ba07c4615f5df6dfa98116857e8d` |
 | Platform | macOS 27.0.1, Apple M3 Pro, `arm64` |
 | Docker | 29.8.2 |
@@ -152,12 +156,10 @@ source SHA in the fresh release metadata above. The Docker release job built
 and exercised the production image, verified the locked tool versions, and ran
 container acceptance. Linux full validation, production browser validation,
 and Ubuntu/macOS/Windows Go portability builds also passed. The bridge
-portability jobs do not qualify those platforms as V1 releases. This final
-archive-loaded acceptance changes verification documentation only; its
-documentation commit receives its own workflow run before handoff.
+portability jobs do not qualify those platforms as V1 releases.
 
-The open draft pull request is
-[#11](https://github.com/Ryan9876/wireclaw/pull/11); it has not been merged.
+GitHub Actions run [#89](https://github.com/Ryan9876/wireclaw/actions/runs/38508170175)
+passed on the exact final PR head `78b78ca5c375c24daa6ee8929a7b195a8b161618`, including the Docker release, Linux full validation, and all bridge-platform jobs. PR #11 then merged that validated head into `main` as `3b8f19a53612caac515be71ce347082cf5bb91d4`.
 
 The CI launcher tests initially failed because the Linux runner had Docker in
 `/usr/bin`, contrary to the test's assumption. The test was corrected to use
