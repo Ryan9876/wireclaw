@@ -19,7 +19,8 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests/fixtures"))
-from generate_gate2 import CLIENT, SERVER, generate, tcp, timed_pcap  # noqa: E402
+from generate import generate as generate_baseline  # noqa: E402
+from generate_gate2 import CLIENT, SERVER, dns_packet, generate, tcp, timed_pcap  # noqa: E402
 
 
 def free_port() -> int:
@@ -109,6 +110,464 @@ def wait_health(base: str):
     raise RuntimeError("core_health_timeout")
 
 
+def investigate_capture(base: str, symptom: str, capture: bytes):
+    status, created = request(base, "/api/cases", method="POST", body={"symptom": symptom})
+    assert status == 201
+    case_id = json.loads(created)["id"]
+    status, ingested = request(
+        base,
+        f"/api/cases/{case_id}/capture",
+        method="POST",
+        body=capture,
+        content_type="application/octet-stream",
+    )
+    assert status == 200
+    case = json.loads(ingested)
+    assert request(base, f"/api/cases/{case_id}/investigate", method="POST")[0] == 200
+    status, report = request(base, f"/api/cases/{case_id}/report")
+    assert status == 200
+    status, evidence = request(base, f"/api/cases/{case_id}/evidence?limit=100")
+    assert status == 200
+    return case, json.loads(report), json.loads(evidence)["evidence"]
+
+
+def evidence_values(evidence: list[dict], category: str) -> list[dict]:
+    return [item["value"] for item in evidence if item.get("category") == category]
+
+
+def validate_malformed_uploads(base: str, root: Path, baseline: dict) -> list[dict]:
+    results = []
+    for name in ("malformed", "damaged_record", "unsupported"):
+        status, created = request(base, "/api/cases", method="POST", body={"symptom": name})
+        assert status == 201
+        case_id = json.loads(created)["id"]
+        status, _ = request(
+            base,
+            f"/api/cases/{case_id}/capture",
+            method="POST",
+            body=baseline[name],
+            content_type="application/octet-stream",
+        )
+        assert status == 422
+        status, case_bytes = request(base, f"/api/cases/{case_id}")
+        assert status == 200
+        case = json.loads(case_bytes)
+        assert case["state"] == "FAILED" and not case["artifacts"]
+        assert not list((root / "cases" / case_id).rglob("capture"))
+        status, _ = request(
+            base,
+            f"/api/cases/{case_id}/capture",
+            method="POST",
+            body=baseline["healthy"],
+            content_type="application/octet-stream",
+        )
+        assert status == 200
+        assert (
+            request(
+                base,
+                f"/api/cases/{case_id}/capture",
+                method="POST",
+                body=baseline["healthy"],
+                content_type="application/octet-stream",
+            )[0]
+            == 409
+        )
+        results.append(
+            {
+                "task": "G9.12",
+                "scenario": name,
+                "result": "PASS",
+                "case_id": case_id,
+                "malformed_upload_rejected": True,
+                "partial_artifacts_absent": True,
+                "healthy_retry_succeeded_once": True,
+            }
+        )
+    return results
+
+
+def oversized_capture_probe(base: str) -> None:
+    port = int(base.rsplit(":", 1)[1])
+    request_bytes = (
+        "POST /api/cases/00000000000000000000000000000000/capture HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        f"Content-Length: {64 * 1024 * 1024 + 1}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode("ascii")
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as client:
+        client.sendall(request_bytes)
+        response = client.recv(2048)
+    assert response.startswith(b"HTTP/1.1 413")
+    assert b"request_size_limit" in response
+
+
+def validate_diagnostic_corpus(base: str, baseline: dict, gate2: dict) -> list[dict]:
+    results = []
+
+    def record(task: str, scenario: str, case: dict, report: dict):
+        extractions = []
+        for finding in report["findings"]:
+            actions = finding.get("wireshark", {})
+            if not actions.get("applicable"):
+                continue
+            assert actions.get("display_filter") and finding["evidence_ids"]
+            assert all(
+                actions.get(key)
+                for key in (
+                    "full_capture",
+                    "evidence_capture",
+                    "copy_filter",
+                    "show_packet_evidence",
+                )
+            )
+            status, encoded = request(
+                base,
+                f"/api/cases/{case['id']}/artifacts/evidence-capture",
+                method="POST",
+                body={"finding_id": finding["id"]},
+            )
+            assert status == 200
+            extracted = json.loads(encoded)
+            provenance = extracted["provenance"]
+            assert provenance["parent_sha256"] == case["capture_sha"]
+            assert provenance["finding_id"] == finding["id"]
+            assert provenance["evidence_ids"] == finding["evidence_ids"]
+            assert provenance["display_filter"] == actions["display_filter"]
+            assert extracted["bytes"] <= 16 * 1024 * 1024
+            extractions.append(
+                {
+                    "finding_id": finding["id"],
+                    "artifact_id": extracted["artifact_id"],
+                    "sha256": extracted["sha256"],
+                    "display_filter": provenance["display_filter"],
+                    "extraction_mode": provenance["extraction_mode"],
+                    "bytes": extracted["bytes"],
+                }
+            )
+        results.append(
+            {
+                "task": task,
+                "scenario": scenario,
+                "result": "PASS",
+                "case_id": case["id"],
+                "capture_sha256": case["capture_sha"],
+                "quality": report["capture_quality"]["state"],
+                "conclusion": report["conclusion"]["type"],
+                "finding_categories": sorted(item["category"] for item in report["findings"]),
+                "evidence_extractions": extractions,
+            }
+        )
+
+    # G9.1: healthy traffic and a clean TCP stream must not invent a fault.
+    healthy, healthy_report, healthy_evidence = investigate_capture(
+        base, "healthy connection, no reported fault", baseline["healthy"]
+    )
+    metadata = evidence_values(healthy_evidence, "get_capture_metadata")[0]
+    assert (metadata["packet_count"], metadata["wire_bytes"], metadata["duration_seconds"]) == (
+        7,
+        469,
+        0.6,
+    )
+    assert healthy_report["capture_quality"]["state"] == "good"
+    healthy_faults = {
+        "dns.failure",
+        "tcp.retransmission",
+        "tcp.receive_window",
+        "tcp.reset",
+        "tls.handshake",
+        "server.application_wait",
+        "network.pmtud",
+    }
+    assert not healthy_faults.intersection(item["category"] for item in healthy_report["findings"])
+    record("G9.1", "healthy", healthy, healthy_report)
+
+    clean, clean_report, clean_evidence = investigate_capture(
+        base, "healthy clean TCP exchange", gate2["clean_tcp"]
+    )
+    establishment = evidence_values(clean_evidence, "analyze_tcp_establishment")[0]
+    rtt = evidence_values(clean_evidence, "analyze_rtt")[0]
+    throughput = evidence_values(clean_evidence, "analyze_throughput")[0]["directions"]
+    mss = evidence_values(clean_evidence, "analyze_mss")[0]["records"]
+    assert establishment["establishment_seconds"] == 0.02
+    assert rtt["sample_count"] == 4 and rtt["median_seconds"] == 0.01
+    assert [
+        (item["tcp_payload_bytes"], item["unique_acknowledged_payload_bytes"])
+        for item in throughput
+    ] == [
+        (20, 20),
+        (30, 30),
+    ]
+    assert [item["mss_bytes"] for item in mss] == [1460, 1460]
+    assert clean_report["conclusion"]["type"] == "insufficient_evidence"
+    assert not clean_report["findings"]
+    record("G9.1", "clean_tcp", clean, clean_report)
+
+    dns, dns_report, dns_evidence = investigate_capture(
+        base, "DNS lookup is slow", gate2["dns_delay"]
+    )
+    dns_value = evidence_values(dns_evidence, "analyze_dns")[0]
+    transaction = dns_value["transactions"][0]
+    assert (transaction["query_frame"], transaction["response_frame"]) == (1, 2)
+    assert transaction["elapsed_seconds"] == 1.5
+    dns_finding = next(item for item in dns_report["findings"] if item["category"] == "dns.timing")
+    assert dns_finding["evidence_ids"] and dns_finding["wireshark"]["display_filter"] == (
+        "(frame.number >= 1 && frame.number <= 2)"
+    )
+    assert "does not by itself prove" in " ".join(dns_finding["alternate_explanations"])
+    status, extracted = request(
+        base,
+        f"/api/cases/{dns['id']}/artifacts/evidence-capture",
+        method="POST",
+        body={"finding_id": dns_finding["id"]},
+    )
+    assert status == 200
+    extraction = json.loads(extracted)
+    assert extraction["provenance"]["parent_sha256"] == dns["capture_sha"]
+    assert extraction["provenance"]["evidence_ids"] == dns_finding["evidence_ids"]
+    assert extraction["provenance"]["display_filter"] == dns_finding["wireshark"]["display_filter"]
+    assert extraction["provenance"]["extraction_mode"] == "dns_transaction_set"
+    assert extraction["bytes"] <= 16 * 1024 * 1024
+    record("G9.2", "dns_delay", dns, dns_report)
+
+    dns_with_unrelated = timed_pcap(
+        [
+            (0, dns_packet(ident=42, name="slow.invalid")),
+            (10_000, dns_packet(ident=43, name="unrelated.invalid", sport=53001)),
+            (
+                20_000,
+                dns_packet(
+                    ident=43,
+                    name="unrelated.invalid",
+                    sport=53001,
+                    response=True,
+                ),
+            ),
+            (1_500_000, dns_packet(ident=42, name="slow.invalid", response=True)),
+        ]
+    )
+    mixed_dns, mixed_report, mixed_evidence = investigate_capture(
+        base, "slow DNS lookup", dns_with_unrelated
+    )
+    mixed_value = evidence_values(mixed_evidence, "analyze_dns")[0]
+    matched = [item for item in mixed_value["transactions"] if item["state"] == "matched"]
+    slow = next(item for item in matched if item["elapsed_seconds"] == 1.5)
+    quick = next(item for item in matched if item["elapsed_seconds"] == 0.01)
+    assert slow["frame_refs"] == [1, 4]
+    assert quick["frame_refs"] == [2, 3]
+    mixed_finding = next(
+        item for item in mixed_report["findings"] if item["category"] == "dns.timing"
+    )
+    assert mixed_finding["wireshark"]["display_filter"] == (
+        "frame.number == 1 || frame.number == 4"
+    )
+    record("G9.2", "dns_delay_with_unrelated_dns", mixed_dns, mixed_report)
+
+    loss, loss_report, loss_evidence = investigate_capture(
+        base, "TCP transfer is slow", gate2["loss_tcp"]
+    )
+    health = evidence_values(loss_evidence, "analyze_tcp_health")[0]
+    directions = evidence_values(loss_evidence, "analyze_throughput")[0]["directions"]
+    assert health["retransmission_union_frames"] == [5, 11, 13]
+    assert health["indicators"]["fast_retransmission"]["frame_refs"] == [11]
+    assert health["indicators"]["spurious_retransmission"]["frame_refs"] == [13]
+    assert health["indicators"]["duplicate_ack"]["frame_refs"] == [8, 9, 10]
+    assert sum(item["tcp_payload_bytes"] for item in directions) == 100
+    assert sum(item["unique_observed_payload_bytes"] for item in directions) == 40
+    assert sum(item["unique_acknowledged_payload_bytes"] or 0 for item in directions) == 40
+    assert all(
+        item["unique_acknowledged_payload_bytes"] is not None or item["tcp_payload_bytes"] == 0
+        for item in directions
+    )
+    retransmission = next(
+        item for item in loss_report["findings"] if item["category"] == "tcp.retransmission"
+    )
+    assert retransmission["evidence_ids"] and "local_network" in retransmission["fault_domains"]
+    assert "localize" in " ".join(retransmission["alternate_explanations"])
+    record("G9.3", "loss_tcp", loss, loss_report)
+
+    high_rtt, high_report, high_evidence = investigate_capture(
+        base, "TCP transaction is slow", gate2["high_rtt"]
+    )
+    setup = evidence_values(high_evidence, "analyze_tcp_establishment")[0]
+    rtt = evidence_values(high_evidence, "analyze_rtt")[0]
+    assert setup["establishment_seconds"] == 0.4
+    assert rtt["median_seconds"] == 0.2
+    assert any(item["category"] == "tcp.rtt" for item in high_report["findings"])
+    record("G9.4", "high_rtt", high_rtt, high_report)
+
+    window_case, window_report, window_evidence = investigate_capture(
+        base, "TCP transfer is stalled", gate2["window_tcp"]
+    )
+    window = evidence_values(window_evidence, "analyze_window_behavior")[0]
+    server_direction = next(
+        item
+        for item in window["directions"]
+        if item["advertiser"] == {"address": SERVER, "port": 443}
+    )
+    interval = server_direction["zero_window_intervals"][0]
+    assert window["indicators"]["window_full"] == [5]
+    assert window["indicators"]["zero_window"] == [6, 8]
+    assert window["indicators"]["zero_window_probe"] == [7]
+    assert (interval["start_frame"], interval["reopen_frame"], interval["observed_seconds"]) == (
+        6,
+        9,
+        1.0,
+    )
+    assert any(item["category"] == "tcp.receive_window" for item in window_report["findings"])
+    record("G9.5", "window_tcp", window_case, window_report)
+
+    reset, reset_report, reset_evidence = investigate_capture(
+        base, "connection reset unexpectedly", gate2["reset_tcp"]
+    )
+    reset_value = evidence_values(reset_evidence, "analyze_tcp_resets")[0]
+    assert reset_value["count"] == 1
+    assert reset_value["resets"][0]["frame"] == 6
+    assert reset_value["resets"][0]["seconds_since_established"] == 0.08
+    reset_finding = next(
+        item for item in reset_report["findings"] if item["category"] == "tcp.reset"
+    )
+    assert reset_finding["evidence_ids"]
+    assert any("does not establish" in item for item in reset_finding["alternate_explanations"])
+    reconnect, reconnect_report, reconnect_evidence = investigate_capture(
+        base, "connection resets and reconnects", gate2["reset_reconnect"]
+    )
+    lifecycle = evidence_values(reconnect_evidence, "analyze_tcp_resets")
+    assert len(lifecycle) == 2
+    assert lifecycle[0]["resets"][0]["frame"] == 6
+    assert lifecycle[0]["observed_reconnect_attempts"] == []
+    assert lifecycle[1]["observed_reconnect_attempts"] == [
+        {
+            "prior_reset_frame": 6,
+            "prior_tcp_stream": 0,
+            "seconds_since_reset": 0.1,
+            "syn_frame": 7,
+        }
+    ]
+    assert lifecycle[1]["resets"][0]["frame"] == 10
+    assert all("continuity" in " ".join(item["limitations"]) for item in lifecycle)
+    record("G9.6", "reset_tcp", reset, reset_report)
+    record("G9.6", "reset_reconnect", reconnect, reconnect_report)
+
+    tls_case, tls_report, tls_evidence = investigate_capture(
+        base, "TLS handshake takes too long", gate2["tls_delay"]
+    )
+    tls = evidence_values(tls_evidence, "analyze_tls_handshakes")[0]
+    attempt = tls["attempts"][0]
+    assert (attempt["client_hello_frame"], attempt["server_hello_frame"]) == (4, 6)
+    assert attempt["tcp_established_to_client_hello_seconds"] == 0.08
+    assert attempt["client_hello_to_server_hello_seconds"] == 1.0
+    assert 0x0304 in [
+        version for item in tls["supported_version_fields"] for version in item["versions"]
+    ]
+    tls_finding = next(
+        item for item in tls_report["findings"] if item["category"] == "tls.handshake"
+    )
+    assert "Encrypted session usability/completion" in " ".join(
+        tls_finding["alternate_explanations"]
+    )
+    record("G9.7", "tls_delay", tls_case, tls_report)
+
+    http_case, http_report, http_evidence = investigate_capture(
+        base, "plaintext HTTP request is slow", gate2["http_server_wait"]
+    )
+    http_value = evidence_values(http_evidence, "analyze_http_timing")[0]
+    http_transaction = http_value["transactions"][0]
+    assert http_transaction["tcp_stream"] == 0
+    assert http_transaction["request_frame_range"] == {"start": 4, "end": 4}
+    assert http_transaction["first_response_frame"] == 5
+    assert http_transaction["frame_refs"] == [4, 5]
+    assert abs(http_transaction["request_to_first_response_seconds"] - 2.1) <= 0.01
+    assert http_transaction["response_transfer_seconds"] == 0
+    http_finding = next(
+        item for item in http_report["findings"] if item["category"] == "server.application_wait"
+    )
+    assert http_finding["confidence"] == "medium"
+    assert http_finding["evidence_ids"] and "downstream dependency" in " ".join(
+        http_finding["alternate_explanations"]
+    )
+    assert any(
+        item["name"] == "server_application_wait"
+        and item["measurement_class"] == "derived"
+        and abs(item["duration_ms"] - 2100) <= 10
+        for item in http_report["time_attribution"]["segments"]
+    )
+    record("G9.8", "http_server_wait", http_case, http_report)
+
+    opaque_case, opaque_report, _ = investigate_capture(
+        base, "opaque TCP transaction is slow", gate2["server_wait"]
+    )
+    assert opaque_report["conclusion"]["type"] == "insufficient_evidence"
+    assert not any(
+        item["category"] == "server.application_wait" for item in opaque_report["findings"]
+    )
+    assert not any(
+        item["name"] == "server_application_wait"
+        for item in opaque_report["time_attribution"]["segments"]
+    )
+    assert opaque_report["remaining_hypotheses"] and opaque_report["recommended_next_evidence"]
+    record("G9.8", "opaque_server_wait", opaque_case, opaque_report)
+
+    pmtu_case, pmtu_report, pmtu_evidence = investigate_capture(
+        base, "large transfer may have a path MTU issue", gate2["pmtud_signals"]
+    )
+    pmtu = evidence_values(pmtu_evidence, "analyze_pmtud_signals")[0]
+    assert [(item["frame"], item["mtu_bytes"]) for item in pmtu["records"]] == [
+        (2, 1200),
+        (3, 1280),
+    ]
+    pmtu_finding = next(
+        item for item in pmtu_report["findings"] if item["category"] == "network.pmtud"
+    )
+    assert "does not by itself prove an MTU black hole" in " ".join(
+        pmtu_finding["alternate_explanations"]
+    )
+    record("G9.9", "pmtud_signals", pmtu_case, pmtu_report)
+
+    for name in ("one_sided", "midstream", "incomplete_handshake", "truncated"):
+        capture = baseline[name]
+        quality_case, quality_report, quality_evidence = investigate_capture(
+            base, "connection is slow", capture
+        )
+        quality = evidence_values(quality_evidence, "assess_capture_quality")[0]
+        assert quality["state"] in {"limited", "insufficient"}
+        assert quality["limitations"]
+        if name == "incomplete_handshake":
+            # This conclusion supports only the observed incomplete handshake;
+            # the report must keep all candidate fault domains open.
+            assert quality_report["conclusion"]["type"] == "supported_finding"
+            finding = next(
+                item
+                for item in quality_report["findings"]
+                if item["category"] == "tcp.establishment_failure"
+            )
+            assert set(finding["fault_domains"]) == {
+                "local_network",
+                "network_path",
+                "server_application",
+            }
+            assert "capture incompleteness" in " ".join(finding["alternate_explanations"])
+            assert finding["recommended_validation"]
+        else:
+            assert quality_report["conclusion"]["type"] == "insufficient_evidence", (
+                f"quality_uncertainty_mismatch:{name}:{quality_report['conclusion']['type']}"
+            )
+            assert quality_report["remaining_hypotheses"]
+            assert quality_report["recommended_next_evidence"]
+        assert not any(
+            item["category"] in {"tcp.retransmission", "tcp.receive_window", "tls.handshake"}
+            for item in quality_report["findings"]
+        )
+        record("G9.10", name, quality_case, quality_report)
+        if name == "incomplete_handshake":
+            results[-1]["interpretation"] = (
+                "The supported item is the observed handshake state only; the report leaves "
+                "client, path, and server/application causes open and requests opposite-side capture."
+            )
+
+    return results
+
+
 def ci_host_route_override(directory: Path) -> tuple[Path, ...]:
     if os.environ.get("WIRECLAW_TEST_HOST_GATEWAY") != "1":
         return ()
@@ -124,6 +583,21 @@ def ci_host_route_override(directory: Path) -> tuple[Path, ...]:
 
 
 def main() -> int:
+    expected_image_id = os.environ.get("WIRECLAW_EXPECTED_IMAGE_ID")
+    image_ref = os.environ.get("WIRECLAW_IMAGE", "wireclaw-core:gate8")
+    image_result = subprocess.run(
+        ["docker", "image", "inspect", image_ref, "--format", "{{.Id}}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if image_result.returncode:
+        raise RuntimeError("candidate_image_inspection_failed")
+    starting_image_id = image_result.stdout.strip()
+    if expected_image_id and starting_image_id != expected_image_id:
+        raise RuntimeError("candidate_image_id_mismatch_before_acceptance")
+
     app_port = free_port()
     bridge_port = free_port()
     while bridge_port == app_port:
@@ -181,6 +655,27 @@ def main() -> int:
         try:
             health = wait_health(base)
             assert health["provider_mode"] == "none"
+            baseline_fixtures = generate_baseline(Path(temp) / "baseline fixtures")
+            corpus_results = validate_diagnostic_corpus(base, baseline_fixtures, fixtures)
+            oversized_capture_probe(base)
+            status, oversized_json = request(
+                base,
+                "/api/cases",
+                method="POST",
+                body={"symptom": "x" * (16_384 + 1)},
+            )
+            assert status == 413 and b"request_size_limit" in oversized_json
+            corpus_results.append(
+                {
+                    "task": "G9.11",
+                    "scenario": "capture and JSON request limits",
+                    "result": "PASS",
+                    "configured_capture_limit_bytes": 64 * 1024 * 1024,
+                    "oversized_upload_rejected_before_body": True,
+                    "oversized_json_rejected": True,
+                }
+            )
+            corpus_results.extend(validate_malformed_uploads(base, root, baseline_fixtures))
             status, capability_bytes = request(base, "/api/config/capabilities")
             capabilities = json.loads(capability_bytes)
             assert status == 200
@@ -222,6 +717,24 @@ def main() -> int:
             request_frame = http_wait["affected_scope"]["request_frame"]
             response_frame = http_wait["affected_scope"]["response_frame"]
             assert (request_frame, response_frame) == (4, 5)
+            status, http_evidence_bytes = request(
+                base,
+                f"/api/cases/{case_id}/evidence/{http_wait['evidence_ids'][0]}",
+            )
+            assert status == 200
+            http_evidence = json.loads(http_evidence_bytes)
+            transaction = http_evidence["value"]["transactions"][0]
+            assert transaction["tcp_stream"] == 0
+            assert transaction["client"] == {"address": "192.0.2.1", "port": 50000}
+            assert transaction["server"] == {"address": "192.0.2.2", "port": 443}
+            assert transaction["request_frame_range"] == {"start": 4, "end": 4}
+            assert transaction["first_response_frame"] == 5
+            assert transaction["frame_refs"] == [4, 5]
+            assert abs(transaction["request_to_first_response_seconds"] - 2.1) <= 0.01
+            assert transaction["response_transfer_seconds"] == 0
+            assert transaction["display_filter"] == (
+                "tcp.stream == 0 && (frame.number == 4 || frame.number == 5)"
+            )
             assert "visible server/application boundary" in " ".join(
                 http_wait["alternate_explanations"]
             )
@@ -465,6 +978,7 @@ def main() -> int:
                     "G9_CAPTURE_PATH_SENTINEL",
                 )
                 assert all(sentinel not in serialized for sentinel in forbidden)
+                assert "CLOUD_CREDENTIAL_SENTINEL" not in serialized
                 assert str(root) not in serialized
                 assert "RAW_CAPTURE" not in serialized
                 assert original_bytes.hex() not in serialized
@@ -472,6 +986,11 @@ def main() -> int:
                 assert all(
                     sentinel.encode() not in json.dumps(provider_headers).encode()
                     for sentinel in forbidden
+                )
+                assert all(
+                    "CLOUD_CREDENTIAL_SENTINEL" not in value
+                    for name, value in provider_headers.items()
+                    if name != "authorization"
                 )
                 assert provider_headers.get("authorization") == "Bearer CLOUD_CREDENTIAL_SENTINEL"
                 logs = subprocess.run(
@@ -496,17 +1015,53 @@ def main() -> int:
                 combined_logs = logs.stdout + logs.stderr
                 assert "CLOUD_CREDENTIAL_SENTINEL" not in combined_logs
                 assert all(sentinel not in combined_logs for sentinel in forbidden)
+                corpus_results.append(
+                    {
+                        "task": "G9.13",
+                        "scenario": "fake HTTPS cloud provider seeded-sentinel inspection",
+                        "result": "PASS",
+                        "request_count": len(FakeProvider.requests_seen),
+                        "authorization_header_only": True,
+                        "forbidden_body_header_log_values_absent": True,
+                        "raw_capture_and_payload_absent": True,
+                    }
+                )
             finally:
                 https_server.shutdown()
                 https_server.server_close()
                 https_thread.join(timeout=2)
             print(
-                "PASS: health/web, Host/Origin policy, rules-only investigation, evidence, "
+                "PASS: automated G9.1-G9.13 corpus, health/web, Host/Origin policy, "
+                "rules-only investigation, evidence, "
                 "restart persistence, immutable original, host.docker.internal provider route, "
                 "and cloud privacy through the image"
             )
         finally:
             compose(env, "down", files=host_route_files)
+    final_image = subprocess.run(
+        ["docker", "image", "inspect", image_ref, "--format", "{{.Id}}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if final_image.returncode or final_image.stdout.strip() != starting_image_id:
+        raise RuntimeError("candidate_image_identity_changed_during_acceptance")
+    if expected_image_id and final_image.stdout.strip() != expected_image_id:
+        raise RuntimeError("candidate_image_id_mismatch_after_acceptance")
+    artifact_root = Path(os.environ.get("WIRECLAW_GATE9_ARTIFACT_DIR", ROOT / "artifacts/gate9"))
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    (artifact_root / "corpus.json").write_text(
+        json.dumps(
+            {
+                "candidate_image_id": final_image.stdout.strip(),
+                "results": corpus_results,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return 0
 
 
@@ -515,8 +1070,10 @@ if __name__ == "__main__":
         sys.exit(main())
     except AssertionError as error:
         frame = traceback.extract_tb(error.__traceback__)[-1]
+        detail = str(error)
         raise SystemExit(
             f"acceptance_assertion_failed:{Path(frame.filename).name}:{frame.lineno}"
+            + (f":{detail}" if detail else "")
         ) from None
     except (OSError, RuntimeError, URLError) as error:
         raise SystemExit(str(error) or "container_release_check_failed") from None
