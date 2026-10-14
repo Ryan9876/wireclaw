@@ -7,9 +7,16 @@ Status: **implementation and CI validation complete; automated security scan una
 - Starting `main` SHA: `128c508443a4dd6606fce3b2c2faf5773d387012`
 - Branch: `gate7-reasoning-provider`
 - Validated implementation commit SHA: `9609b4d9614687b48edf78f6c09d8e6b7384d6cf`.
-- CI-validated code/test head SHA: `148e8861ec6c172e00767abbe4165e497b6d5f3d`.
-- CI merge commit: `6d6e50284faa72624a7673c1d06f01741129b940`.
+- Audit-cycle correction code/test SHA: `52a7fd6acb70e5cfa28e3669d3a2da92e7c4ff93`.
 - Gate 8: not started.
+
+## Audit-history finding and correction
+
+- Finding: the Gate 7 service cleared all reasoning rows when re-investigating a complete/failed case or rebuilding a report after a capability on a complete case. The loop also counted all case rows as active-cycle steps.
+- Correction: each investigation/report rebuild now gets an opaque 32-character reasoning session ID stored in each bounded step's metadata. The loop queries only that session for step limits, duplicate fingerprints, and finalized-state reuse. The existing per-case database sequence remains globally increasing, and no schema migration was needed.
+- Earlier rows are never deleted by a new cycle. Case deletion still removes all cycle history through the existing `reasoning_steps.case_id → cases.id ON DELETE CASCADE` relationship.
+- Reports expose only the current cycle's status and step count; session IDs and historical step details are not added to the browser report contract.
+- Regression coverage verifies two investigations, repeated fingerprints across cycles, independent step limits, post-completion capability rebuild, historical secret/prompt/response exclusion, reconstructable audit fields, and case-deletion cascade.
 
 ## Task matrix
 
@@ -44,14 +51,14 @@ Status: **implementation and CI validation complete; automated security scan una
 
 ## Validation results
 
-- Python: `289 passed, 147 skipped, 1 warning`.
+- Local Python: `295 passed, 147 skipped, 1 warning`.
 - Ruff check: passed.
 - Ruff format check: 63 files already formatted.
 - Python compileall: passed.
 - Go: gofmt, `go test ./...`, `go vet ./...`, and `go build ./...` passed.
 - Web: `npm ci`, lint, format check, production build, and tests passed (`2` files, `41` tests).
-- GitHub Actions: [run 38466032256, run number 78](https://github.com/Ryan9876/wireclaw/actions/runs/38466032256), triggered for PR #10 at branch head `148e8861ec6c172e00767abbe4165e497b6d5f3d`; all four jobs succeeded (linux-full, macOS bridge, Linux bridge, Windows bridge).
-- CI Linux Python validation: `437 passed, 1 warning`; real packet tools were installed, and Gate 3 validation passed.
+- GitHub Actions: [run 38490638854, run number 80](https://github.com/Ryan9876/wireclaw/actions/runs/38490638854), triggered for PR #10 at branch head `52a7fd6acb70e5cfa28e3669d3a2da92e7c4ff93`; all four jobs succeeded (linux-full, macOS bridge, Linux bridge, Windows bridge).
+- CI Linux Python validation: `442 passed, 1 warning`; real packet tools were installed, and Gate 3 validation passed.
 - CI production browser tests: `9 passed`; web unit tests: `41 passed` across 2 files. Contract regeneration check, Go validation, web lint/format/build, and Python lint/format/compile all passed in the full job.
 - Local-only limitations: the macOS workstation lacks TShark/capinfos, so local Python had 147 packet-tool skips and local Gate 3/browser-fixture commands could not run. CI covered those checks successfully.
 
@@ -60,4 +67,4 @@ Status: **implementation and CI validation complete; automated security scan una
 - Manual source review covered provider URL/configuration boundaries, redirect handling, context projection, strict action parsing, capability dispatch, proposal evidence checks, persistence, and fallback. No confirmed vulnerability was identified in this review.
 - The Codex Security diff scan did not start: its launcher failed before issuing a scan ID because the security backend Python runtime could not import `tomllib` or `tomli`. No canonical scan artifact or scan result exists; this is not represented as a clean automated scan.
 - CI acceptance criteria passed. The automated scan is the sole outstanding review limitation; manual review found no confirmed issue. No real provider service was exercised, by design; provider behavior was tested with controlled mocks.
-- All Gate 7 execution-spec exit criteria were demonstrated by implementation/tests and successful CI. The missing automated scanner result is recorded as a security-review limitation, not as a clean scan.
+- All Gate 7 execution-spec exit criteria, including reasoning audit retention across cycles, were demonstrated by implementation/tests and successful CI. The missing automated scanner result is recorded as a security-review limitation, not as a clean scan.
