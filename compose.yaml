@@ -33,7 +33,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=2).read()"
+        - "import os,urllib.request; req=urllib.request.Request('http://127.0.0.1:8765/api/health',headers={'Host':'127.0.0.1:'+os.environ.get('WIRECLAW_PUBLIC_PORT','8765')}); urllib.request.urlopen(req,timeout=2).read()"
       interval: 10s
       timeout: 3s
       start_period: 15s

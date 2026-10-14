@@ -52,6 +52,7 @@ def test_rendered_compose_has_only_loopback_core_publication_and_persistent_moun
     assert "WIRECLAW_PROVIDER_API_KEY" in core["environment"]
     assert core["healthcheck"]["test"][0] == "CMD"
     assert "/api/health" in core["healthcheck"]["test"][-1]
+    assert "WIRECLAW_PUBLIC_PORT" in core["healthcheck"]["test"][-1]
 
 
 def test_env_example_uses_rules_only_and_contains_no_secret():

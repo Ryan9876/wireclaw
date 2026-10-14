@@ -76,6 +76,6 @@ USER 10001:10001
 WORKDIR /var/lib/wireclaw
 EXPOSE 8765
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
-  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=2).read()"]
+  CMD ["python", "-c", "import os,urllib.request; req=urllib.request.Request('http://127.0.0.1:8765/api/health',headers={'Host':'127.0.0.1:'+os.environ.get('WIRECLAW_PUBLIC_PORT','8765')}); urllib.request.urlopen(req,timeout=2).read()"]
 ENTRYPOINT ["python", "-m", "wireclaw_api.cli"]
 CMD ["--data-root", "/var/lib/wireclaw", "--host", "0.0.0.0", "--port", "8765", "--container-network"]
