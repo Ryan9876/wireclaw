@@ -1,11 +1,11 @@
 # Wireclaw V1 Acceptance Record
 
-Status: **Gate 9 acceptance evidence complete; draft PR remains open for owner review**
+Status: **Gate 9 complete for V1; PR #12 merged and closed**
 
 Acceptance date: **2026-10-14**
 Candidate version: **Wireclaw V1 Gate 9 frozen candidate**
 
-This record reports acceptance against one frozen macOS arm64 candidate. A `PASS` on a task or criterion is limited to the evidence named here. Any `BLOCKED` or `NOT_RUN` criterion keeps Gate 9 open. This record is limited to the frozen candidate source commit; the PR branch head is separate and carries acceptance documentation and CI configuration.
+This record reports acceptance against one frozen macOS arm64 candidate. A `PASS` on a task or criterion is limited to the evidence named here. Any `BLOCKED` or `NOT_RUN` criterion would keep Gate 9 open. This record is limited to the frozen candidate source commit; the final PR branch head carried acceptance documentation and CI configuration only after the candidate was frozen.
 
 ## Candidate identity
 
@@ -39,8 +39,8 @@ The candidate bundle used for the native run is preserved outside the repository
 | G — rendered UI | PASS | Compiled candidate UI was exercised for healthy, TLS delay, and opaque TCP wait. The positive HTTP wait screen was inspected during native candidate work: request completion frame 4 to response frame 5 measured 2.1 s, with an application/server boundary and downstream dependency limits. Both Wireshark actions and the exact filter were visible. Evidence drawer remains usable when the bridge is down. See `artifacts/gate9/ui/` and `macos/final-bridge-down-evidence.png`. |
 | H — host bridge security, G9.14 | PASS | 23 Go tests, `go vet`, darwin/arm64 build, packaged hash comparison and source boundary review pass. Review covers loopback, Origin, one-use expiring grant, hash-only token storage, strict bounded JSON, filter validation, canonical data-root and symlink confinement, cross-case/artifact hashes, direct argv, configured executable and no shell/general execution endpoint. See `artifacts/gate9/host-bridge-review.json` and `host-bridge-tests.jsonl`. |
 | I — native macOS workflow, G9.15 | PASS | Packaged start/install/stop, paths containing spaces, provider-none intake/report, localhost binding, native full/evidence Wireshark actions for DNS, high RTT, HTTP wait and incomplete handshake, exact argv/filter, original/evidence hashes, PCAPNG provenance, restart, bridge-down state, deletion isolation and stop/persistence were recorded. See `artifacts/gate9/macos/final-native-evidence.json`, `native-cases-final.json`, `final-deletion-isolation.json` and screenshots. |
-| J — regression | PASS WITH ENVIRONMENT NOTE | Pinned Docker core-test: 450 passed, 0 failures under packaged TShark 4.2.2; packaging: 18 passed. Static Python checks, Gate 3 validator, web lint/format/build/unit (41)/browser E2E (9), Go test/vet/build passed. A separate host-wide pytest run with host TShark 4.6.9 had 464 pass and four fixture/golden mismatches (Gate 2 reordered TCP, PMTUD, loss expert classes; Gate 4 real-capture golden). The same complete core unit/integration suite passed in the pinned candidate environment. One Starlette/httpx TestClient deprecation warning was emitted. Exact-head normal validation `38601353066` passed on branch head `6c47a028d08abb7d7e652e8778b0d0e95a90c92c`, including Docker release, Linux full, and bridge portability jobs. The frozen native/macOS evidence remains from the candidate above. Details: `artifacts/gate9/regression.json`. |
-| K — independent signoff / draft PR | PASS | Independent whole-branch review found no additional Wireclaw runtime/security defect. It identified that hosted macOS cannot supply Docker Desktop nested virtualization and that freezing from PR checkout would not preserve candidate source `b403c44`; the unsupported dedicated workflow was removed. Normal exact-head validation passed in run [38601353066](https://github.com/Ryan9876/wireclaw/actions/runs/38601353066). Draft PR [#12](https://github.com/Ryan9876/wireclaw/pull/12) remains open and unmerged for owner review. |
+| J — regression | PASS WITH ENVIRONMENT NOTE | Pinned Docker core-test: 450 passed, 0 failures under packaged TShark 4.2.2; packaging: 18 passed. Static Python checks, Gate 3 validator, web lint/format/build/unit (41)/browser E2E (9), Go test/vet/build passed. A separate host-wide pytest run with host TShark 4.6.9 had 464 pass and four fixture/golden mismatches (Gate 2 reordered TCP, PMTUD, loss expert classes; Gate 4 real-capture golden). The same complete core unit/integration suite passed in the pinned candidate environment. One Starlette/httpx TestClient deprecation warning was emitted. Final exact-head `Wireclaw validation` run [38602215192](https://github.com/Ryan9876/wireclaw/actions/runs/38602215192) passed on PR head `4eabb0cf66e7340a50d2f1783875d35d70ba62c4`, including Docker release, Linux full, and bridge portability jobs. The frozen native/macOS evidence remains from the candidate above. Details: `artifacts/gate9/regression.json`. |
+| K — independent signoff / merge | PASS | Independent whole-branch review found no additional Wireclaw runtime/security defect. It identified that hosted macOS cannot supply Docker Desktop nested virtualization and that freezing from PR checkout would not preserve candidate source `b403c44`; the unsupported dedicated workflow was removed. Final exact-head validation passed in run [38602215192](https://github.com/Ryan9876/wireclaw/actions/runs/38602215192). PR [#12](https://github.com/Ryan9876/wireclaw/pull/12) was merged as `a50246ba1511fcb94335eddc41133c6137345d92`. |
 
 ### G9.10 interpretation
 
@@ -74,7 +74,7 @@ The incomplete handshake fixture returns a supported observation that TCP establ
 
 | # | Criterion | Result | Evidence / limitation |
 |---:|---|---|---|
-| 1 | Gates 0–8 implemented and documented | PASS | Pinned core and packaging regressions plus current authority review; independent whole-diff review remains separate at #23. |
+| 1 | Gates 0–8 implemented and documented | PASS | Pinned core and packaging regressions plus current authority review; independent whole-diff review completed under #23. |
 | 2 | Deterministic corpus correct | PASS | Corpus facts, conclusions, references and extraction records in `artifacts/gate9/corpus.json`. |
 | 3 | Healthy traffic has no false diagnosis | PASS | G9.1 healthy and clean TCP are `insufficient_evidence`, no finding categories. |
 | 4 | DNS timing | PASS | G9.2 query/response transaction and focused extraction; native Wireshark evidence. |
@@ -96,15 +96,15 @@ The incomplete handshake fixture returns a supported observation that TCP establ
 | 20 | Both native Wireshark actions | PASS | Actual packaged macOS UI and process argv records for four representative cases. |
 | 21 | macOS end-to-end | PASS | Native candidate workflow completed; environment and evidence listed above. |
 | 22 | Pinned identities | PASS | Candidate image ID and bundle, bridge, web, Dockerfile, Compose and analyzer lock hashes recorded. |
-| 23 | No automatic release blockers | PASS | Independent whole-branch review found no additional Wireclaw runtime/security defect; the unsupported hosted Docker/candidate-freeze workflow was removed. Exact-head normal validation passed in run [38601353066](https://github.com/Ryan9876/wireclaw/actions/runs/38601353066) on `6c47a028d08abb7d7e652e8778b0d0e95a90c92c`. Frozen-candidate native acceptance and G9.13 evidence are complete. PR remains draft for owner review. |
+| 23 | No automatic release blockers | PASS | Independent whole-branch review found no additional Wireclaw runtime/security defect; the unsupported hosted Docker/candidate-freeze workflow was removed. Final exact-head validation passed in run [38602215192](https://github.com/Ryan9876/wireclaw/actions/runs/38602215192) on `4eabb0cf66e7340a50d2f1783875d35d70ba62c4`. Frozen-candidate native acceptance and G9.13 evidence are complete. PR #12 is merged. |
 | 24 | Exact report | PASS | This report cites candidate and exact evidence paths, with limitations and test counts. |
 
 ## Security review
 
 The Codex Security diff-scan helper preflight was ready with a delegation availability warning, but the single scan attempt failed before creating a scan ID because its runtime could import neither `tomllib` nor `tomli`. There is no automated scan report and no automated “no findings” claim. The changed-file manual review covered provider context redaction, candidate freeze and validator subprocess arguments, bridge listener/authentication/confinement/launch boundaries, Docker test-stage changes and the regression tests. It found no confirmed exploitable issue in the reviewed changes. The bridge boundary map is recorded in `artifacts/gate9/host-bridge-review.json`; the scanner failure and host regression limitations are in `artifacts/gate9/regression.json`.
 
-## Remaining work to close Gate 9
+## Gate 9 closeout
 
-Frozen-candidate acceptance work is complete. The unsupported hosted-macOS Docker/candidate-freeze workflow has been removed. Exact-head normal `Wireclaw validation` passed on `6c47a028d08abb7d7e652e8778b0d0e95a90c92c` (run [38601353066](https://github.com/Ryan9876/wireclaw/actions/runs/38601353066)); no automatic release blocker remains. The draft PR remains open and unmerged for owner review.
+Gate 9 is complete for V1. Frozen-candidate acceptance, native macOS/Wireshark validation, G9.13 privacy inspection, independent review, and exact-head normal CI all passed. PR #12 merged to `main` as `a50246ba1511fcb94335eddc41133c6137345d92`. No automatic Gate 9 release blocker remains.
 
 Windows and Linux remain portability groundwork and future targets under ADR-0006; they are not V1 release blockers.
