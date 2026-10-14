@@ -1,0 +1,136 @@
+name: Gate 9 macOS Candidate Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-acceptance:
+    # GitHub's macos-15 hosted runner is arm64 (Apple M1).
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      CANDIDATE_OUTPUT: ${{ runner.temp }}/Wireclaw Gate9 Candidate
+      GATE9_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/gate9
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+
+      - name: Start Docker and install native Wireshark
+        run: |
+          if [ ! -x /Applications/Wireshark.app/Contents/MacOS/Wireshark ]; then
+            brew install --cask wireshark
+          fi
+          echo "/Applications/Wireshark.app/Contents/MacOS" >> "$GITHUB_PATH"
+          if ! docker info >/dev/null 2>&1; then
+            open -a Docker
+            ready=0
+            for attempt in $(seq 1 60); do
+              if docker info >/dev/null 2>&1; then
+                ready=1
+                break
+              fi
+              sleep 5
+            done
+            [ "$ready" -eq 1 ] || { echo 'Docker Desktop did not become ready' >&2; exit 1; }
+          fi
+          docker compose version
+          /Applications/Wireshark.app/Contents/MacOS/Wireshark --version
+
+      - name: Install Python and web dependencies
+        run: |
+          python -m pip install -e '.[test]'
+          npm ci --prefix apps/web
+
+      - name: Validate contracts and static checks
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from wireclaw_api.app import create_app
+          with TemporaryDirectory() as directory:
+              app = create_app(Path(directory))
+              Path('contracts/api.openapi.json').write_text(
+                  json.dumps(app.openapi(), indent=2) + '\n', encoding='utf-8'
+              )
+          PY
+          npm run contracts --prefix apps/web
+          git diff --exit-code -- contracts/api.openapi.json apps/web/src/generated
+          ruff check .
+          ruff format --check services scripts tests
+          python -m compileall -q services scripts tests
+          python -m pytest -q tests/packaging
+          gofmt -l services/host-bridge/*.go | tee /tmp/wireclaw-gofmt-files
+          test ! -s /tmp/wireclaw-gofmt-files
+          (cd services/host-bridge && go test ./... && go vet ./... \
+            && go build -o "$RUNNER_TEMP/wireclaw-host-bridge" ./...)
+
+      - name: Build pinned core tests and release image
+        run: |
+          docker build --target core-test -t wireclaw-core:gate9-test .
+          docker build --target core-runtime -t wireclaw-core:gate8 .
+          docker run --rm --entrypoint python wireclaw-core:gate8 \
+            /opt/wireclaw/verify_analyzer_versions.py
+
+      - name: Run Gate 3 live API validation
+        run: python scripts/validate_gate3.py
+
+      - name: Freeze exact arm64 candidate
+        run: |
+          python scripts/gate9_freeze.py "$CANDIDATE_OUTPUT"
+          image_id="$(cat "$CANDIDATE_OUTPUT/wireclaw-release/core-image-id")"
+          echo "WIRECLAW_EXPECTED_IMAGE_ID=$image_id" >> "$GITHUB_ENV"
+
+      - name: Exercise packaged G9.1-G9.13 acceptance corpus
+        env:
+          WIRECLAW_GATE9_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/gate9
+        run: python scripts/validate_container_release.py --image wireclaw-core:gate8
+
+      - name: Web lint, build, and unit tests
+        run: |
+          npm run lint --prefix apps/web
+          npm run format:check --prefix apps/web
+          npm run build --prefix apps/web
+          npm test --prefix apps/web
+
+      - name: Production browser acceptance
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          python scripts/prepare_web_fixtures.py
+          npx --prefix apps/web playwright install chromium
+          npm run test:e2e --prefix apps/web
+          mkdir -p artifacts/gate9/ui
+          cp docs/gate5-visual/*.png artifacts/gate9/ui/
+          if [ -f apps/web/test-results/browser-summary.json ]; then
+            cp apps/web/test-results/browser-summary.json artifacts/gate9/ui/
+          fi
+
+      - name: Verify candidate image identity after all checks
+        run: |
+          actual="$(docker image inspect wireclaw-core:gate8 --format '{{.Id}}')"
+          test "$actual" = "$WIRECLAW_EXPECTED_IMAGE_ID"
+
+      - name: Upload candidate and acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wireclaw-gate9-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/Wireclaw Gate9 Candidate
+            artifacts/gate9/
+          if-no-files-found: warn
+          retention-days: 30
