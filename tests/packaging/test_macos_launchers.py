@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 LAUNCH = ROOT / "launch/macos"
+START_SOURCE = (LAUNCH / "start.sh").read_text(encoding="utf-8")
 
 
 def run_bash(script: str, *args: str, env: dict[str, str] | None = None):
@@ -98,6 +99,11 @@ def test_env_parser_rejects_shell_substitution_without_executing_it(tmp_path):
     )
     assert result.returncode != 0
     assert not marker.exists()
+
+
+def test_bridge_health_probe_uses_the_approved_application_origin():
+    assert 'curl --silent --fail --header "Origin: http://127.0.0.1:$APP_PORT"' in START_SOURCE
+    assert '"http://127.0.0.1:$BRIDGE_PORT/v1/health"' in START_SOURCE
 
 
 def test_start_reports_missing_docker_cli(tmp_path):

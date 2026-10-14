@@ -88,7 +88,8 @@ bridge_ready=0
 attempt=0
 while [ "$attempt" -lt 10 ]; do
   if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then break; fi
-  if curl --silent --fail "http://127.0.0.1:$BRIDGE_PORT/v1/health" >/dev/null 2>&1; then
+  if curl --silent --fail --header "Origin: http://127.0.0.1:$APP_PORT" \
+    "http://127.0.0.1:$BRIDGE_PORT/v1/health" >/dev/null 2>&1; then
     bridge_ready=1
     break
   fi
