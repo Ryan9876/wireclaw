@@ -286,7 +286,7 @@ def main() -> int:
             )
             FakeProvider.requests_seen = []
             compose(env, "down", files=(override,))
-            compose(env, "up", build=True, files=(override,))
+            compose(env, "up", files=(override,))
             try:
                 health = wait_health(base)
                 assert health["provider_mode"] == "openai_compatible_cloud"

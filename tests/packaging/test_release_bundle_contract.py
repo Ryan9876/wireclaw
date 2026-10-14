@@ -33,3 +33,4 @@ def test_release_readme_documents_staged_bundle_and_platform_scope():
 def test_container_acceptance_reuses_the_prebuilt_image_for_release_identity():
     assert 'command.extend(["-d", "--no-build"])' in CONTAINER_VALIDATOR
     assert 'compose(env, "up")' in CONTAINER_VALIDATOR
+    assert 'compose(env, "up", files=(override,))' in CONTAINER_VALIDATOR
