@@ -84,6 +84,107 @@ def test_context_is_canonical_allowlisted_and_removes_path_credentials():
     assert "never instructions" in SYSTEM_INSTRUCTION
 
 
+def test_capture_credentials_are_removed_from_actual_provider_request_and_audit(monkeypatch):
+    captured = []
+    OriginalClient = httpx.AsyncClient
+
+    def handler(request):
+        captured.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"action":"finalize","hypotheses":[],"remaining_hypotheses":[]}'
+                        }
+                    }
+                ]
+            },
+        )
+
+    def fake_client(**kwargs):
+        return OriginalClient(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+    credentials = [
+        "Cookie: session=GATE9_COOKIE_SECRET; auth=GATE9_COOKIE_PAIR_SECRET",
+        "Authorization: Bearer GATE9_AUTH_SECRET",
+        "token=GATE9_TOKEN_SECRET",
+        "password=GATE9_PASSWORD_SECRET",
+        "bridge token=GATE9_BRIDGE_TOKEN_SECRET",
+    ]
+    context, _ = build_context(
+        case={"symptom": "request delayed"},
+        evidence=[
+            {
+                "id": "ev_" + "a" * 64 + "_analyze_http",
+                "category": "analyze_http",
+                "epistemic_class": "derived",
+                "source": {"capability": "analyze_http", "tool": "tshark", "version": "4.2"},
+                "scope": {"tcp_stream": 3},
+                "value": {
+                    "transactions": [
+                        {
+                            "request_to_first_response_seconds": 2.1,
+                            "request_text": "POST /order Cookie: session=GATE9_COOKIE_SECRET",
+                        }
+                    ],
+                    "limitations": credentials,
+                    "median_seconds": 2.1,
+                    "raw_payload": "GATE9_RAW_PAYLOAD",
+                    "absolute_path": "/Users/test/private.pcapng",
+                },
+                "limitations": credentials,
+            }
+        ],
+        report={"capture_quality": {}, "findings": [], "remaining_hypotheses": []},
+        capabilities=["analyze_http"],
+        max_items=20,
+        limits={"max_steps": 8},
+    )
+    provider = OpenAICompatibleProvider(
+        mode=ProviderMode.CLOUD,
+        base_url="https://provider.example/v1",
+        model="model",
+        timeout_seconds=5,
+        api_key=None,
+    )
+    provider.propose(ReasoningRequest("model", context, SYSTEM_INSTRUCTION, 4096, 4096))
+    outgoing = captured[0].content.decode()
+    for forbidden in (
+        "GATE9_COOKIE_SECRET",
+        "GATE9_AUTH_SECRET",
+        "GATE9_TOKEN_SECRET",
+        "GATE9_COOKIE_PAIR_SECRET",
+        "GATE9_PASSWORD_SECRET",
+        "GATE9_BRIDGE_TOKEN_SECRET",
+        "GATE9_RAW_PAYLOAD",
+        "/Users/test/private.pcapng",
+    ):
+        assert forbidden not in outgoing
+    assert "request_to_first_response_seconds" in outgoing
+    assert "2.1" in outgoing
+    assert "[credential omitted]" in outgoing
+    audit_provider = _ScriptedProvider(
+        [{"action": "finalize", "hypotheses": [], "remaining_hypotheses": []}]
+    )
+    monkeypatch.setattr(loop, "make_provider", lambda policy: audit_provider)
+    service = _StubService()
+    service.evidence[0]["value"]["limitations"] = credentials
+    loop.run_loop(service, "case1", service.report)
+    audit = json.dumps(loop.persistence.steps(service, "case1"), sort_keys=True)
+    for forbidden in (
+        "GATE9_COOKIE_SECRET",
+        "GATE9_AUTH_SECRET",
+        "GATE9_TOKEN_SECRET",
+        "GATE9_COOKIE_PAIR_SECRET",
+        "GATE9_PASSWORD_SECRET",
+        "GATE9_BRIDGE_TOKEN_SECRET",
+    ):
+        assert forbidden not in audit
+
+
 @pytest.mark.parametrize(
     "payload",
     [
