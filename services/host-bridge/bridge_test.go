@@ -232,6 +232,63 @@ func TestResolveRejectsCrossCaseAndTamperedArtifacts(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsCaseDirectorySymlinkBeforeLaunching(t *testing.T) {
+	root := t.TempDir()
+	caseA := strings.Repeat("a", 32)
+	caseB := strings.Repeat("b", 32)
+	caseBRoot := filepath.Join(root, "cases", caseB)
+	if err := os.MkdirAll(caseBRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte("case B capture")
+	if err := os.WriteFile(filepath.Join(caseBRoot, "capture.pcapng"), payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	caseARoot := filepath.Join(root, "cases", caseA)
+	if err := os.MkdirAll(filepath.Dir(caseARoot), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(caseBRoot, caseARoot); err != nil {
+		t.Skipf("symlink creation is unavailable on this runner: %v", err)
+	}
+	requestID := strings.Repeat("c", 32)
+	token := strings.Repeat("x", 48)
+	digest := sha256.Sum256(payload)
+	tokenDigest := sha256.Sum256([]byte(token))
+	value := manifest{
+		SchemaVersion: 1, RequestID: requestID,
+		TokenSHA256: hex.EncodeToString(tokenDigest[:]),
+		CaseID: caseA, ArtifactID: strings.Repeat("d", 32),
+		ArtifactKind: "original",
+		RelativePath: filepath.ToSlash(filepath.Join("cases", caseA, "capture.pcapng")),
+		ArtifactSHA256: hex.EncodeToString(digest[:]),
+		DisplayFilter: "tcp.stream == 7", ExpiresUnix: time.Now().Add(time.Minute).Unix(),
+	}
+	manifestPath := filepath.Join(root, "bridge", "requests", requestID+".json")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(value)
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := newServer(root, os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge.wireshark = "/trusted/Wireshark"
+	launches := 0
+	bridge.launch = func(string, ...string) error { launches++; return nil }
+	response := httptest.NewRecorder()
+	bridge.open(response, openRequestFor(requestID, token, "http://127.0.0.1:8765"))
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status=%d want=%d body=%s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+	}
+	if launches != 0 {
+		t.Fatalf("symlinked cross-case artifact launched %d times", launches)
+	}
+}
+
 func TestHealthRequiresApprovedOrigin(t *testing.T) {
 	bridge, err := newServer(t.TempDir(), os.Args[0])
 	if err != nil {

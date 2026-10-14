@@ -341,6 +341,15 @@ func (s *server) resolveArtifact(value manifest) (string, error) {
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", errors.New("path traversal")
 	}
+	caseRootPath := filepath.Join(s.dataRoot, "cases", value.CaseID)
+	caseRootInfo, err := os.Lstat(caseRootPath)
+	if err != nil || !caseRootInfo.IsDir() || caseRootInfo.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("artifact case unavailable")
+	}
+	caseRootCanonical, err := filepath.EvalSymlinks(caseRootPath)
+	if err != nil || caseRootCanonical != filepath.Clean(caseRootPath) {
+		return "", errors.New("artifact case unavailable")
+	}
 	candidate, err := filepath.Abs(filepath.Join(s.dataRoot, clean))
 	if err != nil {
 		return "", err
@@ -349,9 +358,9 @@ func (s *server) resolveArtifact(value manifest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	relative, err := filepath.Rel(s.dataRoot, resolved)
+	relative, err := filepath.Rel(caseRootCanonical, resolved)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("path escape")
+		return "", errors.New("case path escape")
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() {
