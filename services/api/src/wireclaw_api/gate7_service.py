@@ -24,18 +24,26 @@ class Service(Gate6Service):
         return Gate6Service.capability(self, case_id, request)
 
     def investigate(self, case_id):
-        case = self.get(case_id)
-        if case["state"] in ("COMPLETE", "FAILED"):
-            persistence.clear_steps(self, case_id)
-        return Gate4Service.investigate(self, case_id)
+        previous_session = getattr(self, "_reasoning_session_id", None)
+        self._reasoning_session_id = persistence.new_session_id()
+        try:
+            return Gate4Service.investigate(self, case_id)
+        finally:
+            self._reasoning_session_id = previous_session
 
     def capability(self, case_id, request):
         case = self.get(case_id)
-        if case["state"] == "COMPLETE":
-            persistence.clear_steps(self, case_id)
-        return Gate6Service.capability(self, case_id, request)
+        if case["state"] != "COMPLETE":
+            return Gate6Service.capability(self, case_id, request)
+        previous_session = getattr(self, "_reasoning_session_id", None)
+        self._reasoning_session_id = persistence.new_session_id()
+        try:
+            return Gate6Service.capability(self, case_id, request)
+        finally:
+            self._reasoning_session_id = previous_session
 
     def _assemble_report(self, case_id):
+        session_id = getattr(self, "_reasoning_session_id", None) or persistence.new_session_id()
         case = self.get(case_id)
         evidence = self.evidence_records(case_id)
         deterministic = build_investigation_result(
@@ -46,14 +54,14 @@ class Service(Gate6Service):
             max_display_filter_chars=self.policy.max_display_filter_chars,
         )
         try:
-            reasoning, ranking, next_codes = run_loop(self, case_id, deterministic)
+            reasoning, ranking, next_codes = run_loop(self, case_id, deterministic, session_id)
         except Exception:
             # Optional reasoning must not corrupt or suppress the deterministic report.
             reasoning, ranking, next_codes = (
                 {
                     "mode": "model_fallback",
                     "status": "fallback",
-                    "steps": len(persistence.steps(self, case_id)),
+                    "steps": len(persistence.steps(self, case_id, session_id)),
                     "failure_code": "provider_unavailable",
                 },
                 [],

@@ -105,7 +105,8 @@ def _report(service, case_id, evidence):
     )
 
 
-def run_loop(service, case_id, report):
+def run_loop(service, case_id, report, session_id=None):
+    session_id = session_id or persistence.new_session_id()
     policy = service.policy
     mode = policy.provider_mode
     if mode is ProviderMode.NONE:
@@ -114,7 +115,7 @@ def run_loop(service, case_id, report):
     provider = make_provider(policy)
     evidence = service.evidence_records(case_id)
     case = service.get(case_id)
-    prior = persistence.steps(service, case_id)
+    prior = persistence.steps(service, case_id, session_id)
     fingerprints = {
         item["request_fingerprint"]
         for item in prior
@@ -178,21 +179,21 @@ def run_loop(service, case_id, report):
         }
         if result.failure_code:
             failure = result.failure_code
-            persistence.append_step(service, case_id, base)
+            persistence.append_step(service, case_id, session_id, base)
             break
         if (
             not isinstance(result.content, str)
             or len(result.content.encode()) > policy.max_provider_response_bytes
         ):
             base["failure_code"] = "provider_response_too_large"
-            persistence.append_step(service, case_id, base)
+            persistence.append_step(service, case_id, session_id, base)
             failure = base["failure_code"]
             break
         try:
             action = ACTION_ADAPTER.validate_json(result.content, strict=True)
         except (ValidationError, ValueError):
             base["failure_code"] = "provider_invalid_response"
-            persistence.append_step(service, case_id, base)
+            persistence.append_step(service, case_id, session_id, base)
             failure = base["failure_code"]
             break
         base["action_type"] = action.action
@@ -206,7 +207,7 @@ def run_loop(service, case_id, report):
                 )
             except ApiError as error:
                 base["failure_code"] = error.code
-                persistence.append_step(service, case_id, base)
+                persistence.append_step(service, case_id, session_id, base)
                 failure = error.code
                 break
             fingerprint = hashlib.sha256(
@@ -217,7 +218,7 @@ def run_loop(service, case_id, report):
             if fingerprint in fingerprints:
                 base["status"] = "duplicate"
                 base["failure_code"] = "duplicate_capability_request"
-                persistence.append_step(service, case_id, base)
+                persistence.append_step(service, case_id, session_id, base)
                 failure = base["failure_code"]
                 break
             fingerprints.add(fingerprint)
@@ -228,14 +229,14 @@ def run_loop(service, case_id, report):
                 result_set = service.run_reasoning_capability(case_id, request)
             except ApiError as error:
                 base["failure_code"] = error.code
-                persistence.append_step(service, case_id, base)
+                persistence.append_step(service, case_id, session_id, base)
                 failure = error.code
                 break
             base["resulting_evidence_ids"] = [item["id"] for item in result_set["evidence"]]
             base["status"] = "complete"
             base["failure_code"] = None
             base["duration_ms"] = round((time.monotonic() - started) * 1000)
-            persistence.append_step(service, case_id, base)
+            persistence.append_step(service, case_id, session_id, base)
             evidence = service.evidence_records(case_id)
             report = _report(service, case_id, evidence)
             continue
@@ -252,7 +253,7 @@ def run_loop(service, case_id, report):
                 "rejected_proposals": proposed - accepted,
             }
         )
-        persistence.append_step(service, case_id, base)
+        persistence.append_step(service, case_id, session_id, base)
         return (
             {
                 "mode": "model_assisted",
@@ -271,7 +272,7 @@ def run_loop(service, case_id, report):
         {
             "mode": "model_fallback",
             "status": "fallback",
-            "steps": len(persistence.steps(service, case_id)),
+            "steps": len(persistence.steps(service, case_id, session_id)),
             "failure_code": failure,
         },
         [],
