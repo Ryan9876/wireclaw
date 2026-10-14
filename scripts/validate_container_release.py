@@ -197,7 +197,12 @@ def oversized_capture_probe(base: str) -> None:
     ).encode("ascii")
     with socket.create_connection(("127.0.0.1", port), timeout=5) as client:
         client.sendall(request_bytes)
-        response = client.recv(2048)
+        response = bytearray()
+        while len(response) < 2048:
+            chunk = client.recv(2048 - len(response))
+            if not chunk:
+                break
+            response.extend(chunk)
     assert response.startswith(b"HTTP/1.1 413")
     assert b"request_size_limit" in response
 
