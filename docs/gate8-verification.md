@@ -5,6 +5,7 @@
 | Field | Validated value |
 |---|---|
 | Starting `main` SHA | `9ac42f4130708fd145e46bac7545f980d1d804da` |
+| Final Gate 8 branch SHA | `5eab97a423d296d497fe89cd90380459c8ce5592` |
 | Release source SHA | `9b4e3718893c20a9450a41af0d24b1c87ff79f97` |
 | Platform | macOS 27.0.1, Apple M3 Pro, `arm64` |
 | Docker | 29.8.2 |
@@ -99,10 +100,18 @@ remained.
 - `docker compose config`, shell syntax, Python compileall, Ruff check/format,
   and `git diff --check` passed.
 
-The branch has not yet received a GitHub Actions run. The configured GitHub CLI
-credential is invalid in this environment, so push, CI status, and draft PR
-creation remain outstanding. Gate 8 is not declared complete until those
-handoff steps and a final whole-branch security review are recorded.
+GitHub Actions run [#85](https://github.com/Ryan9876/wireclaw/actions/runs/38505680917)
+passed on final branch SHA `5eab97a423d296d497fe89cd90380459c8ce5592`.
+The Docker release job built and exercised the production image, verified the
+locked tool versions, and ran container acceptance. Linux full validation,
+production browser validation, and Ubuntu/macOS/Windows Go portability builds
+also passed. The open draft pull request is
+[#11](https://github.com/Ryan9876/wireclaw/pull/11); it has not been merged.
+The bridge portability jobs do not qualify those platforms as V1 releases.
+
+The CI launcher tests initially failed because the Linux runner had Docker in
+`/usr/bin`, contrary to the test's assumption. The test was corrected to use
+an isolated PATH and passed in run #85.
 
 ## Security review
 
