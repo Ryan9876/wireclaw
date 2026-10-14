@@ -134,6 +134,10 @@ def main() -> int:
         try:
             health = wait_health(base)
             assert health["provider_mode"] == "none"
+            status, capability_bytes = request(base, "/api/config/capabilities")
+            capabilities = json.loads(capability_bytes)
+            assert status == 200
+            assert capabilities["bridge"]["origin"] == f"http://127.0.0.1:{bridge_port}"
             status, page = request(base, "/")
             assert status == 200 and b"/assets/index-" in page
             assert request(base, "/api/health", headers={"Host": "evil.invalid"})[0] == 403
