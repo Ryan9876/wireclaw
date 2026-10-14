@@ -232,6 +232,39 @@ func TestResolveRejectsCrossCaseAndTamperedArtifacts(t *testing.T) {
 	}
 }
 
+func TestLoadManifestRejectsSymlinkedRequestDirectories(t *testing.T) {
+	for _, parent := range []string{"bridge", "requests"} {
+		t.Run(parent, func(t *testing.T) {
+			root := t.TempDir()
+			outside := t.TempDir()
+			requestID := strings.Repeat("f", 32)
+			token := strings.Repeat("x", 48)
+			writeGrant(t, outside, requestID, token, "capture.pcapng", []byte("capture"))
+			bridgeDir := filepath.Join(root, "bridge")
+			requestsDir := filepath.Join(bridgeDir, "requests")
+			if parent == "bridge" {
+				if err := os.Symlink(filepath.Join(outside, "bridge"), bridgeDir); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.Mkdir(bridgeDir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(filepath.Join(outside, "bridge", "requests"), requestsDir); err != nil {
+					t.Fatal(err)
+				}
+			}
+			server, err := newServer(root, os.Args[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := server.loadManifest(requestID); err == nil {
+				t.Fatal("manifest outside the configured data root was accepted")
+			}
+		})
+	}
+}
+
 func TestOpenRejectsCaseDirectorySymlinkBeforeLaunching(t *testing.T) {
 	root := t.TempDir()
 	caseA := strings.Repeat("a", 32)
@@ -258,11 +291,11 @@ func TestOpenRejectsCaseDirectorySymlinkBeforeLaunching(t *testing.T) {
 	value := manifest{
 		SchemaVersion: 1, RequestID: requestID,
 		TokenSHA256: hex.EncodeToString(tokenDigest[:]),
-		CaseID: caseA, ArtifactID: strings.Repeat("d", 32),
-		ArtifactKind: "original",
-		RelativePath: filepath.ToSlash(filepath.Join("cases", caseA, "capture.pcapng")),
+		CaseID:      caseA, ArtifactID: strings.Repeat("d", 32),
+		ArtifactKind:   "original",
+		RelativePath:   filepath.ToSlash(filepath.Join("cases", caseA, "capture.pcapng")),
 		ArtifactSHA256: hex.EncodeToString(digest[:]),
-		DisplayFilter: "tcp.stream == 7", ExpiresUnix: time.Now().Add(time.Minute).Unix(),
+		DisplayFilter:  "tcp.stream == 7", ExpiresUnix: time.Now().Add(time.Minute).Unix(),
 	}
 	manifestPath := filepath.Join(root, "bridge", "requests", requestID+".json")
 	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o700); err != nil {

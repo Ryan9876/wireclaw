@@ -297,9 +297,25 @@ func (s *server) open(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) loadManifest(requestID string) (manifest, string, error) {
 	var value manifest
-	path := filepath.Join(s.dataRoot, "bridge", "requests", requestID+".json")
+	bridgeDir := filepath.Join(s.dataRoot, "bridge")
+	requestsDir := filepath.Join(bridgeDir, "requests")
+	for _, dir := range []string{bridgeDir, requestsDir} {
+		info, err := os.Lstat(dir)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return value, "", errors.New("manifest unavailable")
+		}
+		canonical, err := filepath.EvalSymlinks(dir)
+		if err != nil || canonical != filepath.Clean(dir) {
+			return value, "", errors.New("manifest unavailable")
+		}
+	}
+	path := filepath.Join(requestsDir, requestID+".json")
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxRequestBytes {
+		return value, "", errors.New("manifest unavailable")
+	}
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil || canonical != filepath.Clean(path) {
 		return value, "", errors.New("manifest unavailable")
 	}
 	file, err := os.Open(path)
