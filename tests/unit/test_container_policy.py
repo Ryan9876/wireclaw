@@ -17,5 +17,7 @@ def test_container_policy_does_not_allow_other_non_loopback_interfaces():
 
 def test_public_origin_port_is_separate_from_container_listener_port(monkeypatch):
     monkeypatch.setenv("WIRECLAW_PUBLIC_PORT", "18765")
+    monkeypatch.setenv("WIRECLAW_BRIDGE_PORT", "18766")
     policy = policy_for_listener(host="0.0.0.0", listen_port=8765, container_network=True)
     assert policy.port == 18765
+    assert policy.bridge_port == 18766

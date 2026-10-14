@@ -139,6 +139,7 @@ class Policy:
 
         values = {
             "port": int(os.environ.get("WIRECLAW_PUBLIC_PORT", "8765")),
+            "bridge_port": int(os.environ.get("WIRECLAW_BRIDGE_PORT", "8766")),
             "provider_mode": os.environ.get("WIRECLAW_PROVIDER_MODE", "none"),
             "provider_base_url": os.environ.get("WIRECLAW_PROVIDER_BASE_URL"),
             "provider_model": os.environ.get("WIRECLAW_PROVIDER_MODEL"),
