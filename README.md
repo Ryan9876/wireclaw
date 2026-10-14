@@ -86,18 +86,20 @@ The analyzer and web application are containerized. V1 uses a small native macOS
 
 ## Current status
 
-Gates 1 through 7 are merged and complete for V1.
+Gates 1 through 8 are merged and complete for V1.
 
 Gate 6 completed the evidence-capture and native Wireshark path and passed native GUI acceptance on the supported V1 host, macOS. Windows and Linux release qualification are deferred to the [product roadmap](docs/roadmap.md), while their existing build/discovery/argv CI coverage remains portability evidence.
 
 Gate 7 added optional OpenAI-compatible cloud/local reasoning behind a typed capability boundary, normalized-only model context, deterministic fallback, adversarial/privacy coverage, persistent reasoning audit history, and deterministic HTTP request/response timing. The positive decodable HTTP server-wait case is distinguished from opaque TCP silence. Gate 7 merged through [PR #10](https://github.com/Ryan9876/wireclaw/pull/10); see [Gate 7 verification](docs/gate7-verification.md).
 
+Gate 8 packaged the single-core Docker release, pinned the analyzer/runtime identities, added the macOS arm64 start/stop and bridge install/uninstall workflow, preserved loopback-only exposure and Gate 7 privacy behavior, and passed a real same-artifact archive-loaded macOS release smoke including both native Wireshark actions, persistence, and immutability checks. Gate 8 merged through [PR #11](https://github.com/Ryan9876/wireclaw/pull/11); see [Gate 8 verification](docs/gate8-verification.md).
+
 Gate 6 merged through [PR #8](https://github.com/Ryan9876/wireclaw/pull/8); see [Gate 6 verification](docs/gate6-verification.md). The implementation-grade Gate 7–9 specifications and agent guidance merged through [PR #9](https://github.com/Ryan9876/wireclaw/pull/9).
 
-The next implementation stage is **Gate 8 — Docker packaging and macOS release**. See [Gate 8 execution](specs/v1/gate8-execution.md).
+The next implementation stage is **Gate 9 — V1 acceptance and hardening**. See [Gate 9 acceptance](specs/v1/gate9-acceptance.md).
 
 ## Gate 1 analyzer
 
 The deterministic Python analyzer is implemented. See [developer instructions](services/analyzer/README.md), [Gate 1 verification](docs/gate1-verification.md), and [Gate 2 verification](docs/gate2-verification.md).
 
-The [local API](services/api/README.md) provides bounded intake, persistence, deterministic analysis, rules-only findings/reports, evidence-capture extraction, bridge grants, optional bounded model-assisted reasoning, and case deletion. The [web UI](apps/web/README.md) presents that API. Docker release packaging is the next gate.
+The [local API](services/api/README.md) provides bounded intake, persistence, deterministic analysis, rules-only findings/reports, evidence-capture extraction, bridge grants, optional bounded model-assisted reasoning, and case deletion. The [web UI](apps/web/README.md) presents that API. Gate 9 V1 acceptance and hardening is the next stage.
