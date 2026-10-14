@@ -24,6 +24,8 @@ def make_release(root: Path, env_text: str):
     (release / ".env.example").write_text(env_text, encoding="utf-8")
     (release / ".env").write_text(env_text, encoding="utf-8")
     (release / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
+    (release / "core-image-id").write_text("sha256:" + "a" * 64 + "\n", encoding="utf-8")
+    (release / "core-image.tar").write_bytes(b"packaged image archive")
     return release
 
 
@@ -36,6 +38,8 @@ def make_fake_tools(root: Path, *, daemon=True, compose=True, busy_port=""):
         'case "$1 $2" in\n'
         f'  "compose version") exit {0 if compose else 1} ;;\n'
         f'  "info "*) exit {0 if daemon else 1} ;;\n'
+        '  "image inspect") [ -f "$WIRECLAW_TEST_IMAGE_STATE" ] && cat "$WIRECLAW_TEST_IMAGE_STATE" || exit 1 ;;\n'
+        '  "load --input") printf "%s\\n" "$WIRECLAW_TEST_IMAGE_ID" > "$WIRECLAW_TEST_IMAGE_STATE"; printf "%s\\n" "$*" >> "$WIRECLAW_TEST_DOCKER_LOG" ;;\n'
         '  *) printf "%s\\n" "$*" >> "$WIRECLAW_TEST_DOCKER_LOG"; exit 0 ;;\n'
         "esac\n",
         encoding="utf-8",
@@ -59,6 +63,8 @@ def make_fake_tools(root: Path, *, daemon=True, compose=True, busy_port=""):
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "WIRECLAW_TEST_DOCKER_LOG": str(log),
         "WIRECLAW_TEST_BUSY_PORT": busy_port,
+        "WIRECLAW_TEST_IMAGE_ID": "sha256:" + "a" * 64,
+        "WIRECLAW_TEST_IMAGE_STATE": str(root / "image-id"),
     }
     return env, log
 
@@ -101,9 +107,35 @@ def test_env_parser_rejects_shell_substitution_without_executing_it(tmp_path):
     assert not marker.exists()
 
 
+def test_release_loads_the_exact_packaged_image_and_skips_an_existing_match(tmp_path):
+    release = make_release(tmp_path, "WIRECLAW_PORT=8765\nWIRECLAW_BRIDGE_PORT=8766\n")
+    image_id = "sha256:" + "a" * 64
+    (release / "core-image-id").write_text(image_id + "\n", encoding="utf-8")
+    (release / "core-image.tar").write_bytes(b"packaged image archive")
+    env, log = make_fake_tools(tmp_path)
+    script = '. "$1/launch/macos/common.sh"; load_release_image "$1"'
+    result = run_bash(script, str(release), env=env)
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text(encoding="utf-8")
+    assert "load --input" in calls
+    assert "core-image.tar" in calls
+
+    Path(env["WIRECLAW_TEST_DOCKER_LOG"]).write_text("", encoding="utf-8")
+    Path(env["WIRECLAW_TEST_IMAGE_STATE"]).write_text(image_id + "\n", encoding="utf-8")
+    result = run_bash(script, str(release), env=env)
+    assert result.returncode == 0, result.stderr
+    assert "load --input" not in Path(env["WIRECLAW_TEST_DOCKER_LOG"]).read_text(encoding="utf-8")
+
+
 def test_bridge_health_probe_uses_the_approved_application_origin():
     assert 'curl --silent --fail --header "Origin: http://127.0.0.1:$APP_PORT"' in START_SOURCE
     assert '"http://127.0.0.1:$BRIDGE_PORT/v1/health"' in START_SOURCE
+
+
+def test_start_loads_and_uses_the_packaged_image_without_rebuilding():
+    assert 'load_release_image "$RELEASE_DIR"' in START_SOURCE
+    assert 'compose.yaml" up -d;' in START_SOURCE
+    assert "up -d --build" not in START_SOURCE
 
 
 def test_start_reports_missing_docker_cli(tmp_path):

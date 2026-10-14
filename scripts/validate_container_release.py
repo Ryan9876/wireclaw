@@ -260,6 +260,22 @@ def main() -> int:
                 "USER 10001:10001\n",
                 encoding="utf-8",
             )
+            privacy_image = subprocess.run(
+                [
+                    "docker",
+                    "build",
+                    "--tag",
+                    "wireclaw-core:gate8-privacy-test",
+                    "--file",
+                    str(tls_dir / "Dockerfile"),
+                    str(tls_dir),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+            )
+            if privacy_image.returncode:
+                raise RuntimeError("privacy_test_image_build_failed")
             override = Path(temp) / "compose.privacy-test.yaml"
             override.write_text(
                 "services:\n"

@@ -127,6 +127,10 @@ def main() -> int:
         ["docker", "image", "inspect", "wireclaw-core:gate8", "--format", "{{.Id}}"],
         cwd=stage,
     )
+    (stage / "core-image-id").write_text(f"{metadata['core_image_id']}\n", encoding="utf-8")
+    image_archive = stage / "core-image.tar"
+    run(["docker", "save", "--output", str(image_archive), "wireclaw-core:gate8"], cwd=stage)
+    metadata["core_image_archive_sha256"] = sha256(image_archive)
     metadata["docker_version"] = run(
         ["docker", "version", "--format", "{{.Server.Version}}"], cwd=stage
     )

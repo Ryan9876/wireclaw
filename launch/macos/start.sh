@@ -52,7 +52,8 @@ export WIRECLAW_UID="$(id -u)"
 export WIRECLAW_GID="$(id -g)"
 docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" config --quiet \
   || fail "Compose configuration is invalid; review .env against .env.example."
-if ! docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" up -d --build; then
+load_release_image "$RELEASE_DIR"
+if ! docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" up -d; then
   docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
   fail "Wireclaw core did not start. Check Docker Desktop and the packaged release files."
 fi

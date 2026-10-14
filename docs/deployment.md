@@ -1,8 +1,9 @@
 # Deployment
 
-Wireclaw V1 is released for **macOS arm64** as a staged Docker build context plus
-a prebuilt native Go host bridge. Windows and Linux remain post-V1 qualification
-targets; existing bridge code and CI are portability groundwork only.
+Wireclaw V1 is released for **macOS arm64** as a staged Docker build context,
+the exact core image archive, and a prebuilt native Go host bridge. Windows and
+Linux remain post-V1 qualification targets; existing bridge code and CI are
+portability groundwork only.
 
 ## macOS V1 prerequisites
 
@@ -50,11 +51,13 @@ bind-mounted root.
 ## Release build and verification
 
 The release bundle contains its full Docker build context, `.env.example`,
-macOS launch/install scripts, and the verified `darwin-arm64` bridge. Start
-builds the core locally from that bundle. The packaging process records source
-SHA, Dockerfile/Compose hashes, immutable base image identities, analyzer lock,
-compiled web asset hash, core image ID, and bridge SHA-256 in
-`release-metadata.json`.
+macOS launch/install scripts, the verified `darwin-arm64` bridge, and
+`core-image.tar`. Start loads that archive when the local image ID does not
+match the bundled `core-image-id`; it verifies the loaded ID and starts without
+rebuilding. The packaging process records source SHA, Dockerfile/Compose hashes,
+immutable base image identities, analyzer lock, compiled web asset hash, core
+image ID and archive SHA-256, and bridge SHA-256 in `release-metadata.json`.
+This keeps the exact image tested by release engineering in the staged bundle.
 
 To stage a candidate from a clean committed source tree on a macOS arm64 build
 host, run:

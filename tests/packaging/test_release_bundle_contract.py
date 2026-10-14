@@ -16,6 +16,8 @@ def test_release_stager_includes_the_production_build_context_and_native_launche
         '"services/analyzer/src/wireclaw_analyzer"',
         '"services/api/src/wireclaw_api"',
         '"launch/macos"',
+        '"core-image.tar"',
+        '"core-image-id"',
     ):
         assert required in PACKAGER
     assert '"host-bridge/macos"' in PACKAGER
@@ -27,6 +29,8 @@ def test_release_readme_documents_staged_bundle_and_platform_scope():
     assert "macOS arm64" in readme
     assert "host-bridge/macos" in readme
     assert "launch/macos/start.sh" in readme
+    assert "core-image.tar" in readme
+    assert "core-image-id" in readme
     assert "Windows and Linux are future qualification targets, not supported V1 hosts" in readme
 
 
@@ -34,3 +38,5 @@ def test_container_acceptance_reuses_the_prebuilt_image_for_release_identity():
     assert 'command.extend(["-d", "--no-build"])' in CONTAINER_VALIDATOR
     assert 'compose(env, "up")' in CONTAINER_VALIDATOR
     assert 'compose(env, "up", files=(override,))' in CONTAINER_VALIDATOR
+    assert '"wireclaw-core:gate8-privacy-test"' in CONTAINER_VALIDATOR
+    assert '"privacy_test_image_build_failed"' in CONTAINER_VALIDATOR

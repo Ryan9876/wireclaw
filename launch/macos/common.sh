@@ -12,6 +12,24 @@ fail() {
   exit 1
 }
 
+load_release_image() {
+  release_dir="$1"
+  image_archive="$release_dir/core-image.tar"
+  image_id_file="$release_dir/core-image-id"
+  [ -f "$image_archive" ] && [ -r "$image_archive" ] || fail "the packaged core image archive is missing"
+  [ -f "$image_id_file" ] && [ -r "$image_id_file" ] || fail "the packaged core image identity is missing"
+  expected_image_id="$(cat "$image_id_file")"
+  case "$expected_image_id" in sha256:*) image_digest="${expected_image_id#sha256:}" ;; *) fail "the packaged core image identity is invalid" ;; esac
+  [ "${#image_digest}" -eq 64 ] || fail "the packaged core image identity is invalid"
+  case "$image_digest" in *[!0-9a-f]*) fail "the packaged core image identity is invalid" ;; esac
+  actual_image_id="$(docker image inspect --format '{{.Id}}' wireclaw-core:gate8 2>/dev/null || true)"
+  if [ "$actual_image_id" != "$expected_image_id" ]; then
+    docker load --input "$image_archive" >/dev/null || fail "could not load the packaged core image"
+    actual_image_id="$(docker image inspect --format '{{.Id}}' wireclaw-core:gate8 2>/dev/null || true)"
+  fi
+  [ "$actual_image_id" = "$expected_image_id" ] || fail "loaded core image does not match the packaged release identity"
+}
+
 # Read one allowlisted KEY=value without evaluating shell syntax.
 read_env_value() {
   wanted="$1"

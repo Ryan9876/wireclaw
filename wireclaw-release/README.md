@@ -45,9 +45,11 @@ Wireclaw data directory yourself after separately backing it up if desired.
 
 ## Release build
 
-This bundle contains the exact Docker build context and packaged bridge. The
-first launcher start builds the core image locally. `release-metadata.json`
-records source identity, pinned base images, tool versions, and bridge SHA-256.
-The core image ID is recorded by the release builder after `docker compose build`.
+This bundle contains the exact Docker build context, the packaged core image
+archive, and the native bridge. The launcher loads `core-image.tar` when the
+local `wireclaw-core:gate8` tag does not match `core-image-id`; it checks the
+loaded image ID and never rebuilds the release image during normal startup.
+`release-metadata.json` records the archive hash, source identity, pinned base
+images, tool versions, compiled web hash, core image ID, and bridge SHA-256.
 
 Windows and Linux are future qualification targets, not supported V1 hosts.
