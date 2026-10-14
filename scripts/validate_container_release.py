@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
@@ -18,7 +19,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests/fixtures"))
-from generate_gate2 import generate  # noqa: E402
+from generate_gate2 import CLIENT, SERVER, generate, tcp, timed_pcap  # noqa: E402
 
 
 def free_port() -> int:
@@ -48,12 +49,13 @@ def request(base: str, path: str, *, method="GET", body=None, content_type=None,
 
 
 class FakeProvider(BaseHTTPRequestHandler):
-    requests_seen: ClassVar[list[tuple[dict, str | None]]] = []
+    requests_seen: ClassVar[list[tuple[dict, dict[str, str]]]] = []
 
     def do_POST(self):
         size = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(size)
-        self.requests_seen.append((json.loads(body), self.headers.get("Authorization")))
+        headers = {name.lower(): value for name, value in self.headers.items()}
+        self.requests_seen.append((json.loads(body), headers))
         action = {"action": "finalize", "hypotheses": [], "remaining_hypotheses": []}
         result = {"choices": [{"message": {"content": json.dumps(action)}}]}
         encoded = json.dumps(result).encode()
@@ -133,6 +135,36 @@ def main() -> int:
         fixtures = generate(Path(temp) / "fixtures")
         original_bytes = fixtures["http_server_wait"]
         original_sha = hashlib.sha256(original_bytes).hexdigest()
+        private_request = (
+            b"GET / HTTP/1.1\r\nHost: example.invalid\r\n"
+            b"Cookie: session=G9_COOKIE_SENTINEL\r\n"
+            b"Authorization: Bearer G9_AUTH_SENTINEL\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        private_response = (
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"
+            b"Set-Cookie: session=G9_SET_COOKIE_SENTINEL\r\n"
+            b"Connection: close\r\n\r\nok"
+        )
+        privacy_capture = timed_pcap(
+            [
+                (0, tcp(seq=100, ack=0, flags=2)),
+                (10_000, tcp(SERVER, CLIENT, seq=200, ack=101, flags=18)),
+                (20_000, tcp(seq=101, ack=201)),
+                (30_000, tcp(seq=101, ack=201, flags=24, payload=private_request)),
+                (
+                    40_000,
+                    tcp(
+                        SERVER,
+                        CLIENT,
+                        seq=201,
+                        ack=101 + len(private_request),
+                        flags=24,
+                        payload=private_response,
+                    ),
+                ),
+            ]
+        )
         env = {
             "WIRECLAW_PORT": str(app_port),
             "WIRECLAW_BRIDGE_PORT": str(bridge_port),
@@ -309,12 +341,12 @@ def main() -> int:
                 status, _ = request(base, f"/api/cases/{case_id}/investigate", method="POST")
                 assert status == 200
                 assert FakeProvider.requests_seen
-                provider_body, authorization = FakeProvider.requests_seen[0]
+                provider_body, provider_headers = FakeProvider.requests_seen[0]
                 serialized = json.dumps(provider_body)
                 assert "CREDENTIAL_SENTINEL" not in serialized
                 assert str(root) not in serialized
                 assert "RAW_CAPTURE" not in serialized
-                assert authorization == "Bearer CREDENTIAL_SENTINEL"
+                assert provider_headers.get("authorization") == "Bearer CREDENTIAL_SENTINEL"
             finally:
                 provider.shutdown()
                 provider.server_close()
@@ -388,17 +420,60 @@ def main() -> int:
             try:
                 health = wait_health(base)
                 assert health["provider_mode"] == "openai_compatible_cloud"
-                status, _ = request(base, f"/api/cases/{case_id}/investigate", method="POST")
+                status, privacy_case = request(
+                    base,
+                    "/api/cases",
+                    method="POST",
+                    body={
+                        "symptom": (
+                            "slow HTTP response\n"
+                            "Cookie: session=G9_SYMPTOM_COOKIE_SENTINEL\n"
+                            "Authorization: Bearer G9_SYMPTOM_AUTH_SENTINEL\n"
+                            "token=G9_SYMPTOM_TOKEN_SENTINEL\n"
+                            "password=G9_SYMPTOM_PASSWORD_SENTINEL\n"
+                            "bridge token=G9_SYMPTOM_BRIDGE_SENTINEL\n"
+                            "capture path=/private/tmp/G9_CAPTURE_PATH_SENTINEL"
+                        )
+                    },
+                )
+                assert status == 201
+                privacy_case_id = json.loads(privacy_case)["id"]
+                status, _ = request(
+                    base,
+                    f"/api/cases/{privacy_case_id}/capture",
+                    method="POST",
+                    body=privacy_capture,
+                    content_type="application/octet-stream",
+                )
+                assert status == 200
+                status, _ = request(
+                    base, f"/api/cases/{privacy_case_id}/investigate", method="POST"
+                )
                 assert status == 200
                 assert FakeProvider.requests_seen
-                provider_body, authorization = FakeProvider.requests_seen[0]
+                provider_body, provider_headers = FakeProvider.requests_seen[0]
                 serialized = json.dumps(provider_body)
-                assert "CLOUD_CREDENTIAL_SENTINEL" not in serialized
-                assert "BRIDGE_TOKEN_SENTINEL" not in serialized
+                forbidden = (
+                    "G9_COOKIE_SENTINEL",
+                    "G9_AUTH_SENTINEL",
+                    "G9_SET_COOKIE_SENTINEL",
+                    "G9_SYMPTOM_COOKIE_SENTINEL",
+                    "G9_SYMPTOM_AUTH_SENTINEL",
+                    "G9_SYMPTOM_TOKEN_SENTINEL",
+                    "G9_SYMPTOM_PASSWORD_SENTINEL",
+                    "G9_SYMPTOM_BRIDGE_SENTINEL",
+                    "G9_CAPTURE_PATH_SENTINEL",
+                )
+                assert all(sentinel not in serialized for sentinel in forbidden)
                 assert str(root) not in serialized
                 assert "RAW_CAPTURE" not in serialized
                 assert original_bytes.hex() not in serialized
-                assert authorization == "Bearer CLOUD_CREDENTIAL_SENTINEL"
+                assert privacy_capture.hex() not in serialized
+                assert all(
+                    sentinel.encode() not in json.dumps(provider_headers).encode()
+                    for sentinel in forbidden
+                )
+                assert provider_headers.get("authorization") == "Bearer CLOUD_CREDENTIAL_SENTINEL"
                 logs = subprocess.run(
                     [
                         "docker",
@@ -418,7 +493,9 @@ def main() -> int:
                     capture_output=True,
                     text=True,
                 )
-                assert "CLOUD_CREDENTIAL_SENTINEL" not in logs.stdout + logs.stderr
+                combined_logs = logs.stdout + logs.stderr
+                assert "CLOUD_CREDENTIAL_SENTINEL" not in combined_logs
+                assert all(sentinel not in combined_logs for sentinel in forbidden)
             finally:
                 https_server.shutdown()
                 https_server.server_close()
@@ -436,5 +513,10 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (AssertionError, OSError, RuntimeError, URLError) as error:
+    except AssertionError as error:
+        frame = traceback.extract_tb(error.__traceback__)[-1]
+        raise SystemExit(
+            f"acceptance_assertion_failed:{Path(frame.filename).name}:{frame.lineno}"
+        ) from None
+    except (OSError, RuntimeError, URLError) as error:
         raise SystemExit(str(error) or "container_release_check_failed") from None
