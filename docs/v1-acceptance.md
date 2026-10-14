@@ -36,8 +36,8 @@ The candidate bundle used for the native run is preserved outside the repository
 | G — rendered UI | PASS | Compiled candidate UI was exercised for healthy, TLS delay, and opaque TCP wait. The positive HTTP wait screen was inspected during native candidate work: request completion frame 4 to response frame 5 measured 2.1 s, with an application/server boundary and downstream dependency limits. Both Wireshark actions and the exact filter were visible. Evidence drawer remains usable when the bridge is down. See `artifacts/gate9/ui/` and `macos/final-bridge-down-evidence.png`. |
 | H — host bridge security, G9.14 | PASS | 23 Go tests, `go vet`, darwin/arm64 build, packaged hash comparison and source boundary review pass. Review covers loopback, Origin, one-use expiring grant, hash-only token storage, strict bounded JSON, filter validation, canonical data-root and symlink confinement, cross-case/artifact hashes, direct argv, configured executable and no shell/general execution endpoint. See `artifacts/gate9/host-bridge-review.json` and `host-bridge-tests.jsonl`. |
 | I — native macOS workflow, G9.15 | PASS | Packaged start/install/stop, paths containing spaces, provider-none intake/report, localhost binding, native full/evidence Wireshark actions for DNS, high RTT, HTTP wait and incomplete handshake, exact argv/filter, original/evidence hashes, PCAPNG provenance, restart, bridge-down state, deletion isolation and stop/persistence were recorded. See `artifacts/gate9/macos/final-native-evidence.json`, `native-cases-final.json`, `final-deletion-isolation.json` and screenshots. |
-| J — regression | PASS WITH ENVIRONMENT NOTE | Pinned Docker core-test: 450 passed, 0 failures under packaged TShark 4.2.2; packaging: 18 passed. Static Python checks, Gate 3 validator, web lint/format/build/unit (41)/browser E2E (9), Go test/vet/build passed. A separate host-wide pytest run with host TShark 4.6.9 had 464 pass and four fixture/golden mismatches (Gate 2 reordered TCP, PMTUD, loss expert classes; Gate 4 real-capture golden). The same complete core unit/integration suite passed in the pinned candidate environment. One Starlette/httpx TestClient deprecation warning was emitted. GitHub workflow file parses and formats, but its Actions run is NOT_RUN. Details: `artifacts/gate9/regression.json`. |
-| K — independent signoff / draft PR | BLOCKED | The independent whole-diff reviewer has not signed off. The GitHub Actions workflow was not triggered because no push was authorized/performed. No draft PR was opened. Gate 9 remains open. |
+| J — regression | PASS WITH ENVIRONMENT NOTE | Pinned Docker core-test: 450 passed, 0 failures under packaged TShark 4.2.2; packaging: 18 passed. Static Python checks, Gate 3 validator, web lint/format/build/unit (41)/browser E2E (9), Go test/vet/build passed. A separate host-wide pytest run with host TShark 4.6.9 had 464 pass and four fixture/golden mismatches (Gate 2 reordered TCP, PMTUD, loss expert classes; Gate 4 real-capture golden). The same complete core unit/integration suite passed in the pinned candidate environment. One Starlette/httpx TestClient deprecation warning was emitted. Exact-head GitHub regression workflow `38593262593` on `51e0882` passed, including Docker release and full regression jobs. Dedicated Gate 9 acceptance workflow `38593262655` remains in runner setup and has no candidate result. Details: `artifacts/gate9/regression.json`. |
+| K — independent signoff / draft PR | BLOCKED | Draft PR [#12](https://github.com/Ryan9876/wireclaw/pull/12) is open and unmerged at branch head `51e0882`. The independent whole-branch reviewer has not signed off. Exact-head regression CI passed, but dedicated Gate 9 acceptance run `38593262655` remains in Docker/Wireshark setup with no result yet. |
 
 ### G9.10 interpretation
 
@@ -48,6 +48,26 @@ The incomplete handshake fixture returns a supported observation that TCP establ
 `artifacts/gate9/privacy.json` retains only redacted assertions from the qualifying mounted-bundle rerun. The generated test CA was appended to the frozen image's normal certifi bundle and mounted read-only at the certifi path; the candidate image was not rebuilt. The exact HTTPS request, headers and core logs were checked. No secret body, key, payload, raw grant or sensitive screenshot is retained in this repository.
 
 ## Twenty-four signoff criteria
+
+### G9.1–G9.15 task matrix
+
+| Task | Result | Evidence scope |
+|---|---|---|
+| G9.1 | PASS | Healthy/clean baseline has no false diagnosis. |
+| G9.2 | PASS | DNS transaction timing and focused evidence. |
+| G9.3 | PASS | Retransmission scope and sequence evidence. |
+| G9.4 | PASS | RTT derivation and evidence. |
+| G9.5 | PASS | Receive-window advertiser direction and evidence. |
+| G9.6 | PASS | Reset and reconnect stream relationship. |
+| G9.7 | PASS | TLS handshake timing and visibility limits. |
+| G9.8 | PASS | Positive HTTP wait measured; opaque TCP wait remains uncertain. |
+| G9.9 | PASS | PMTUD signals without black-hole claim. |
+| G9.10 | PASS | Incomplete, one-sided, midstream and truncated capture uncertainty. |
+| G9.11 | PASS | Capture and JSON request size limits. |
+| G9.12 | PASS | Malformed, damaged and unsupported input rejection/retry. |
+| G9.13 | PASS | Frozen-image HTTPS provider request/body/header/log sentinel inspection. |
+| G9.14 | PASS | Packaged host-bridge security review and tests. |
+| G9.15 | PASS | Native macOS workflow with Full and Evidence Capture Wireshark actions. |
 
 | # | Criterion | Result | Evidence / limitation |
 |---:|---|---|---|
@@ -83,7 +103,7 @@ The Codex Security diff-scan helper preflight was ready with a delegation availa
 ## Remaining work to close Gate 9
 
 1. Obtain independent whole-branch signoff against the authority documents and Gate 9 criteria.
-2. Run `.github/workflows/gate9-acceptance.yml` on GitHub Actions for the final branch head and retain the run URL/evidence. The workflow file was syntax/format checked locally only.
+2. Complete `.github/workflows/gate9-acceptance.yml` on the final branch head and retain its run URL/evidence. Run `38593262655` remains in Docker/Wireshark setup.
 3. Reconcile any reviewer or CI findings, then update the criterion statuses. Gate 9 must remain open until every required criterion is PASS.
 
 Windows and Linux remain portability groundwork and future targets under ADR-0006; they are not V1 release blockers.
