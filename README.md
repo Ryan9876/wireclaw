@@ -75,6 +75,7 @@ The analyzer and web application are containerized. V1 uses a small native macOS
 ## Repository map
 
 - `specs/v1/` — authoritative V1 product specification and delivery plan
+- `specs/post-v1/` — approved post-V1 feature specifications that extend, but do not retroactively rewrite, V1
 - `docs/` — architecture and operational design references
 - `contracts/` — machine-readable contracts shared across components
 - `apps/web/` — browser UI
@@ -99,6 +100,8 @@ Gate 9 completed V1 acceptance and hardening against one frozen macOS arm64 cand
 Gate 6 merged through [PR #8](https://github.com/Ryan9876/wireclaw/pull/8); see [Gate 6 verification](docs/gate6-verification.md). The implementation-grade Gate 7–9 specifications and agent guidance merged through [PR #9](https://github.com/Ryan9876/wireclaw/pull/9).
 
 Wireclaw V1 acceptance is complete on the supported macOS arm64 target. Windows and Linux remain post-V1 qualification targets under the [product roadmap](docs/roadmap.md).
+
+The next proposed development stage is **embedded local AI**: package Qwen3-4B-Instruct-2507 Q4_K_M plus a pinned native macOS llama.cpp runtime so AI-assisted troubleshooting works without a separately installed/configured model stack. The review-candidate development contract is [`specs/post-v1/embedded-local-ai.md`](specs/post-v1/embedded-local-ai.md); architecture choice is recorded in [ADR-0007](docs/decisions/ADR-0007-embedded-local-ai-native-runtime.md). This does not change the accepted V1 record.
 
 ## Gate 1 analyzer
 
