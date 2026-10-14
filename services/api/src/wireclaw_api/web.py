@@ -1,5 +1,6 @@
 """Fixed compiled web assets on the existing loopback API origin; no file browser."""
 
+import os
 import re
 from pathlib import Path
 
@@ -7,7 +8,9 @@ from fastapi.responses import FileResponse
 
 from .storage import ApiError
 
-WEB_DIST = Path(__file__).resolve().parents[4] / "apps/web/dist"
+WEB_DIST = Path(
+    os.environ.get("WIRECLAW_WEB_DIST", str(Path(__file__).resolve().parents[4] / "apps/web/dist"))
+)
 ASSET = re.compile(r"[A-Za-z0-9_-]+\.(?:js|css)\Z")
 
 

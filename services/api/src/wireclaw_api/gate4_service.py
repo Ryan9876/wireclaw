@@ -23,7 +23,13 @@ class Service(Gate3Service):
 
     def __init__(self, root, policy):
         super().__init__(root, policy)
-        schema = Path(__file__).resolve().parents[4] / "contracts/investigation-result.schema.json"
+        schema_root = Path(
+            os.environ.get(
+                "WIRECLAW_CONTRACTS_DIR",
+                str(Path(__file__).resolve().parents[4] / "contracts"),
+            )
+        )
+        schema = schema_root / "investigation-result.schema.json"
         document = json.loads(schema.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(document)
         self.report_validator = Draft202012Validator(document)
