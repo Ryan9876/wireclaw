@@ -14,7 +14,6 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 120
     env:
-      CANDIDATE_OUTPUT: ${{ runner.temp }}/Wireclaw Gate9 Candidate
       GATE9_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/gate9
 
     steps:
@@ -90,8 +89,9 @@ jobs:
 
       - name: Freeze exact arm64 candidate
         run: |
-          python scripts/gate9_freeze.py "$CANDIDATE_OUTPUT"
-          image_id="$(cat "$CANDIDATE_OUTPUT/wireclaw-release/core-image-id")"
+          candidate_output="$RUNNER_TEMP/Wireclaw Gate9 Candidate"
+          python scripts/gate9_freeze.py "$candidate_output"
+          image_id="$(cat "$candidate_output/wireclaw-release/core-image-id")"
           echo "WIRECLAW_EXPECTED_IMAGE_ID=$image_id" >> "$GITHUB_ENV"
 
       - name: Exercise packaged G9.1-G9.13 acceptance corpus
