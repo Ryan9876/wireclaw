@@ -140,9 +140,12 @@ def test_start_loads_and_uses_the_packaged_image_without_rebuilding():
 
 def test_start_reports_missing_docker_cli(tmp_path):
     release = make_release(tmp_path, "WIRECLAW_PORT=8765\nWIRECLAW_BRIDGE_PORT=8766\n")
-    env = os.environ | {"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    (empty_bin / "dirname").symlink_to(shutil.which("dirname"))
+    env = os.environ | {"HOME": str(tmp_path), "PATH": str(empty_bin)}
     result = subprocess.run(
-        ["bash", str(release / "launch/macos/start.sh")],
+        ["/bin/bash", str(release / "launch/macos/start.sh")],
         cwd=release,
         env=env,
         capture_output=True,
