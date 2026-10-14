@@ -239,21 +239,21 @@ Acceptance specification: `specs/v1/gate9-acceptance.md`.
 
 Tasks:
 
-- [ ] G9.1 Build an acceptance corpus covering clean/healthy traffic.
-- [ ] G9.2 DNS-delay case.
-- [ ] G9.3 TCP-loss/retransmission case.
-- [ ] G9.4 high-RTT case.
-- [ ] G9.5 receiver-window constrained case.
-- [ ] G9.6 TCP reset/reconnect case.
-- [ ] G9.7 TLS-delay case.
-- [ ] G9.8 server/application-wait acceptance: positive decodable HTTP case plus opaque-transport uncertainty regression.
-- [ ] G9.9 MTU/PMTUD evidence case.
-- [ ] G9.10 one-sided/incomplete capture case requiring uncertainty.
-- [ ] G9.11 large-capture resource-limit case.
-- [ ] G9.12 malformed/adversarial capture case.
-- [ ] G9.13 cloud-provider privacy inspection.
-- [ ] G9.14 host-bridge security review.
-- [ ] G9.15 end-to-end macOS acceptance.
+- [x] G9.1 Build an acceptance corpus covering clean/healthy traffic.
+- [x] G9.2 DNS-delay case.
+- [x] G9.3 TCP-loss/retransmission case.
+- [x] G9.4 high-RTT case.
+- [x] G9.5 receiver-window constrained case.
+- [x] G9.6 TCP reset/reconnect case.
+- [x] G9.7 TLS-delay case.
+- [x] G9.8 server/application-wait acceptance: positive decodable HTTP case plus opaque-transport uncertainty regression.
+- [x] G9.9 MTU/PMTUD evidence case.
+- [x] G9.10 one-sided/incomplete capture case requiring uncertainty.
+- [x] G9.11 large-capture resource-limit case.
+- [x] G9.12 malformed/adversarial capture case.
+- [x] G9.13 cloud-provider privacy inspection.
+- [x] G9.14 host-bridge security review.
+- [x] G9.15 end-to-end macOS acceptance.
 
 Legacy task IDs G9.16 (Windows) and G9.17 (Linux) are deferred to future release qualification and are not V1 exit criteria.
 
@@ -265,6 +265,8 @@ V1 release gate:
 - raw captures are not transmitted to cloud model under default policy
 - both Wireshark actions work and remain visible together
 - macOS Docker/release workflow passes
+
+Gate 9 is complete for V1. PR #12 merged after G9.1–G9.15 and all 24 release signoff criteria passed against the frozen macOS arm64 candidate, including native Wireshark acceptance, cloud-provider privacy inspection, bridge security review, reproducibility/persistence checks, and exact-head CI. See `docs/v1-acceptance.md`.
 
 ## Deferred post-V1 candidates
 
