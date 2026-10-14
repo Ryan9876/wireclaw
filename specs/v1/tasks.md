@@ -212,15 +212,15 @@ Requirements: R-D001 through R-D006 plus applicable security/privacy/resource re
 
 Tasks:
 
-- [ ] G8.1 Create pinned analyzer Docker image.
-- [ ] G8.2 Create web/API Docker packaging.
-- [ ] G8.3 Create `compose.yaml` with loopback-only published ports.
-- [ ] G8.4 Define bind-mounted data root.
-- [ ] G8.5 Create `.env.example` with safe defaults.
-- [ ] G8.6 macOS start/stop launcher.
-- [ ] G8.9 macOS host-bridge install/uninstall scripts.
-- [ ] G8.10 first-run prerequisite checks for Docker and Wireshark on macOS.
-- [ ] G8.11 macOS release smoke tests.
+- [x] G8.1 Create pinned analyzer Docker image.
+- [x] G8.2 Create web/API Docker packaging.
+- [x] G8.3 Create `compose.yaml` with loopback-only published ports.
+- [x] G8.4 Define bind-mounted data root.
+- [x] G8.5 Create `.env.example` with safe defaults.
+- [x] G8.6 macOS start/stop launcher.
+- [x] G8.9 macOS host-bridge install/uninstall scripts.
+- [x] G8.10 first-run prerequisite checks for Docker and Wireshark on macOS.
+- [x] G8.11 macOS release smoke tests.
 
 Legacy task IDs G8.7 (Windows launcher) and G8.8 (Linux launcher) are deferred to post-V1 platform qualification.
 
@@ -228,6 +228,8 @@ Exit criteria:
 - a macOS user with Docker and Wireshark can start Wireclaw without a developer toolchain
 - the complete core workflow and native Wireshark integration work in the packaged macOS release
 - release packaging preserves loopback-only host exposure, local-first data handling, and Gate 7 rules-only/provider privacy behavior
+
+Gate 8 is complete for V1. PR #11 merged after the same final archive-loaded macOS arm64 candidate passed both native Wireshark actions, persistence/immutability checks, security/privacy validation, and exact-head CI run #89.
 
 ## Gate 9 — V1 acceptance and hardening
 
