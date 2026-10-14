@@ -181,10 +181,41 @@ def main() -> int:
             status, report_bytes = request(base, f"/api/cases/{case_id}/report")
             assert status == 200
             report = json.loads(report_bytes)
-            assert report["reasoning"]["mode"] == "rules_only"
-            finding = next(
-                item for item in report["findings"] if item.get("wireshark", {}).get("applicable")
+            http_wait = next(
+                item for item in report["findings"] if item["category"] == "server.application_wait"
             )
+            assert http_wait["epistemic_class"] == "inferred"
+            assert http_wait["confidence"] == "medium"
+            assert len(http_wait["evidence_ids"]) == 1
+            request_frame = http_wait["affected_scope"]["request_frame"]
+            response_frame = http_wait["affected_scope"]["response_frame"]
+            assert (request_frame, response_frame) == (4, 5)
+            assert "visible server/application boundary" in " ".join(
+                http_wait["alternate_explanations"]
+            )
+            assert "downstream dependency" in " ".join(http_wait["alternate_explanations"])
+            assert http_wait["wireshark"]["display_filter"]
+            assert all(
+                http_wait["wireshark"][key]
+                for key in (
+                    "full_capture",
+                    "evidence_capture",
+                    "copy_filter",
+                    "show_packet_evidence",
+                )
+            )
+            segments = report["time_attribution"]["segments"]
+            server_wait_segment = next(
+                item for item in segments if item["name"] == "server_application_wait"
+            )
+            assert abs(server_wait_segment["duration_ms"] - 2100) <= 10
+            assert server_wait_segment["measurement_class"] == "derived"
+            assert server_wait_segment["evidence_ids"] == http_wait["evidence_ids"]
+            status, report_bytes = request(base, f"/api/cases/{case_id}/report")
+            assert status == 200
+            report = json.loads(report_bytes)
+            assert report["reasoning"]["mode"] == "rules_only"
+            finding = http_wait
             assert finding["wireshark"]["display_filter"]
             assert finding["wireshark"]["full_capture"]
             assert finding["wireshark"]["evidence_capture"]
@@ -208,6 +239,41 @@ def main() -> int:
                 / "capture"
             )
             assert hashlib.sha256(original_path.read_bytes()).hexdigest() == original_sha
+
+            # Opaque TCP silence is a negative control: the gap alone cannot
+            # create an HTTP or server/application semantic measurement.
+            status, created = request(
+                base,
+                "/api/cases",
+                method="POST",
+                body={"symptom": "the opaque TCP transaction is slow"},
+            )
+            assert status == 201
+            opaque_case_id = json.loads(created)["id"]
+            status, _ = request(
+                base,
+                f"/api/cases/{opaque_case_id}/capture",
+                method="POST",
+                body=fixtures["server_wait"],
+                content_type="application/octet-stream",
+            )
+            assert status == 200
+            assert (
+                request(base, f"/api/cases/{opaque_case_id}/investigate", method="POST")[0] == 200
+            )
+            status, opaque_report_bytes = request(base, f"/api/cases/{opaque_case_id}/report")
+            assert status == 200
+            opaque_report = json.loads(opaque_report_bytes)
+            assert opaque_report["conclusion"]["type"] == "insufficient_evidence"
+            assert not any(
+                item["category"] == "server.application_wait" for item in opaque_report["findings"]
+            )
+            assert not any(
+                item["name"] == "server_application_wait"
+                for item in opaque_report["time_attribution"]["segments"]
+            )
+            assert opaque_report["remaining_hypotheses"]
+            assert opaque_report["recommended_next_evidence"]
 
             compose(env, "down", files=host_route_files)
             compose(env, "up", files=host_route_files)
