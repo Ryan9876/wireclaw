@@ -90,12 +90,17 @@ _VALUE_FIELDS = {
 }
 
 _SECRET = re.compile(
-    r"(?i)(bearer\s+[A-Za-z0-9._~+/=-]+|(?:api[_-]?key|token|password|authorization)\s*[:=]\s*[^\s,;]+)"
+    r"(?i)(?:"
+    r"(?:authorization|cookie|set-cookie)\s*[:=]\s*(?:bearer\s+)?[^\r\n]+|"
+    r"bearer\s+[A-Za-z0-9._~+/=-]+|"
+    r"(?:api[_-]?key|token|password|session|secret|access[_-]?key|refresh[_-]?token)"
+    r"\s*[:=]\s*[^\s,;]+"
+    r")"
 )
 _ABS_PATH = re.compile(r"(?<![A-Za-z0-9+.-])/(?!/)[^\s,;]+|(?<![A-Za-z0-9])[A-Za-z]:\\[^\s,;]+")
 
 
-def _safe_symptom(value: str) -> str:
+def _safe_text(value: str) -> str:
     return _ABS_PATH.sub("[path omitted]", _SECRET.sub("[credential omitted]", value))
 
 
@@ -105,7 +110,7 @@ def _project(value, allowed):
     if isinstance(value, list):
         return [_project(item, _VALUE_FIELDS) for item in value[:200]]
     if isinstance(value, str):
-        return value[:512]
+        return _safe_text(value[:512])
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return None
@@ -146,12 +151,12 @@ def build_context(
     if not isinstance(capture_quality, dict):
         capture_quality = {}
     context = {
-        "symptom": _safe_symptom(case["symptom"]),
+        "symptom": _safe_text(case["symptom"]),
         "capture_quality": {
             "state": capture_quality.get("state"),
             "evidence_ids": sorted(capture_quality.get("evidence_ids", []))[:200],
             "limitations": [
-                str(item)[:512] for item in capture_quality.get("limitations", [])[:32]
+                _safe_text(str(item)[:512]) for item in capture_quality.get("limitations", [])[:32]
             ],
         },
         "evidence": evidence_projection(evidence, max_items),

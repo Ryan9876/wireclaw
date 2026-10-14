@@ -65,6 +65,7 @@ USER 0:0
 WORKDIR /opt/wireclaw
 COPY pyproject.toml ./
 COPY tests/ tests/
+COPY scripts/ scripts/
 ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/tmp/test-home \
     TMPDIR=/tmp

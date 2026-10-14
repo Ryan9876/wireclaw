@@ -297,9 +297,25 @@ func (s *server) open(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) loadManifest(requestID string) (manifest, string, error) {
 	var value manifest
-	path := filepath.Join(s.dataRoot, "bridge", "requests", requestID+".json")
+	bridgeDir := filepath.Join(s.dataRoot, "bridge")
+	requestsDir := filepath.Join(bridgeDir, "requests")
+	for _, dir := range []string{bridgeDir, requestsDir} {
+		info, err := os.Lstat(dir)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return value, "", errors.New("manifest unavailable")
+		}
+		canonical, err := filepath.EvalSymlinks(dir)
+		if err != nil || canonical != filepath.Clean(dir) {
+			return value, "", errors.New("manifest unavailable")
+		}
+	}
+	path := filepath.Join(requestsDir, requestID+".json")
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxRequestBytes {
+		return value, "", errors.New("manifest unavailable")
+	}
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil || canonical != filepath.Clean(path) {
 		return value, "", errors.New("manifest unavailable")
 	}
 	file, err := os.Open(path)
@@ -341,6 +357,15 @@ func (s *server) resolveArtifact(value manifest) (string, error) {
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", errors.New("path traversal")
 	}
+	caseRootPath := filepath.Join(s.dataRoot, "cases", value.CaseID)
+	caseRootInfo, err := os.Lstat(caseRootPath)
+	if err != nil || !caseRootInfo.IsDir() || caseRootInfo.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("artifact case unavailable")
+	}
+	caseRootCanonical, err := filepath.EvalSymlinks(caseRootPath)
+	if err != nil || caseRootCanonical != filepath.Clean(caseRootPath) {
+		return "", errors.New("artifact case unavailable")
+	}
 	candidate, err := filepath.Abs(filepath.Join(s.dataRoot, clean))
 	if err != nil {
 		return "", err
@@ -349,9 +374,9 @@ func (s *server) resolveArtifact(value manifest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	relative, err := filepath.Rel(s.dataRoot, resolved)
+	relative, err := filepath.Rel(caseRootCanonical, resolved)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("path escape")
+		return "", errors.New("case path escape")
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() {
