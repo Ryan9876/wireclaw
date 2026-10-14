@@ -1,5 +1,6 @@
 """Deterministic capabilities; directly callable without an API or model provider."""
 
+import os
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -24,7 +25,16 @@ class Analyzer:
         self.store = Store(data_root, limits or Limits())
         self.runner = Runner(self.store)
         # Source checkout default; installed consumers explicitly supply the shared contract.
-        schema = schema or Path(__file__).resolve().parents[4] / "contracts/evidence.schema.json"
+        schema = (
+            schema
+            or Path(
+                os.environ.get(
+                    "WIRECLAW_CONTRACTS_DIR",
+                    str(Path(__file__).resolve().parents[4] / "contracts"),
+                )
+            )
+            / "evidence.schema.json"
+        )
         import json
 
         self.validator = Draft202012Validator(json.loads(schema.read_text(encoding="utf-8")))

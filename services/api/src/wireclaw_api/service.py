@@ -39,7 +39,13 @@ class Service:
         self.lock = threading.Lock()
         try:
             self.db = Database(self.files)
-            schema = Path(__file__).resolve().parents[4] / "contracts/evidence.schema.json"
+            schema_root = Path(
+                os.environ.get(
+                    "WIRECLAW_CONTRACTS_DIR",
+                    str(Path(__file__).resolve().parents[4] / "contracts"),
+                )
+            )
+            schema = schema_root / "evidence.schema.json"
             self.validator = Draft202012Validator(json.loads(schema.read_text(encoding="utf-8")))
             self.recover()
         except BaseException:

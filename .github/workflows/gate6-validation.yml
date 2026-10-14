@@ -1,8 +1,8 @@
-name: Gate 6 validation
+name: Wireclaw validation
 
 on:
   push:
-    branches: [gate6-wireshark-evidence-bridge]
+    branches: [gate6-wireshark-evidence-bridge, gate8-docker-macos-release]
   pull_request:
     branches: [main]
 
@@ -99,3 +99,31 @@ jobs:
           go test ./...
           go vet ./...
           go build ./...
+
+  docker-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install -e '.[test]'
+      - name: Validate Compose and launcher contracts
+        run: |
+          docker compose --env-file .env.example -f compose.yaml config --quiet
+          python -m pytest -q tests/packaging
+      - name: Build and test pinned analyzer image
+        run: docker build --target core-test -t wireclaw-core:gate8-test .
+      - name: Build production core image and verify release versions
+        run: |
+          docker build --target core-runtime -t wireclaw-core:gate8 .
+          docker run --rm --entrypoint python wireclaw-core:gate8 /opt/wireclaw/verify_analyzer_versions.py
+      - name: Exercise the built release image
+        env:
+          WIRECLAW_TEST_HOST_GATEWAY: '1'
+        run: python scripts/validate_container_release.py

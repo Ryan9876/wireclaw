@@ -1,152 +1,82 @@
-# Deployment Design
+# Deployment
 
-Wireclaw V1 is a local macOS application distributed as a Dockerized core plus a small native Wireshark host bridge.
+Wireclaw V1 is released for **macOS arm64** as a staged Docker build context,
+the exact core image archive, and a prebuilt native Go host bridge. Windows and
+Linux remain post-V1 qualification targets; existing bridge code and CI are
+portability groundwork only.
 
-Windows and Linux are post-V1 release targets. Existing bridge code and CI coverage on those platforms are portability groundwork only until native release qualification is completed.
+## macOS V1 prerequisites
 
-## User prerequisites
+- macOS arm64
+- Docker-compatible runtime with Compose v2
+- Native Wireshark for macOS
+- The complete `wireclaw-release` bundle
 
-Required:
-- macOS
-- Docker Desktop or compatible Docker/Compose runtime
-- native Wireshark installation
+The user does not need Python, Node/npm, Go, TShark, capinfos, editcap, or
+mergecap. The core image contains the API, compiled React assets, Python
+analyzer, and pinned TShark/capinfos/editcap/mergecap binaries. Zeek is not
+packaged because no accepted V1 capability runs it.
 
-Not required for end users:
-- Python
-- Node.js
-- Go
-- Zeek installed on the host
-- TShark installed separately on the host for analysis
+## Release use
 
-Analyzer dependencies are packaged in the Wireclaw image.
+1. Unpack the complete release bundle into a user-writable directory.
+2. Run `launch/macos/install-host-bridge.sh` once.
+3. Run `launch/macos/start.sh` and open its printed localhost URL.
+4. Run `launch/macos/stop.sh` to stop the core and managed bridge.
 
-## Runtime topology
+The first start copies `.env.example` to `.env`. The defaults bind only
+`127.0.0.1:8765` and use `WIRECLAW_PROVIDER_MODE=none`. The launcher reads
+allowlisted values without sourcing or evaluating the file, validates both
+ports, and resolves `~/Library/Application Support/Wireclaw/data` to an absolute
+host path. Custom data roots may contain spaces or Unicode.
 
-```text
-Host
-├── Browser
-├── Docker runtime
-│   └── Wireclaw core
-│       ├── web
-│       ├── API/orchestrator
-│       ├── analyzer toolchain
-│       └── SQLite
-├── Wireclaw data root
-├── Wireclaw host bridge
-└── Native Wireshark
+To use a local OpenAI-compatible model server on the Mac, configure its URL as
+`http://host.docker.internal:<port>/v1` and choose local provider mode. Cloud
+mode requires HTTPS. Gate 7 sends normalized evidence; raw captures and packet
+payloads stay local by default. A provider is optional and is not part of the
+core health check.
+
+The host bridge shares the host data path, listens only on numeric loopback, and
+launches only the configured/discovered native Wireshark executable using the
+accepted Gate 6 grants. If Wireshark is outside the standard application path,
+set `WIRECLAW_WIRESHARK_PATH` in the environment before running the launcher.
+Bridge uninstall removes only the packaged bridge and its Wireclaw runtime
+state; it preserves all case data.
+
+Normal stop runs `docker compose down --remove-orphans`; it does not remove
+volumes or delete the host data root. SQLite, original captures, derived
+evidence captures, reports, and reasoning audit metadata persist in that one
+bind-mounted root.
+
+## Release build and verification
+
+The release bundle contains its full Docker build context, `.env.example`,
+macOS launch/install scripts, the verified `darwin-arm64` bridge, and
+`core-image.tar`. Start loads that archive when the local image ID does not
+match the bundled `core-image-id`; it verifies the loaded ID and starts without
+rebuilding. The packaging process records source SHA, Dockerfile/Compose hashes,
+immutable base image identities, analyzer lock, compiled web asset hash, core
+image ID and archive SHA-256, and bridge SHA-256 in `release-metadata.json`.
+This keeps the exact image tested by release engineering in the staged bundle.
+
+To stage a candidate from a clean committed source tree on a macOS arm64 build
+host, run:
+
+```sh
+python scripts/package_release.py /path/to/output
 ```
 
-The core application is published to loopback only.
+This command is for release engineering and uses Go and Docker during the build.
+End users do not run it or need those development tools.
 
-Example conceptual Compose port binding:
+## Development setup
 
-```yaml
-ports:
-  - "127.0.0.1:8765:8765"
-```
+Development continues to use the repository Python environment, npm, Go, and
+host packet tools as documented in the API, analyzer, web, and bridge READMEs.
+Those development commands are separate from the staged release launch path.
 
-The final port remains configurable.
+## Future platforms
 
-## Data persistence
-
-Use a host bind mount so both Docker and the native host bridge can refer to the same logical case artifacts.
-
-Conceptually:
-
-```text
-<wireclaw-home>/data  <->  /wireclaw/data
-```
-
-The API stores logical artifact IDs and container-relative paths. The bridge maps the same logical IDs to canonical host paths beneath its configured data root.
-
-## Release contents
-
-Target V1 release bundle:
-
-```text
-wireclaw/
-├── compose.yaml
-├── .env.example
-├── README.md
-├── launch/
-│   └── macos/
-└── host-bridge/
-    └── macos/
-```
-
-Future Windows/Linux release bundles should preserve the same logical core/data/bridge boundaries while adding platform-specific launch/install behavior.
-
-## First-run behavior
-
-Launcher should:
-
-1. verify Docker is available
-2. verify Wireshark is installed or request its path
-3. create Wireclaw data/config directories
-4. create/generate local bridge credential
-5. install/start host bridge
-6. start Docker services
-7. wait for local health endpoint
-8. open localhost application in default browser
-
-Failure should identify the exact missing prerequisite and corrective action.
-
-## Platform specifics
-
-### macOS — V1 supported host
-
-- discover standard Wireshark application path first
-- native bridge distributed for supported architecture(s)
-- launcher may use a `.command` wrapper or packaged installer, but product behavior should not depend on Terminal expertise
-- release smoke and native Wireshark acceptance are required before V1 signoff
-
-### Windows — post-V1 roadmap
-
-Existing bridge discovery/build coverage may remain in CI, but Windows is not a supported V1 release target. Future qualification must add packaged launcher/install behavior, real native Wireshark acceptance, Docker/core smoke testing, and Gate 9-equivalent end-to-end/security acceptance.
-
-### Linux — post-V1 roadmap
-
-Existing bridge discovery/build coverage may remain in CI, but Linux is not a supported V1 release target. Future qualification must add packaged launcher/install behavior, real native Wireshark acceptance, Docker/core smoke testing, and Gate 9-equivalent end-to-end/security acceptance.
-
-## Configuration
-
-Configuration categories:
-
-### Safe user-facing
-- application port
-- data root
-- model-provider mode
-- provider endpoint/model
-- analysis limits
-
-### Sensitive
-- cloud model API key
-- bridge credential
-
-Sensitive values must not be committed to the repository. Release docs should prefer OS/container secret/environment mechanisms suitable for a local app.
-
-## Upgrade policy
-
-A release should pin:
-- Wireclaw application version
-- TShark/Wireshark CLI version in analyzer image
-- Zeek version
-- Python dependencies
-- Node/web dependencies
-- host bridge version
-
-On upgrade:
-- preserve cases/data
-- migrate SQLite schema explicitly
-- never rewrite original captures
-- report analyzer-version differences when a historical case is re-run
-
-## Uninstall policy
-
-Uninstalling application binaries/containers must not silently delete case data.
-
-The user should explicitly choose whether to preserve or delete:
-- original captures
-- evidence captures
-- reports
-- local database/configuration
+Windows and Linux are not supported V1 release hosts. Their bridge code and
+build checks may remain, but launchers/installers and native release acceptance
+are deferred until each platform completes its own qualification.

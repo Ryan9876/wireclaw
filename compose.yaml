@@ -1,0 +1,40 @@
+services:
+  wireclaw-core:
+    image: wireclaw-core:gate8
+    user: "${WIRECLAW_UID:-10001}:${WIRECLAW_GID:-10001}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WIRECLAW_PORT:-8765}:8765"
+    volumes:
+      - type: bind
+        source: "${WIRECLAW_DATA_ROOT:?Set WIRECLAW_DATA_ROOT in .env}"
+        target: /var/lib/wireclaw
+    environment:
+      WIRECLAW_BRIDGE_PORT: "${WIRECLAW_BRIDGE_PORT:-8766}"
+      WIRECLAW_PUBLIC_PORT: "${WIRECLAW_PORT:-8765}"
+      WIRECLAW_PROVIDER_MODE: "${WIRECLAW_PROVIDER_MODE:-none}"
+      WIRECLAW_PROVIDER_BASE_URL: "${WIRECLAW_PROVIDER_BASE_URL:-}"
+      WIRECLAW_PROVIDER_MODEL: "${WIRECLAW_PROVIDER_MODEL:-}"
+      WIRECLAW_PROVIDER_API_KEY: "${WIRECLAW_PROVIDER_API_KEY:-}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    pids_limit: 128
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,urllib.request; req=urllib.request.Request('http://127.0.0.1:8765/api/health',headers={'Host':'127.0.0.1:'+os.environ.get('WIRECLAW_PUBLIC_PORT','8765')}); urllib.request.urlopen(req,timeout=2).read()"
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 5

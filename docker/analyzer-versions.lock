@@ -1,0 +1,13 @@
+{
+  "base_image": "ubuntu:24.04@sha256:a853f94d226358a79c740cfc7bce0c289748f3fe3488d921d038ccd752c61b60",
+  "web_builder_image": "node:24.15.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6",
+  "python": "3.12.3",
+  "python_deb": "3.12.3-1ubuntu0.17",
+  "tshark": "4.2.2",
+  "wireshark_deb": "4.2.2-1.1build3",
+  "capinfos": "4.2.2",
+  "editcap": "4.2.2",
+  "mergecap": "4.2.2",
+  "zeek": null,
+  "zeek_status": "No V1 capability invokes Zeek; it remains optional and unavailable in the packaged image."
+}

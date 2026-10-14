@@ -17,6 +17,7 @@ class ProviderMode(StrEnum):
 @dataclass(frozen=True)
 class Policy:
     host: str = "127.0.0.1"
+    container_network: bool = False
     port: int = 8765
     bridge_port: int = 8766
     max_cases: int = 100
@@ -46,7 +47,9 @@ class Policy:
     diagnostics: DiagnosticLimits = field(default_factory=DiagnosticLimits)
 
     def __post_init__(self):
-        if not ip_address(self.host).is_loopback:
+        if type(self.container_network) is not bool or not (
+            ip_address(self.host).is_loopback or (self.container_network and self.host == "0.0.0.0")
+        ):
             raise ValueError("loopback_required")
         for port in (self.port, self.bridge_port):
             if type(port) is not int or not 1 <= port <= 65535:
@@ -54,6 +57,7 @@ class Policy:
         for key, value in vars(self).items():
             if key in (
                 "host",
+                "container_network",
                 "port",
                 "bridge_port",
                 "analyzer",
@@ -134,6 +138,8 @@ class Policy:
         import os
 
         values = {
+            "port": int(os.environ.get("WIRECLAW_PUBLIC_PORT", "8765")),
+            "bridge_port": int(os.environ.get("WIRECLAW_BRIDGE_PORT", "8766")),
             "provider_mode": os.environ.get("WIRECLAW_PROVIDER_MODE", "none"),
             "provider_base_url": os.environ.get("WIRECLAW_PROVIDER_BASE_URL"),
             "provider_model": os.environ.get("WIRECLAW_PROVIDER_MODEL"),
