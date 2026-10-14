@@ -100,7 +100,11 @@ CREATE TABLE evidence (
  id TEXT NOT NULL, record TEXT NOT NULL, run_id TEXT NOT NULL REFERENCES runs(id),
  PRIMARY KEY(case_id, id));
 CREATE TABLE deletions (case_id TEXT PRIMARY KEY, trash_path TEXT NOT NULL);
-PRAGMA user_version = 1;
+CREATE TABLE reasoning_steps (
+ case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+ step_id TEXT NOT NULL, sequence INTEGER NOT NULL, at TEXT NOT NULL, metadata TEXT NOT NULL,
+ PRIMARY KEY(case_id, step_id), UNIQUE(case_id, sequence));
+PRAGMA user_version = 2;
 """
 
 
@@ -114,7 +118,16 @@ class Database:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version == 0:
                 conn.executescript("BEGIN IMMEDIATE;" + SCHEMA + "COMMIT;")
-            elif version != 1:
+            elif version == 1:
+                conn.executescript(
+                    "BEGIN IMMEDIATE;"
+                    "CREATE TABLE reasoning_steps ("
+                    "case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,"
+                    "step_id TEXT NOT NULL, sequence INTEGER NOT NULL, at TEXT NOT NULL,"
+                    "metadata TEXT NOT NULL, PRIMARY KEY(case_id,step_id),"
+                    "UNIQUE(case_id,sequence)); PRAGMA user_version=2; COMMIT;"
+                )
+            elif version != 2:
                 raise ApiError("unsupported_schema_version", 500)
 
     @contextmanager

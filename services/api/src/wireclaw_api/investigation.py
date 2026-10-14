@@ -828,6 +828,50 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                         ),
                     )
                 )
+        http = _stream_item(stream_index, stream, "analyze_http_timing")
+        if http:
+            value = http.get("value") if isinstance(http.get("value"), dict) else {}
+            transactions = (
+                value.get("transactions") if isinstance(value.get("transactions"), list) else []
+            )
+            eid = _evidence_id(http)
+            delayed = [
+                tx
+                for tx in transactions
+                if isinstance(tx, dict)
+                and (_number(tx.get("request_to_first_response_seconds")) or 0)
+                >= STAGE_DELAY_SECONDS
+            ]
+            if eid and delayed:
+                transaction = delayed[0]
+                seconds = _number(transaction["request_to_first_response_seconds"])
+                request_range = transaction.get("request_frame_range", {})
+                request_completion = request_range.get("end")
+                first_response = transaction.get("first_response_frame")
+                frames = [request_completion, first_response]
+                if any(not isinstance(frame, int) or frame < 1 for frame in frames):
+                    continue
+                display_filter = transaction.get("display_filter")
+                findings.append(
+                    RuleFinding(
+                        91 + bonus,
+                        "HTTP server/application response wait measured",
+                        "server.application_wait",
+                        _confidence("medium", quality),
+                        f"TCP stream {stream} has a measured {seconds * 1000:.0f} ms interval from HTTP request completion at frame {frames[0]} to the first correlated response at frame {frames[1]}.",
+                        ("server_application",),
+                        (eid,),
+                        {**scope, "request_frame": frames[0], "response_frame": frames[1]},
+                        (
+                            "The capture localizes the interval to the visible server/application boundary but cannot distinguish the endpoint from a downstream dependency.",
+                        ),
+                        tuple(http.get("limitations", [])),
+                        (
+                            "Compare synchronized server-side capture and application or load-balancer timing for this transaction.",
+                        ),
+                        display_filter if isinstance(display_filter, str) else None,
+                    )
+                )
     return findings
 
 
@@ -940,6 +984,32 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
                     limitations.append(
                         "TLS attribution ends at the first visible ServerHello milestone; encrypted session completion is not assumed."
                     )
+        http = _stream_item(stream_index, stream, "analyze_http_timing")
+        if http:
+            value = http.get("value") if isinstance(http.get("value"), dict) else {}
+            transactions = (
+                value.get("transactions") if isinstance(value.get("transactions"), list) else []
+            )
+            measured = [
+                transaction
+                for transaction in transactions
+                if isinstance(transaction, dict)
+                and _number(transaction.get("request_to_first_response_seconds")) is not None
+            ]
+            eid = _evidence_id(http)
+            if measured and eid:
+                seconds = _number(measured[0]["request_to_first_response_seconds"])
+                segments.append(
+                    {
+                        "name": "server_application_wait",
+                        "duration_ms": round(seconds * 1000, 6),
+                        "measurement_class": "derived",
+                        "evidence_ids": [eid],
+                    }
+                )
+                limitations.append(
+                    "HTTP request-to-first-response timing localizes delay to the visible server/application boundary; the capture cannot distinguish that endpoint from a downstream dependency."
+                )
         if segments:
             limitations.append(
                 "Time attribution is a non-overlapping measured stage subtotal for the top-ranked TCP stream, not complete user-visible transaction time."

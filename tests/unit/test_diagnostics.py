@@ -109,6 +109,70 @@ def test_structural_parser_bounds_and_occurrences():
     assert not d.Index(nested).tcp
 
 
+def test_http_timing_requires_correlated_http_semantics_and_measures_request_wait():
+    request = {
+        "frame": 4,
+        "time": 1.25,
+        "src": "192.0.2.1",
+        "dst": "192.0.2.2",
+        "src_port": 50000,
+        "dst_port": 80,
+        "stream": 0,
+        "fields": {"http.request": [True], "http.response_in": [5]},
+    }
+    response = {
+        "frame": 5,
+        "time": 3.35,
+        "src": "192.0.2.2",
+        "dst": "192.0.2.1",
+        "src_port": 80,
+        "dst_port": 50000,
+        "stream": 0,
+        "fields": {"http.response": [True], "http.request_in": [4]},
+    }
+    result = d.http_timing([request, response])
+    transaction = result["transactions"][0]
+    assert result["state"] == "measured"
+    assert transaction["request_to_first_response_seconds"] == pytest.approx(2.1)
+    assert transaction["request_frame_range"] == {"start": 4, "end": 4}
+    assert transaction["first_response_frame"] == 5
+    assert transaction["display_filter"] == (
+        "tcp.stream == 0 && (frame.number == 4 || frame.number == 5)"
+    )
+    assert transaction["response_transfer_seconds"] == 0
+
+    opaque = [dict(request, fields={}), dict(response, fields={})]
+    unavailable = d.http_timing(opaque)
+    assert unavailable["state"] == "not_observable"
+    assert unavailable["transactions"] == []
+    assert any("TCP silence alone" in item for item in unavailable["limitations"])
+
+
+def test_http_timing_is_opt_in_for_legacy_diagnostic_contract_and_included_for_gate7():
+    rows = parse(
+        line(1, "0", **{"tcp.flags.syn": "1", "tcp.flags.ack": "0"}),
+        line(2, ".01", **reverse(**{"tcp.flags.syn": "1"})),
+        line(3, ".02"),
+        line(4, ".03", **{"http.request": "1", "http.response_in": "5"}),
+        line(5, "2.13", **reverse(**{"http.response": "1", "http.request_in": "4"})),
+    )
+    legacy = d.build("0" * 64, rows, "4.2.2", {"limitations": []}, LIMITS, VALIDATOR)
+    gate7 = d.build(
+        "0" * 64,
+        rows,
+        "4.2.2",
+        {"limitations": []},
+        LIMITS,
+        VALIDATOR,
+        include_http_timing=True,
+    )
+    assert not any(item["category"] == "analyze_http_timing" for item in legacy)
+    http = next(item for item in gate7 if item["category"] == "analyze_http_timing")
+    assert http["value"]["transactions"][0]["request_to_first_response_seconds"] == pytest.approx(
+        2.1
+    )
+
+
 @pytest.mark.parametrize("cap", list(Capability))
 def test_empty_capture_is_schema_valid_and_has_no_numeric_claim(cap):
     req = DiagnosticRequest("0" * 64, cap)

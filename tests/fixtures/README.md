@@ -58,6 +58,7 @@ python tests/fixtures/generate_gate2.py data/incoming
 | fragments | Two IPv4 and two IPv6 fragments; offsets 0 and 2 encoded in 8-byte units; fixed fragment ID |
 | high_rtt | 400 ms TCP establishment; 200 ms ACK RTT median |
 | server_wait | Same 10 ms transport ACK timings as clean, but synthetic response begins after 2 seconds; no zero window; no application/root-cause attribution |
+| http_server_wait | Valid HTTP/1.1 GET and correlated 200 response; first response is constructed 2.1 seconds after request completion for measured application/server-boundary timing, without claiming internal cause |
 
 Real integration tests additionally generate split TLS records with contributing
 frames and TCP DNS with single/coalesced messages. Gate 1 incomplete, midstream,

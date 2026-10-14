@@ -128,16 +128,23 @@ class Analyzer:
     def list_conversations(self, capture_id: str) -> dict:
         return self._baseline(capture_id)["evidence"][4]
 
-    def diagnose(self, capture_id: str) -> dict:
+    def diagnose(self, capture_id: str, *, include_http_timing: bool = False) -> dict:
         """Run Gate 1 first, then all fixed Gate 2 capabilities; preserve baseline on failure."""
-        return self._diagnose(capture_id)
+        return self._diagnose(capture_id, include_http_timing=include_http_timing)
 
     def run_diagnostic(self, request: diagnostics.DiagnosticRequest) -> dict:
         if not isinstance(request, diagnostics.DiagnosticRequest):
             raise AnalyzerError("invalid_diagnostic_request")
         return self._diagnose(request.capture_id, request)
 
-    def _diagnose(self, capture_id, request=None):
+    def run_http_timing(self, capture_id: str, tcp_stream: int | None = None) -> dict:
+        """Run the separate Gate 7 application-timing capability."""
+        return self._diagnose(
+            capture_id,
+            diagnostics.DiagnosticRequest(capture_id, diagnostics.HTTP_TIMING, tcp_stream),
+        )
+
+    def _diagnose(self, capture_id, request=None, *, include_http_timing=False):
         baseline = self._baseline(capture_id)
         path = self.store.verify(capture_id)
         rows = diagnostics.packets(
@@ -157,6 +164,7 @@ class Analyzer:
             self.diagnostic_limits,
             self.validator,
             request,
+            include_http_timing=include_http_timing,
         )
         self.store.verify(capture_id)
         result = {
@@ -172,8 +180,17 @@ class Analyzer:
                 "diagnostic_fields": list(FIELDS + diagnostics.EXTRA_FIELDS),
                 "two_pass": True,
                 "decryption": False,
+                "http_timing": bool(
+                    include_http_timing
+                    or (request and request.capability == diagnostics.HTTP_TIMING)
+                ),
             },
-            "request": {"capability": request.capability.value, "tcp_stream": request.tcp_stream}
+            "request": {
+                "capability": request.capability.value
+                if isinstance(request.capability, diagnostics.Capability)
+                else request.capability,
+                "tcp_stream": request.tcp_stream,
+            }
             if request
             else {"capability": "all"},
             "evidence": evidence,

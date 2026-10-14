@@ -179,18 +179,18 @@ Requirements: R-F011, R-F012, R-F014 through R-F016, R-F024, R-F026, R-S003 thro
 
 Tasks:
 
-- [ ] G7.1 Define provider interface.
-- [ ] G7.2 Implement OpenAI-compatible cloud adapter.
-- [ ] G7.3 Implement OpenAI-compatible local adapter.
-- [ ] G7.4 Implement prompt/context builder using normalized evidence.
-- [ ] G7.5 Implement typed capability-request schema.
-- [ ] G7.6 Implement investigation-step bounds/repetition detection.
-- [ ] G7.7 Validate model-requested capabilities and parameters.
-- [ ] G7.8 Implement hypothesis/finding proposal validation against evidence IDs.
-- [ ] G7.9 Prevent unsupported model claims from entering final findings.
-- [ ] G7.10 Add provider timeout/failure fallback to deterministic report.
-- [ ] G7.11 Add prompt-injection/adversarial text fixtures sourced from capture fields.
-- [ ] G7.12 Implement deterministic `analyze_http_timing` plus positive decodable and negative opaque server-wait fixtures.
+- [x] G7.1 Define provider interface.
+- [x] G7.2 Implement OpenAI-compatible cloud adapter.
+- [x] G7.3 Implement OpenAI-compatible local adapter.
+- [x] G7.4 Implement prompt/context builder using normalized evidence.
+- [x] G7.5 Implement typed capability-request schema.
+- [x] G7.6 Implement investigation-step bounds/repetition detection.
+- [x] G7.7 Validate model-requested capabilities and parameters.
+- [x] G7.8 Implement hypothesis/finding proposal validation against evidence IDs.
+- [x] G7.9 Prevent unsupported model claims from entering final findings.
+- [x] G7.10 Add provider timeout/failure fallback to deterministic report.
+- [x] G7.11 Add prompt-injection/adversarial text fixtures sourced from capture fields.
+- [x] G7.12 Implement deterministic `analyze_http_timing` plus positive decodable and negative opaque server-wait fixtures.
 
 Exit criteria:
 - the model can deepen investigations only through typed capabilities

@@ -281,7 +281,7 @@ export interface components {
              * Capability
              * @enum {string}
              */
-            capability: "get_capture_metadata" | "assess_capture_quality" | "list_protocols" | "list_endpoints" | "list_conversations" | "analyze_dns" | "analyze_tcp_establishment" | "analyze_tcp_health" | "analyze_rtt" | "analyze_window_behavior" | "analyze_tcp_resets" | "analyze_throughput" | "analyze_mss" | "analyze_fragmentation" | "analyze_pmtud_signals" | "analyze_tls_handshakes";
+            capability: "get_capture_metadata" | "assess_capture_quality" | "list_protocols" | "list_endpoints" | "list_conversations" | "analyze_dns" | "analyze_tcp_establishment" | "analyze_tcp_health" | "analyze_rtt" | "analyze_window_behavior" | "analyze_tcp_resets" | "analyze_throughput" | "analyze_mss" | "analyze_fragmentation" | "analyze_pmtud_signals" | "analyze_tls_handshakes" | "analyze_http_timing";
             /** Tcp Stream */
             tcp_stream?: number | null;
         };

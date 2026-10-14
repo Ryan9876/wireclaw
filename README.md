@@ -90,7 +90,7 @@ Gates 1 through 6 are merged. Gate 6 completed the evidence-capture and native W
 
 Gate 6 merged through [PR #8](https://github.com/Ryan9876/wireclaw/pull/8); see [Gate 6 verification](docs/gate6-verification.md). The implementation-grade Gate 7–9 specifications and agent guidance merged through [PR #9](https://github.com/Ryan9876/wireclaw/pull/9).
 
-Gate 7 is the next implementation gate and remains unimplemented. Coding agents must follow `AGENTS.md` and `specs/v1/gate7-execution.md` in addition to the higher-authority V1 specification. See [web startup instructions](apps/web/README.md) and [Gate 5 verification](docs/gate5-verification.md).
+Gate 7 implementation is underway on `gate7-reasoning-provider`; it adds optional OpenAI-compatible reasoning and deterministic HTTP timing. It is not accepted or merged yet. See [Gate 7 execution](specs/v1/gate7-execution.md) and [Gate 7 verification](docs/gate7-verification.md) for scope and evidence.
 
 ## Gate 1 analyzer
 

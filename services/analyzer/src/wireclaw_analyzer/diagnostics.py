@@ -32,6 +32,9 @@ class Capability(Enum):
     TLS = "analyze_tls_handshakes"
 
 
+HTTP_TIMING = "analyze_http_timing"
+
+
 @dataclass(frozen=True)
 class DiagnosticLimits:
     max_evidence_items: int = 5_000
@@ -48,7 +51,7 @@ class DiagnosticLimits:
 @dataclass(frozen=True)
 class DiagnosticRequest:
     capture_id: str
-    capability: Capability
+    capability: Capability | str
     tcp_stream: int | None = None
 
     def __post_init__(self):
@@ -58,7 +61,7 @@ class DiagnosticRequest:
             "[a-f0-9]{64}", self.capture_id
         ):
             raise AnalyzerError("invalid_capture_id")
-        if not isinstance(self.capability, Capability):
+        if not isinstance(self.capability, Capability) and self.capability != HTTP_TIMING:
             raise AnalyzerError("invalid_capability")
         if self.tcp_stream is not None and (
             type(self.tcp_stream) is not int
@@ -77,6 +80,8 @@ BOOLS = {
     "ip.flags.df",
     "ip.flags.mf",
     "ipv6.fraghdr.more",
+    "http.request",
+    "http.response",
 }
 LABELS = {f for f in EXTRA_FIELDS if f.startswith("tcp.analysis.")} - {
     "tcp.analysis.ack_rtt",
@@ -116,6 +121,8 @@ REFS = {
     "dns.retransmit_request_in",
     "tcp.segment",
     "tls.segment",
+    "http.request_in",
+    "http.response_in",
 }
 
 
@@ -1161,6 +1168,88 @@ def network(index, capability):
     }
 
 
+def http_timing(stream_rows):
+    """Measure only plaintext HTTP/1.x pairs correlated by TShark frame references."""
+    requests = {}
+    responses = {}
+    for row in stream_rows:
+        if flag(row, "http.request"):
+            requests[row["frame"]] = row
+        if flag(row, "http.response"):
+            responses[row["frame"]] = row
+    pairs = {}
+    for response_frame, response in responses.items():
+        request_frame = first(response, "http.request_in")
+        if request_frame in requests:
+            pairs[request_frame] = (response_frame, response)
+    for request_frame, request in requests.items():
+        response_frame = first(request, "http.response_in")
+        if response_frame in responses:
+            pairs[request_frame] = (response_frame, responses[response_frame])
+
+    by_frame = {row["frame"]: row for row in stream_rows}
+    timing_reliable = not any(
+        second["time"] < first_row["time"] for first_row, second in pairwise(stream_rows)
+    )
+    transactions = []
+    for request_frame, (response_frame, response) in sorted(pairs.items()):
+        request = requests[request_frame]
+        stream = request["stream"]
+        request_frames = sorted(set(request["fields"].get("tcp.segment", [])) | {request_frame})
+        response_frames = sorted(set(response["fields"].get("tcp.segment", [])) | {response_frame})
+        first_response = by_frame.get(response_frames[0], response)
+        elapsed = interval(request, first_response, timing_reliable)
+        if elapsed is None:
+            continue
+        transfer = interval(first_response, response, timing_reliable)
+        frame_refs = sorted(set(request_frames + response_frames))
+        transactions.append(
+            {
+                "request_frame_range": {
+                    "start": request_frames[0],
+                    "end": request_frames[-1],
+                },
+                "request_completion_time": float(request["time"]),
+                "first_response_frame": response_frames[0],
+                "first_response_time": float(first_response["time"]),
+                "request_to_first_response_seconds": elapsed,
+                "response_transfer_seconds": transfer,
+                "response_completion_frame": response_frame,
+                "tcp_stream": stream,
+                "client": endpoint(request),
+                "server": endpoint(request, False),
+                "frame_refs": frame_refs,
+                "display_filter": (
+                    f"tcp.stream == {stream} && "
+                    "(" + " || ".join(f"frame.number == {frame}" for frame in frame_refs) + ")"
+                ),
+                "response_frame_range": {
+                    "start": response_frames[0],
+                    "end": response_frames[-1],
+                },
+            }
+        )
+    limitations = [
+        "HTTP transaction boundaries follow TShark request/response correlation; contributing TCP frames are included when the dissector exposes reassembly references.",
+        "Response transfer timing spans the first contributing frame through the frame where TShark completed response dissection; retransmissions and unobserved segments can limit interpretation.",
+        "A measured server/application boundary does not identify the internal server cause or distinguish the visible endpoint from a downstream dependency.",
+    ]
+    if not transactions:
+        limitations.append(
+            "No complete HTTP/1.x request/response pair with deterministic TShark frame correlation was observed; TCP silence alone is not application-wait evidence."
+        )
+    if not timing_reliable:
+        limitations.append(
+            "A timestamp regression in the TCP stream makes HTTP elapsed-time attribution unavailable."
+        )
+    return {
+        "state": "measured" if transactions else "not_observable",
+        "transactions": transactions,
+        "limitations": limitations,
+        "calculation": "Request completion to first correlated HTTP response frame using capture timestamps.",
+    }
+
+
 def ensure_bytes(value, limits):
     size = 1  # persisted trailing newline
     for chunk in json.JSONEncoder(allow_nan=False, sort_keys=True, indent=2).iterencode(value):
@@ -1169,11 +1258,25 @@ def ensure_bytes(value, limits):
             raise AnalyzerError("diagnostic_evidence_byte_limit")
 
 
-def build(capture_id, rows, version, quality, limits, validator, request=None):
+def build(
+    capture_id,
+    rows,
+    version,
+    quality,
+    limits,
+    validator,
+    request=None,
+    *,
+    include_http_timing=False,
+):
     index = Index(rows)
     evidence = []
     records = 0
-    wanted = [request.capability] if request else list(Capability)
+    wanted = (
+        [request.capability]
+        if request
+        else [*Capability, *([HTTP_TIMING] if include_http_timing else [])]
+    )
     # Conservative shared quality limitations remain attached to all diagnostic results.
     common = [
         "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
@@ -1242,6 +1345,14 @@ def build(capture_id, rows, version, quality, limits, validator, request=None):
         else:
             if cap is Capability.DNS:
                 refs = [r["frame"] for r in index.dns]
+            elif cap == HTTP_TIMING:
+                refs = sorted(
+                    {
+                        frame
+                        for transaction in value.get("transactions", [])
+                        for frame in transaction.get("frame_refs", [])
+                    }
+                )
             elif cap in (Capability.MSS, Capability.FRAGMENTATION, Capability.PMTUD):
                 refs = sorted(
                     {record["frame"] for record in value.get("records", [])}
@@ -1259,6 +1370,7 @@ def build(capture_id, rows, version, quality, limits, validator, request=None):
                 Capability.MSS: "tcp.options.mss_val",
                 Capability.FRAGMENTATION: "ip.flags.mf || ip.frag_offset || ipv6.fraghdr",
                 Capability.PMTUD: "ip || ipv6",
+                HTTP_TIMING: "http",
             }.get(cap, "tcp")
         if (
             cap in (Capability.MSS, Capability.FRAGMENTATION, Capability.PMTUD)
@@ -1271,7 +1383,7 @@ def build(capture_id, rows, version, quality, limits, validator, request=None):
         limitations = common + value.get("limitations", [])
         item = normalize.evidence_item(
             capture_id,
-            cap.value,
+            cap.value if isinstance(cap, Capability) else cap,
             "tshark",
             version,
             value,
@@ -1334,6 +1446,8 @@ def build(capture_id, rows, version, quality, limits, validator, request=None):
                     value = throughput(packets_, setup)
                 elif cap is Capability.TLS:
                     value = tls(packets_, setup, index)
+                elif cap == HTTP_TIMING:
+                    value = http_timing(packets_)
                 else:
                     # MSS request scoped to a stream uses the same predefined observation.
                     local = Index(packets_)

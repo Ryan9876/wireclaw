@@ -56,6 +56,69 @@ export type Report = {
   analyzer_versions: {
     [k: string]: string;
   };
+  reasoning?: {
+    mode: 'rules_only' | 'model_assisted' | 'model_fallback';
+    status: 'complete' | 'fallback';
+    steps: number;
+    provider_mode: 'none' | 'openai_compatible_cloud' | 'openai_compatible_local';
+    model: string | null;
+    failure_code?: string;
+    /**
+     * @maxItems 16
+     */
+    accepted_categories?:
+      | []
+      | [string]
+      | [string, string]
+      | [string, string, string]
+      | [string, string, string, string]
+      | [string, string, string, string, string]
+      | [string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string
+        ];
+    rejected_proposals?: number;
+  };
 };
 /**
  * This interface was referenced by `undefined`'s JSON-Schema

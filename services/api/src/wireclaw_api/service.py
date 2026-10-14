@@ -140,8 +140,10 @@ class Service:
             conn.execute("INSERT INTO history VALUES(?,?,?,?)", (case_id, seq, state, now()))
 
     def start(self, case_id, capability, parameters):
+        policy_fingerprint = asdict(self.policy)
+        policy_fingerprint.pop("provider_api_key", None)
         key = hashlib.sha256(
-            encode({"capability": capability, "policy": asdict(self.policy), **parameters}).encode()
+            encode({"capability": capability, "policy": policy_fingerprint, **parameters}).encode()
         ).hexdigest()
         with self.db.connect() as conn:
             self.db.case(conn, case_id)
@@ -411,7 +413,7 @@ class Service:
             case_id,
             "diagnostics",
             {},
-            lambda: analyzer.diagnose(case["capture_sha"]),
+            lambda: analyzer.diagnose(case["capture_sha"], include_http_timing=True),
             fatal=True,
             versions=analyzer.versions,
         )
@@ -446,6 +448,8 @@ class Service:
         else:
 
             def operation():
+                if request.capability == "analyze_http_timing":
+                    return analyzer.run_http_timing(case["capture_sha"], request.tcp_stream)
                 return analyzer.run_diagnostic(
                     DiagnosticRequest(
                         case["capture_sha"], Capability(request.capability), request.tcp_stream
