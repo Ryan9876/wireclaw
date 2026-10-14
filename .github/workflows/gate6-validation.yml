@@ -107,6 +107,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
       - name: Install Python test dependencies
         run: |
           python -m pip install -e '.[test]'
@@ -121,4 +124,6 @@ jobs:
           docker build --target core-runtime -t wireclaw-core:gate8 .
           docker run --rm --entrypoint python wireclaw-core:gate8 /opt/wireclaw/verify_analyzer_versions.py
       - name: Exercise the built release image
+        env:
+          WIRECLAW_TEST_HOST_GATEWAY: '1'
         run: python scripts/validate_container_release.py

@@ -107,6 +107,20 @@ def wait_health(base: str):
     raise RuntimeError("core_health_timeout")
 
 
+def ci_host_route_override(directory: Path) -> tuple[Path, ...]:
+    if os.environ.get("WIRECLAW_TEST_HOST_GATEWAY") != "1":
+        return ()
+    override = directory / "compose.test-host-route.yaml"
+    override.write_text(
+        "services:\n"
+        "  wireclaw-core:\n"
+        "    extra_hosts:\n"
+        "      - host.docker.internal:host-gateway\n",
+        encoding="utf-8",
+    )
+    return (override,)
+
+
 def main() -> int:
     app_port = free_port()
     bridge_port = free_port()
@@ -115,6 +129,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="Wireclaw Gate8 Release ") as temp:
         root = Path(temp) / "Case Data Ω"
         root.mkdir()
+        host_route_files = ci_host_route_override(Path(temp))
         fixtures = generate(Path(temp) / "fixtures")
         original_bytes = fixtures["http_server_wait"]
         original_sha = hashlib.sha256(original_bytes).hexdigest()
@@ -130,7 +145,7 @@ def main() -> int:
             "WIRECLAW_PROVIDER_API_KEY": "",
         }
         base = f"http://127.0.0.1:{app_port}"
-        compose(env, "up")
+        compose(env, "up", files=host_route_files)
         try:
             health = wait_health(base)
             assert health["provider_mode"] == "none"
@@ -194,8 +209,8 @@ def main() -> int:
             )
             assert hashlib.sha256(original_path.read_bytes()).hexdigest() == original_sha
 
-            compose(env, "down")
-            compose(env, "up")
+            compose(env, "down", files=host_route_files)
+            compose(env, "up", files=host_route_files)
             health = wait_health(base)
             assert health["provider_mode"] == "none"
             status, saved_case = request(base, f"/api/cases/{case_id}")
@@ -220,8 +235,8 @@ def main() -> int:
                     "WIRECLAW_PROVIDER_API_KEY": "CREDENTIAL_SENTINEL",
                 }
             )
-            compose(env, "down")
-            compose(env, "up")
+            compose(env, "down", files=host_route_files)
+            compose(env, "up", files=host_route_files)
             try:
                 health = wait_health(base)
                 assert health["provider_mode"] == "openai_compatible_local"
@@ -301,8 +316,9 @@ def main() -> int:
                 }
             )
             FakeProvider.requests_seen = []
-            compose(env, "down", files=(override,))
-            compose(env, "up", files=(override,))
+            privacy_files = (*host_route_files, override)
+            compose(env, "down", files=privacy_files)
+            compose(env, "up", files=privacy_files)
             try:
                 health = wait_health(base)
                 assert health["provider_mode"] == "openai_compatible_cloud"
@@ -347,7 +363,7 @@ def main() -> int:
                 "and cloud privacy through the image"
             )
         finally:
-            compose(env, "down")
+            compose(env, "down", files=host_route_files)
     return 0
 
 
