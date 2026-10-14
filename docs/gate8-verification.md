@@ -5,21 +5,21 @@
 | Field | Validated value |
 |---|---|
 | Starting `main` SHA | `9ac42f4130708fd145e46bac7545f980d1d804da` |
-| Release source SHA | `09c5f8746d28316f0a354419e3bd948a840d2726` |
+| Release source SHA | `9b4e3718893c20a9450a41af0d24b1c87ff79f97` |
 | Platform | macOS 27.0.1, Apple M3 Pro, `arm64` |
 | Docker | 29.8.2 |
 | Compose | 5.6.0 |
 | Native Wireshark | 4.6.9 |
 | Go builder | go1.26.5 darwin/arm64 |
-| Core image ID | `sha256:69cffd09fdfefdc3622c6052c6a87afcd4c3388d0391f215b791909891f0d5bf` |
-| Core archive SHA-256 | `ed234bc945a9437a0272ee4b05e0e39dc47c25a89ff02eaaa512d619a19442cb` |
+| Core image ID | `sha256:9d8d93b906cb326e5fb286bf123d41ee97a75daaec041108f3d195a10e93a820` |
+| Core archive SHA-256 | `8c5c27003f4e65de5eddd7049d16b7dc2cb5a376893736958151b303a202ea1e` |
 | Base image | `ubuntu:24.04@sha256:a853f94d226358a79c740cfc7bce0c289748f3fe3488d921d038ccd752c61b60` |
 | Web builder | `node:24.15.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6` |
 | Python | 3.12.3 (`3.12.3-1ubuntu0.17`) |
 | TShark / capinfos / editcap / mergecap | 4.2.2 (`wireshark_deb` `4.2.2-1.1build3`) |
 | Zeek | Not packaged; no accepted V1 capability invokes it |
 | Compiled web asset SHA-256 | `53c041f45fdf89491697653e222b099beb3ab08c0c30946ed4a4209f56b07faa` |
-| Packaged bridge SHA-256 | `72786d7061c22ea7a6ec97d18274b578d53f835c3c77593906d56e6d3ec7178d` |
+| Packaged bridge SHA-256 | `8cf8a08d1c24350f9d8f1b0542d7e45303a1a17c81cc0ab2b2f46ff93ad1912e` |
 
 The release bundle contains the full build context, `core-image.tar`, its exact
 `core-image-id`, and the prebuilt bridge. The staged launcher was tested after
