@@ -5,27 +5,28 @@
 | Field | Validated value |
 |---|---|
 | Starting `main` SHA | `9ac42f4130708fd145e46bac7545f980d1d804da` |
-| Final Gate 8 branch SHA | `5eab97a423d296d497fe89cd90380459c8ce5592` |
-| Release source SHA | `9b4e3718893c20a9450a41af0d24b1c87ff79f97` |
+| Gate 8 code HEAD used for final staging | `63acfe21bed2ba07c4615f5df6dfa98116857e8d` |
+| Fresh release source SHA | `63acfe21bed2ba07c4615f5df6dfa98116857e8d` |
 | Platform | macOS 27.0.1, Apple M3 Pro, `arm64` |
 | Docker | 29.8.2 |
 | Compose | 5.6.0 |
 | Native Wireshark | 4.6.9 |
 | Go builder | go1.26.5 darwin/arm64 |
-| Core image ID | `sha256:9d8d93b906cb326e5fb286bf123d41ee97a75daaec041108f3d195a10e93a820` |
-| Core archive SHA-256 | `8c5c27003f4e65de5eddd7049d16b7dc2cb5a376893736958151b303a202ea1e` |
+| Core image ID | `sha256:eee9d9478e839cf64f50ee450f7737c2f47084a20d8c1533fa52de5d12c813e8` |
+| Core archive SHA-256 | `1f75c0d0b9a44bef35d721c70c0ff923021a0764eedf286c6d2ff74c1315eab2` |
 | Base image | `ubuntu:24.04@sha256:a853f94d226358a79c740cfc7bce0c289748f3fe3488d921d038ccd752c61b60` |
 | Web builder | `node:24.15.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6` |
 | Python | 3.12.3 (`3.12.3-1ubuntu0.17`) |
 | TShark / capinfos / editcap / mergecap | 4.2.2 (`wireshark_deb` `4.2.2-1.1build3`) |
 | Zeek | Not packaged; no accepted V1 capability invokes it |
 | Compiled web asset SHA-256 | `53c041f45fdf89491697653e222b099beb3ab08c0c30946ed4a4209f56b07faa` |
-| Packaged bridge SHA-256 | `8cf8a08d1c24350f9d8f1b0542d7e45303a1a17c81cc0ab2b2f46ff93ad1912e` |
+| Packaged bridge SHA-256 | `8c9c6391450e46141a8b7c02418d988b72f0d0a1685d13ba8ddb1d7fca209110` |
 
-The release bundle contains the full build context, `core-image.tar`, its exact
-`core-image-id`, and the prebuilt bridge. The staged launcher was tested after
-the image tag was removed: it loaded the archive, verified the resulting ID,
-and started the release without rebuilding it.
+The fresh bundle at `/private/tmp/Wireclaw Final Gate 8 Release/wireclaw-release`
+contains the full build context, `core-image.tar`, its exact `core-image-id`,
+and the prebuilt bridge. Immediately before its first launch, the local
+`wireclaw-core:gate8` tag was removed. The packaged launcher loaded the archive,
+verified the exact image ID above, and started the release without rebuilding.
 
 ## Gate 8 task matrix
 
@@ -39,15 +40,60 @@ and started the release without rebuilding it.
 | G8.6 macOS start/stop | Passed | Staged launcher loaded the exact image archive, waited for bounded health, started the native bridge, printed localhost URL, and stopped without deleting data. |
 | G8.9 macOS bridge install/uninstall | Passed | Packaged bridge installed in a per-user Wireclaw directory, reported healthy with Wireshark available, and uninstalled without touching case data. |
 | G8.10 first-run prerequisites | Passed | Launcher tests cover missing Docker CLI, Compose, daemon, busy ports, invalid ports, inaccessible data root, missing bridge, and invalid Wireshark configuration. Failures are actionable and non-destructive. |
-| G8.11 real macOS release smoke | Passed across staged Gate 8 candidates | macOS arm64 staged release ingested a fixture and completed deterministic rules-only analysis. Full Capture and Evidence Capture opened in native Wireshark with the approved `tcp.stream == 0` filter. Final archived-image bundle start, bridge health, bridge-degraded UI, restart persistence, stop, and uninstall also passed. |
+| G8.11 real macOS release smoke | Passed from the same fresh archive-loaded candidate | The complete case workflow, both native Wireshark actions, bridge degradation, restart/persistence, stop, and uninstall were exercised from the single bundle identified above. |
 
-The Full/Evidence GUI actions were exercised from a staged Gate 8 bundle before
-the image-archive handoff was added. The final bundle's bridge was then installed
-and health-checked, and its image archive/start path was exercised. Gate 8 did
-not change the Go bridge implementation. Repeated smoke attempts had launched
-multiple Wireshark processes; only processes whose executable and capture paths
-matched the temporary Wireclaw test data were sent `TERM`, and no test process
-remained.
+## Final archive-loaded macOS release acceptance
+
+The staged release used macOS 27.0.1 on Apple M3 Pro (`arm64`), Docker 29.8.2,
+Compose 5.6.0, and native Wireshark 4.6.9. Its data root was
+`/private/tmp/Wireclaw Final Gate 8 Data Ω`, which contains both spaces and
+Unicode. The release ran with the packaged image and bridge identities listed
+above, in `provider_mode=none`.
+
+The UI ingested the known `high_rtt.pcap` fixture and completed deterministic
+analysis. Case `d70d56b2251642d2979ea5751026e6f0` remained `COMPLETE`, with
+original artifact `88a0d80175a54ff58099a5eeb8897afd`. Finding `finding_001`
+(`tcp.rtt`, “High transport RTT observed”) used the backend-approved filter
+`tcp.stream == 0`. The two Wireshark actions were visible together; copying the
+filter returned the same value, and Show Packet Evidence opened the evidence
+drawer.
+
+From this exact archive-loaded release and finding:
+
+- **Full Capture passed.** Native Wireshark showed a `capture` window. Its
+  process arguments named this case's immutable
+  `.../analyzer/cases/72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c/original/capture`
+  and included `-Y tcp.stream == 0`.
+- **Evidence Capture passed.** A separate native Wireshark window showed
+  `bf8bf06e6bdb41dcba02d4d5ff0b701f.pcapng` under this case's `evidence`
+  directory, with `-Y tcp.stream == 0` in its process arguments. Its registered
+  artifact ID is `02cbacb731974d4db20bdf5341fc49d8`; SHA-256 is
+  `57d3283c32204a84e9ea212581b09907cbcb512b603238f45230ee9e5cedb7a9`, size is
+  600 bytes, and packaged `capinfos` reports five packets. Its provenance names
+  the parent SHA, case, finding, cited evidence ID, `tcp_stream` extraction
+  mode, and the same display filter.
+
+The fixture source SHA, stored original SHA before and after both opens, and
+stored SHA after restart/stop/uninstall all matched:
+`72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c`.
+After the packaged stop/start sequence, the API returned the same complete
+case/report/evidence, and a read-only SQLite check after final stop/uninstall
+still found the case and all registered artifacts. The original, report, and
+derived evidence files remained on disk with their expected hashes.
+
+With only the bridge stopped, the same case/report stayed visible, both
+Wireshark buttons remained visible but disabled, and Show Packet Evidence still
+worked. The packaged launcher restarted the bridge and core. The final
+packaged stop and bridge uninstall both reported success and preserved case
+data.
+
+Process hygiene: no Wireshark processes were present before this acceptance.
+The final GUI check held its test session open and observed exactly two
+Wireclaw test-capture processes/windows, one for each action. After confirming
+their executable paths, case paths, and filter arguments, each exact test
+window was closed through its own native close button. No broad process-name
+kill was used. The launcher test session and its temporary browser session were
+then stopped; the Wireclaw container and bridge were already stopped/uninstalled.
 
 ## Runtime and privacy checks
 
@@ -100,14 +146,18 @@ remained.
 - `docker compose config`, shell syntax, Python compileall, Ruff check/format,
   and `git diff --check` passed.
 
-GitHub Actions run [#85](https://github.com/Ryan9876/wireclaw/actions/runs/38505680917)
-passed on final branch SHA `5eab97a423d296d497fe89cd90380459c8ce5592`.
-The Docker release job built and exercised the production image, verified the
-locked tool versions, and ran container acceptance. Linux full validation,
-production browser validation, and Ubuntu/macOS/Windows Go portability builds
-also passed. The open draft pull request is
+GitHub Actions run [#87](https://github.com/Ryan9876/wireclaw/actions/runs/38506208791)
+passed on code HEAD `63acfe21bed2ba07c4615f5df6dfa98116857e8d`, which is the
+source SHA in the fresh release metadata above. The Docker release job built
+and exercised the production image, verified the locked tool versions, and ran
+container acceptance. Linux full validation, production browser validation,
+and Ubuntu/macOS/Windows Go portability builds also passed. The bridge
+portability jobs do not qualify those platforms as V1 releases. This final
+archive-loaded acceptance changes verification documentation only; its
+documentation commit receives its own workflow run before handoff.
+
+The open draft pull request is
 [#11](https://github.com/Ryan9876/wireclaw/pull/11); it has not been merged.
-The bridge portability jobs do not qualify those platforms as V1 releases.
 
 The CI launcher tests initially failed because the Linux runner had Docker in
 `/usr/bin`, contrary to the test's assumption. The test was corrected to use
