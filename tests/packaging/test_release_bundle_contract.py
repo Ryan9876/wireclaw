@@ -2,6 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGER = (ROOT / "scripts/package_release.py").read_text(encoding="utf-8")
+CONTAINER_VALIDATOR = (ROOT / "scripts/validate_container_release.py").read_text(encoding="utf-8")
 
 
 def test_release_stager_includes_the_production_build_context_and_native_launchers():
@@ -27,3 +28,8 @@ def test_release_readme_documents_staged_bundle_and_platform_scope():
     assert "host-bridge/macos" in readme
     assert "launch/macos/start.sh" in readme
     assert "Windows and Linux are future qualification targets, not supported V1 hosts" in readme
+
+
+def test_container_acceptance_reuses_the_prebuilt_image_for_release_identity():
+    assert 'command.extend(["-d", "--no-build"])' in CONTAINER_VALIDATOR
+    assert 'compose(env, "up")' in CONTAINER_VALIDATOR

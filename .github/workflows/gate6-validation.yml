@@ -120,3 +120,5 @@ jobs:
         run: |
           docker build --target core-runtime -t wireclaw-core:gate8 .
           docker run --rm --entrypoint python wireclaw-core:gate8 /opt/wireclaw/verify_analyzer_versions.py
+      - name: Exercise the built release image
+        run: python scripts/validate_container_release.py

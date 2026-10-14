@@ -67,7 +67,7 @@ class FakeProvider(BaseHTTPRequestHandler):
         return
 
 
-def compose(env: dict[str, str], action: str, *, build=False, files=()):
+def compose(env: dict[str, str], action: str, *, files=()):
     command = [
         "docker",
         "compose",
@@ -80,7 +80,7 @@ def compose(env: dict[str, str], action: str, *, build=False, files=()):
         command.extend(["-f", str(file)])
     command.append(action)
     if action == "up":
-        command.extend(["-d"] + (["--build"] if build else ["--no-build"]))
+        command.extend(["-d", "--no-build"])
     else:
         command.append("--remove-orphans")
     result = subprocess.run(command, cwd=ROOT, env=os.environ | env, capture_output=True, text=True)
@@ -130,7 +130,7 @@ def main() -> int:
             "WIRECLAW_PROVIDER_API_KEY": "",
         }
         base = f"http://127.0.0.1:{app_port}"
-        compose(env, "up", build=True)
+        compose(env, "up")
         try:
             health = wait_health(base)
             assert health["provider_mode"] == "none"
