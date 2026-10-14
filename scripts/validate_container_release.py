@@ -865,8 +865,8 @@ def main() -> int:
                 provider.server_close()
                 thread.join(timeout=2)
 
-            # A temporary child image trusts only the test CA so the cloud HTTPS
-            # adapter is exercised without weakening certificate checks in release.
+            # Mount a test-only trust bundle into the frozen image. This exercises
+            # the HTTPS adapter without rebuilding or changing the candidate.
             tls_dir = Path(temp) / "privacy tls"
             generated = subprocess.run(
                 ["go", "run", str(ROOT / "tests/packaging/generate_test_ca.go"), str(tls_dir)],
@@ -876,38 +876,52 @@ def main() -> int:
             )
             if generated.returncode:
                 raise RuntimeError("test_ca_generation_failed")
-            (tls_dir / "Dockerfile").write_text(
-                "FROM wireclaw-core:gate8\n"
-                "USER 0\n"
-                "COPY test-ca.pem /tmp/wireclaw-test-ca.pem\n"
-                'RUN /opt/venv/bin/python -c "from pathlib import Path; import certifi; '
-                "p=Path(certifi.where()); p.write_bytes(p.read_bytes()+Path('/tmp/wireclaw-test-ca.pem').read_bytes())\" "
-                "&& rm -f /tmp/wireclaw-test-ca.pem\n"
-                "USER 10001:10001\n",
-                encoding="utf-8",
-            )
-            privacy_image = subprocess.run(
+            certifi_path = subprocess.run(
                 [
                     "docker",
-                    "build",
-                    "--tag",
-                    "wireclaw-core:gate8-privacy-test",
-                    "--file",
-                    str(tls_dir / "Dockerfile"),
-                    str(tls_dir),
+                    "run",
+                    "--rm",
+                    "--entrypoint",
+                    "/opt/venv/bin/python",
+                    "wireclaw-core:gate8",
+                    "-c",
+                    "import certifi; print(certifi.where())",
                 ],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
             )
-            if privacy_image.returncode:
-                raise RuntimeError("privacy_test_image_build_failed")
+            if certifi_path.returncode:
+                raise RuntimeError("candidate_certifi_bundle_unavailable")
+            candidate_bundle_path = certifi_path.stdout.strip()
+            default_bundle = subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--entrypoint",
+                    "/bin/cat",
+                    "wireclaw-core:gate8",
+                    candidate_bundle_path,
+                ],
+                cwd=ROOT,
+                capture_output=True,
+            )
+            if default_bundle.returncode:
+                raise RuntimeError("candidate_default_ca_bundle_unavailable")
+            combined_bundle = tls_dir / "test-trust-bundle.pem"
+            combined_bundle.write_bytes(
+                default_bundle.stdout + b"\n" + (tls_dir / "test-ca.pem").read_bytes()
+            )
             override = Path(temp) / "compose.privacy-test.yaml"
             override.write_text(
                 "services:\n"
                 "  wireclaw-core:\n"
-                "    image: wireclaw-core:gate8-privacy-test\n"
-                f"    build:\n      context: {json.dumps(str(tls_dir))}\n      dockerfile: Dockerfile\n",
+                "    volumes:\n"
+                "      - type: bind\n"
+                f"        source: {json.dumps(str(combined_bundle))}\n"
+                f"        target: {json.dumps(candidate_bundle_path)}\n"
+                "        read_only: true\n",
                 encoding="utf-8",
             )
             https_server = ThreadingHTTPServer(("0.0.0.0", bridge_port), FakeProvider)
