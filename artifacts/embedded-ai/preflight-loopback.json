@@ -1,0 +1,22 @@
+{
+  "result": "PASS",
+  "timestamp_utc": "2026-10-14",
+  "host": {
+    "os": "macOS 27.0.0",
+    "architecture": "arm64"
+  },
+  "host_service": {
+    "bind_address": "127.0.0.1",
+    "port": 18767,
+    "listener_evidence": "lsof showed Python PID 47343 listening on TCP 127.0.0.1:18767 only"
+  },
+  "docker_reachability": {
+    "hostname": "host.docker.internal",
+    "port": 18767,
+    "container_image": "curlimages/curl:8.12.1",
+    "result": "HTTP directory listing fetched successfully"
+  },
+  "docker_server_version": "29.8.2",
+  "docker_compose_version": "5.6.0",
+  "notes": "P0 topology proof only. The temporary service served a directory listing and was stopped after the check."
+}
