@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "ai/embedded-ai.lock.json"
+CONVERSION_REQUIREMENTS_LOCK = ROOT / "ai/conversion-requirements.lock.txt"
 MODEL_MANIFEST = "model-manifest.json"
 RUNTIME_MANIFEST = "runtime-manifest.json"
 MAX_MODEL_SIZE = 3_758_096_384
@@ -436,6 +438,20 @@ def freeze_dependencies(python: Path, env: dict[str, str]) -> str:
     return _run(["uv", "pip", "freeze", "--python", str(python)], env=env)
 
 
+def _dependency_versions(requirements: str) -> dict[str, str]:
+    versions = {}
+    for line in requirements.splitlines():
+        match = re.match(r"^([A-Za-z0-9_.-]+)==([A-Za-z0-9.+_-]+)(?:\s|$)", line)
+        if match:
+            name = re.sub(r"[-_.]+", "-", match.group(1)).lower()
+            if name in versions:
+                _fail("conversion_dependency_lock_invalid")
+            versions[name] = match.group(2)
+    if not versions:
+        _fail("conversion_dependency_lock_invalid")
+    return versions
+
+
 def build_model(lock: dict, work: Path, output: Path) -> dict:
     runtime = _repo(work, lock)
     model = lock["model"]
@@ -466,17 +482,34 @@ def build_model(lock: dict, work: Path, output: Path) -> dict:
     records = _source_records(source)
     convert = runtime / "convert_hf_to_gguf.py"
     convert_req = runtime / "requirements/requirements-convert_hf_to_gguf.txt"
-    if not convert.is_file() or not convert_req.is_file():
+    if (
+        not convert.is_file()
+        or not convert_req.is_file()
+        or not CONVERSION_REQUIREMENTS_LOCK.is_file()
+    ):
         _fail("model_converter_missing")
     converter_env = work / "convert-venv"
     if not converter_env.exists():
         _run(["uv", "venv", str(converter_env), "--python", "3.12"], env=env)
     python = converter_env / "bin/python"
     _run(
-        ["uv", "pip", "install", "--python", str(python), "-r", str(convert_req)],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--require-hashes",
+            "--python",
+            str(python),
+            "-r",
+            str(CONVERSION_REQUIREMENTS_LOCK),
+        ],
         env=env,
     )
     dependency_lock = freeze_dependencies(python, env)
+    locked_versions = _dependency_versions(CONVERSION_REQUIREMENTS_LOCK.read_text(encoding="utf-8"))
+    installed_versions = _dependency_versions(dependency_lock)
+    if installed_versions != locked_versions:
+        _fail("conversion_dependency_set_mismatch")
     intermediate = work / "qwen-f16.gguf"
     quantized = work / "qwen-q4_k_m.gguf"
     conversion_command = [
@@ -536,6 +569,7 @@ def build_model(lock: dict, work: Path, output: Path) -> dict:
             "conversion_command": ["convert_hf_to_gguf.py", "--outtype", "f16"],
             "quantization_command": ["llama-quantize", "Q4_K_M"],
             "conversion_dependency_lock": dependency_lock.splitlines(),
+            "conversion_dependency_lock_sha256": sha256(CONVERSION_REQUIREMENTS_LOCK),
         },
     }
     (ai_root / MODEL_MANIFEST).write_text(

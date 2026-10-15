@@ -34,7 +34,7 @@ EMBEDDED_FAILURE_CODES = frozenset(
 )
 
 
-def effective_ai_status(policy):
+def effective_ai_status(policy, runtime_failure_code=None):
     """Return a public, normalized AI state without provider plumbing or secrets."""
     import os
 
@@ -50,7 +50,10 @@ def effective_ai_status(policy):
             "failure_code": None,
         }
     failure = None
-    if raw == "ready" and embedded_selected:
+    if runtime_failure_code in EMBEDDED_FAILURE_CODES and embedded_selected:
+        availability = "unavailable"
+        failure = runtime_failure_code
+    elif raw == "ready" and embedded_selected:
         availability = "ready"
     else:
         availability = "unavailable"

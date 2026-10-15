@@ -9,13 +9,23 @@ from .reasoning.loop import NEXT_EVIDENCE, run_loop
 
 
 class Service(Gate6Service):
+    def __init__(self, root, policy):
+        super().__init__(root, policy)
+        self._embedded_runtime_failure_code = None
+
+    def ai_status(self):
+        return effective_ai_status(
+            self.policy,
+            runtime_failure_code=self._embedded_runtime_failure_code,
+        )
+
     def get(self, case_id):
         case = super().get(case_id)
         case["gate_boundary"] = (
             "Gate 7: deterministic evidence with bounded optional model reasoning"
         )
         case["provider_mode"] = self.policy.provider_mode.value
-        case["ai_status"] = effective_ai_status(self.policy)
+        case["ai_status"] = self.ai_status()
         return case
 
     def build_investigation_result(self, **kwargs):
@@ -69,6 +79,13 @@ class Service(Gate6Service):
                 [],
                 [],
             )
+        if (
+            self.policy.provider_mode.value == "embedded_local"
+            and reasoning["mode"] == "model_fallback"
+        ):
+            # A provider failure after launcher readiness means the owned runtime is
+            # no longer healthy for subsequent cases in this Wireclaw process.
+            self._embedded_runtime_failure_code = "runtime-unhealthy"
         super()._assemble_report(case_id)
         report = self.report(case_id)
         if reasoning["mode"] == "model_fallback":
@@ -93,7 +110,7 @@ class Service(Gate6Service):
         report["recommended_next_evidence"] = list(
             dict.fromkeys([*report.get("recommended_next_evidence", []), *recommendations])
         )
-        embedded_status = effective_ai_status(self.policy)
+        embedded_status = self.ai_status()
         report["reasoning"] = {
             **reasoning,
             "provider_mode": self.policy.provider_mode.value,

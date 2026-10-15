@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from wireclaw_analyzer import AnalyzerError
 
-from .config import Policy, effective_ai_status
+from .config import Policy
 from .gate7_service import Service
 from .models import (
     CAPABILITIES,
@@ -146,7 +146,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
             "status": "ok",
             "gate": 7,
             "provider_mode": policy.provider_mode.value,
-            "ai": effective_ai_status(policy),
+            "ai": service().ai_status(),
         }
 
     @app.get("/api/config/capabilities", response_model=CapabilitiesResponse)
@@ -169,7 +169,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
                 "max_result_items": policy.max_result_items,
                 "max_evidence_capture_bytes": policy.max_evidence_capture_bytes,
             },
-            "ai": effective_ai_status(policy),
+            "ai": service().ai_status(),
         }
 
     @app.post("/api/cases", status_code=201, response_model=CaseResponse)

@@ -2,6 +2,7 @@
 
 import json
 
+import wireclaw_api.app as api_module
 from fastapi.testclient import TestClient
 from wireclaw_api import create_app
 from wireclaw_api.config import Policy, ProviderMode
@@ -411,6 +412,40 @@ def test_embedded_reasoning_audit_records_model_and_launcher_fallback_without_se
     assert fallback["reasoning"]["mode"] == "rules_only"
     assert fallback["reasoning"]["embedded_availability"] == "unavailable"
     assert fallback["reasoning"]["embedded_failure_code"] == "docker-connectivity"
+
+
+def test_embedded_provider_failure_degrades_health_and_case_ai_status(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model="wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        provider_api_key="ephemeral-test-token-" + "x" * 40,
+        max_reasoning_steps=1,
+    )
+    service, case_id = prepared_service(tmp_path / "embedded-crash", policy)
+
+    class FailedProvider:
+        def propose(self, _request):
+            return ProviderResult(failure_code="provider_unavailable")
+
+    monkeypatch.setattr(loop, "make_provider", lambda _policy: FailedProvider())
+    service._assemble_report(case_id)
+
+    expected = {
+        "effective_provider_mode": "none",
+        "embedded_availability": "unavailable",
+        "model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        "failure_code": "runtime-unhealthy",
+    }
+    assert service.ai_status() == expected
+    assert service.get(case_id)["ai_status"] == expected
+    assert service.report(case_id)["reasoning"]["embedded_availability"] == "unavailable"
+    monkeypatch.setattr(api_module, "Service", lambda *_args: service)
+    app = create_app(tmp_path / "embedded-crash-api", policy)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        assert client.get("/api/health").json()["ai"] == expected
+        assert client.get("/api/config/capabilities").json()["ai"] == expected
 
 
 def test_provider_timeout_persists_bounded_audit_and_keeps_report_usable(tmp_path, monkeypatch):
