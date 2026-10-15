@@ -116,7 +116,11 @@ class Service(Gate6Service):
             "provider_mode": self.policy.provider_mode.value,
             "model": self.policy.provider_model
             if self.policy.provider_mode.value != "none"
-            else (EMBEDDED_MODEL_ID if embedded_status["embedded_availability"] == "unavailable" else None),
+            else (
+                EMBEDDED_MODEL_ID
+                if embedded_status["embedded_availability"] == "unavailable"
+                else None
+            ),
             "embedded_availability": embedded_status["embedded_availability"],
             "embedded_failure_code": embedded_status["failure_code"],
         }

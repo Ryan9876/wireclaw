@@ -91,12 +91,18 @@ def test_launcher_embedded_environment_is_ephemeral_and_has_rules_only_fallback(
     )
     result = subprocess.run(
         ["bash", "-c", script, "test", str(ROOT), str(env_file)],
-        cwd=ROOT, env=os.environ | {"HOME": str(tmp_path)}, capture_output=True, text=True,
+        cwd=ROOT,
+        env=os.environ | {"HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
-        "embedded_local", "http://host.docker.internal:8767/v1",
-        "wireclaw-qwen3-4b-instruct-2507-q4_k_m", "ephemeral-test-token", "ready",
+        "embedded_local",
+        "http://host.docker.internal:8767/v1",
+        "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        "ephemeral-test-token",
+        "ready",
     ]
     assert env_file.read_text() == "WIRECLAW_PROVIDER_MODE=embedded_local\n"
 
@@ -106,8 +112,8 @@ def test_failed_embedded_connectivity_selects_rules_only_environment():
     start = (ROOT / "launch/macos/start.sh").read_text(encoding="utf-8")
     assert "host.docker.internal:8767/v1" in launcher
     assert 'ai_unavailable "docker-connectivity"' in start
-    assert 'configure_provider_environment embedded_local' in start
-    assert 'WIRECLAW_EMBEDDED_AI_STATUS' in launcher
+    assert "configure_provider_environment embedded_local" in start
+    assert "WIRECLAW_EMBEDDED_AI_STATUS" in launcher
 
 
 def test_configured_cloud_provider_mode_is_not_overridden_by_embedded_state(tmp_path):
@@ -115,16 +121,21 @@ def test_configured_cloud_provider_mode_is_not_overridden_by_embedded_state(tmp_
 
     script = (
         '. "$1/launch/macos/common.sh"; configure_provider_environment openai_compatible_cloud '
-        'https://cloud.example/v1 cloud-model configured-cloud-key; '
+        "https://cloud.example/v1 cloud-model configured-cloud-key; "
         'printf "%s\\n%s\\n%s\\n%s\\n" "$WIRECLAW_PROVIDER_MODE" "$WIRECLAW_PROVIDER_BASE_URL" '
         '"$WIRECLAW_PROVIDER_MODEL" "$WIRECLAW_PROVIDER_API_KEY"'
     )
     result = subprocess.run(
-        ["bash", "-c", script, "test", str(ROOT)], cwd=ROOT,
+        ["bash", "-c", script, "test", str(ROOT)],
+        cwd=ROOT,
         env=os.environ | {"HOME": str(tmp_path), "WIRECLAW_PROVIDER_MODE": "embedded_local"},
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
-        "openai_compatible_cloud", "https://cloud.example/v1", "cloud-model", "configured-cloud-key",
+        "openai_compatible_cloud",
+        "https://cloud.example/v1",
+        "cloud-model",
+        "configured-cloud-key",
     ]

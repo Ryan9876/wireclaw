@@ -743,7 +743,9 @@ def test_embedded_provider_uses_strict_action_schema_response_format(monkeypatch
         api_key="x" * 32,
     )
     provider.propose(
-        ReasoningRequest("wireclaw-qwen3-4b-instruct-2507-q4_k_m", "{}", SYSTEM_INSTRUCTION, 4096, 4096)
+        ReasoningRequest(
+            "wireclaw-qwen3-4b-instruct-2507-q4_k_m", "{}", SYSTEM_INSTRUCTION, 4096, 4096
+        )
     )
     body = json.loads(captured[0].content)
     assert body["response_format"]["type"] == "json_schema"

@@ -42,25 +42,61 @@ def make_ai_assets(release: Path):
     (release / "ai/licenses").mkdir()
     (release / "ai/licenses/Qwen-Apache-2.0.txt").write_text("Apache License", encoding="utf-8")
     (release / "ai/licenses/llama.cpp-MIT.txt").write_text("MIT License", encoding="utf-8")
-    (release / "ai/model-manifest.json").write_text(json.dumps({
-        "model_id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
-        "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
-        "license": "Apache-2.0", "quantization": "Q4_K_M", "architecture": "qwen3",
-        "license_path": "licenses/Qwen-Apache-2.0.txt",
-        "artifact": {"path": "models/qwen3-4b-instruct-2507-q4_k_m.gguf",
-                     "sha256": hashlib.sha256(model.read_bytes()).hexdigest(), "size_bytes": model.stat().st_size},
-    }), encoding="utf-8")
-    (release / "ai/runtime-manifest.json").write_text(json.dumps({
-        "repository": "ggml-org/llama.cpp",
-        "revision": "8345f333951c661d166b00e6f9362e553768f292",
-        "platform": "macos", "architecture": "arm64", "entrypoint": "macos-arm64/llama-server",
-        "build_settings": {"metal": True, "server": True},
-        "files": [{"path": "macos-arm64/llama-server", "sha256": hashlib.sha256(runtime.read_bytes()).hexdigest(), "size_bytes": runtime.stat().st_size}],
-        "license_paths": ["licenses/llama.cpp-MIT.txt"],
-        "policy": {"platform": "macos", "architecture": "arm64", "listen_host": "127.0.0.1", "context_size": 16384, "batch_size": 128, "micro_batch_size": 32, "max_tokens": 2048, "parallel": 1,
-                   "port": 8767, "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
-                   "authentication_required": True, "agent_tools": False, "web_ui": False, "network_downloads": False},
-    }), encoding="utf-8")
+    (release / "ai/model-manifest.json").write_text(
+        json.dumps(
+            {
+                "model_id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+                "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+                "license": "Apache-2.0",
+                "quantization": "Q4_K_M",
+                "architecture": "qwen3",
+                "license_path": "licenses/Qwen-Apache-2.0.txt",
+                "artifact": {
+                    "path": "models/qwen3-4b-instruct-2507-q4_k_m.gguf",
+                    "sha256": hashlib.sha256(model.read_bytes()).hexdigest(),
+                    "size_bytes": model.stat().st_size,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (release / "ai/runtime-manifest.json").write_text(
+        json.dumps(
+            {
+                "repository": "ggml-org/llama.cpp",
+                "revision": "8345f333951c661d166b00e6f9362e553768f292",
+                "platform": "macos",
+                "architecture": "arm64",
+                "entrypoint": "macos-arm64/llama-server",
+                "build_settings": {"metal": True, "server": True},
+                "files": [
+                    {
+                        "path": "macos-arm64/llama-server",
+                        "sha256": hashlib.sha256(runtime.read_bytes()).hexdigest(),
+                        "size_bytes": runtime.stat().st_size,
+                    }
+                ],
+                "license_paths": ["licenses/llama.cpp-MIT.txt"],
+                "policy": {
+                    "platform": "macos",
+                    "architecture": "arm64",
+                    "listen_host": "127.0.0.1",
+                    "context_size": 16384,
+                    "batch_size": 128,
+                    "micro_batch_size": 32,
+                    "max_tokens": 2048,
+                    "parallel": 1,
+                    "port": 8767,
+                    "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+                    "authentication_required": True,
+                    "agent_tools": False,
+                    "web_ui": False,
+                    "network_downloads": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def make_fake_tools(root: Path, *, daemon=True, compose=True, busy_port=""):
@@ -203,8 +239,12 @@ def test_ai_listener_is_verified_during_bounded_health_probe_before_final_check(
     assert "ai_listener_matches()" in source
     startup_start = source.index('if ! ai_process_matches "$AI_PID"')
     startup = source[startup_start : source.index("  printf 'ready", startup_start)]
-    assert startup.index('! ai_process_matches "$AI_PID"') < startup.index('! probe_ai_health "$AI_PID"')
-    assert startup.index('! probe_ai_health "$AI_PID"') < startup.index('! ai_listener_matches "$AI_PID"')
+    assert startup.index('! ai_process_matches "$AI_PID"') < startup.index(
+        '! probe_ai_health "$AI_PID"'
+    )
+    assert startup.index('! probe_ai_health "$AI_PID"') < startup.index(
+        '! ai_listener_matches "$AI_PID"'
+    )
     probe = source[source.index("probe_ai_health()") : source.index("start_ai()")]
     assert '"/usr/sbin/lsof"' in probe
     assert '"n127.0.0.1:8767"' in probe
@@ -212,11 +252,11 @@ def test_ai_listener_is_verified_during_bounded_health_probe_before_final_check(
 
 
 def test_ai_listener_match_requires_the_owned_loopback_socket():
-    script = '''
+    script = """
 . "$1/launch/macos/common.sh"
 lsof() { printf '%s\\n' "$WIRECLAW_TEST_SOCKET"; }
 ai_listener_matches 1234 8767
-'''
+"""
     for socket_name, expected in (("n127.0.0.1:8767", 0), ("n0.0.0.0:8767", 1)):
         result = run_bash(
             script,
@@ -234,7 +274,9 @@ def test_ai_port_conflict_sets_unavailable_without_starting_runtime(tmp_path):
     runtime_dir.mkdir(parents=True)
     result = run_bash(
         '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
-        str(ROOT), str(release), env=fake_env,
+        str(ROOT),
+        str(release),
+        env=fake_env,
     )
     assert result.returncode == 0, result.stderr
     assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:port-in-use"
@@ -242,14 +284,59 @@ def test_ai_port_conflict_sets_unavailable_without_starting_runtime(tmp_path):
     assert not (runtime_dir / "ai-key").exists()
 
 
+def test_ai_runtime_survives_the_startup_launcher_exiting(tmp_path):
+    release = make_release(tmp_path, "")
+    make_ai_assets(release)
+    runtime = release / "ai/macos-arm64/llama-server"
+    runtime.write_text("#!/bin/bash\nexec /bin/sleep 15\n", encoding="utf-8")
+    runtime.chmod(0o700)
+    manifest_path = release / "ai/runtime-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"][0]["sha256"] = hashlib.sha256(runtime.read_bytes()).hexdigest()
+    manifest["files"][0]["size_bytes"] = runtime.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_ps = Path(fake_env["PATH"].split(":", 1)[0]) / "ps"
+    fake_ps.write_text("#!/bin/sh\nprintf 'Wed Oct 14 23:00:00 2026\\n'\n", encoding="utf-8")
+    fake_ps.chmod(0o700)
+    runtime_dir = Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    script = (
+        '. "$1/launch/macos/common.sh"; '
+        "ai_process_matches() { return 0; }; "
+        "probe_ai_health() { return 0; }; "
+        "ai_listener_matches() { return 0; }; "
+        'start_ai "$2" 18765 18766 embedded_local'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script, "wireclaw-test", str(ROOT), str(release)],
+        cwd=ROOT,
+        env=fake_env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai.pid").exists(), result.stdout + result.stderr
+    pid = int((runtime_dir / "ai.pid").read_text(encoding="utf-8").splitlines()[0])
+    try:
+        assert subprocess.run(["/bin/kill", "-0", str(pid)], check=False).returncode == 0
+    finally:
+        subprocess.run(["/bin/kill", "-TERM", str(pid)], check=False)
+
+
 def test_stale_or_reused_ai_pid_never_signals_an_unrelated_process(tmp_path):
     home = tmp_path / "User Home"
     runtime_dir = home / "Library/Application Support/Wireclaw/run"
     runtime_dir.mkdir(parents=True)
     unrelated = subprocess.Popen(["/bin/sleep", "60"])
-    (runtime_dir / "ai.pid").write_text(f"{unrelated.pid}\nnot-the-process-start-time\n", encoding="utf-8")
+    (runtime_dir / "ai.pid").write_text(
+        f"{unrelated.pid}\nnot-the-process-start-time\n", encoding="utf-8"
+    )
     try:
-        result = run_bash('. "$1/launch/macos/common.sh"; stop_ai', str(ROOT), env={"HOME": str(home)})
+        result = run_bash(
+            '. "$1/launch/macos/common.sh"; stop_ai', str(ROOT), env={"HOME": str(home)}
+        )
         assert result.returncode == 0, result.stderr
         assert "stale AI PID ignored" in result.stderr
         assert unrelated.poll() is None
@@ -267,7 +354,9 @@ def test_symlinked_ai_secret_state_is_not_overwritten(tmp_path):
     (runtime_dir / "ai-key").symlink_to(sentinel)
     result = run_bash(
         '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
-        str(ROOT), str(ROOT), env={"HOME": str(home)},
+        str(ROOT),
+        str(ROOT),
+        env={"HOME": str(home)},
     )
     assert result.returncode == 0, result.stderr
     assert "(unsafe-state)" in result.stdout
@@ -287,7 +376,9 @@ def test_ai_log_fifo_is_not_unlinked_before_runtime_opens_it():
 def test_runtime_policy_is_fixed_loopback_only_and_no_user_values_become_argv():
     source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
     assert '--host 127.0.0.1 --port "$wireclaw_ai_port"' in source
-    assert '--ctx-size 16384 --batch-size 128 --ubatch-size 32 --n-predict 2048 --parallel 1' in source
+    assert (
+        "--ctx-size 16384 --batch-size 128 --ubatch-size 32 --n-predict 2048 --parallel 1" in source
+    )
     assert '--api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui' in source
     assert 'env -i HOME="$wireclaw_runtime_dir"' in source
     assert "pkill" not in source

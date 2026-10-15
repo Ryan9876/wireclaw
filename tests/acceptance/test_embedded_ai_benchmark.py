@@ -48,9 +48,9 @@ def test_versioned_manifest_covers_every_required_scenario_and_known_fixture():
     assert set(scenarios) == REQUIRED
     names = {item["capture"] for item in manifest["scenarios"]}
     assert names <= benchmark.KNOWN_FIXTURES
-    assert len({(item["id"], item["capture"], item["mode"]) for item in manifest["scenarios"]}) == len(
-        manifest["scenarios"]
-    )
+    assert len(
+        {(item["id"], item["capture"], item["mode"]) for item in manifest["scenarios"]}
+    ) == len(manifest["scenarios"])
 
 
 def test_manifest_rejects_missing_scenarios_and_unsafe_fixture_paths(tmp_path):
@@ -163,7 +163,9 @@ def test_result_validator_requires_identities_safety_counts_and_resource_metrics
         "source_sha": "a" * 40,
         "model": {"id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m", "sha256": "b" * 64},
         "runtime": {"revision": "8345f333951c661d166b00e6f9362e553768f292", "sha256": "c" * 64},
-        "scenario_results": [{"scenario": name, "provider_step_latencies_ms": []} for name in sorted(REQUIRED)],
+        "scenario_results": [
+            {"scenario": name, "provider_step_latencies_ms": []} for name in sorted(REQUIRED)
+        ],
         "accepted_model_proposals": 0,
         "rejected_model_proposals": 0,
         "metrics": {

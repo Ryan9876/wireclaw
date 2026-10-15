@@ -28,13 +28,13 @@ class OpenAICompatibleProvider:
 
     def propose(self, request: ReasoningRequest) -> ProviderResult:
         request_body = {
-                "model": request.model,
-                "messages": [
-                    {"role": "system", "content": request.system_instruction},
-                    {"role": "user", "content": request.context_json},
-                ],
-                "temperature": 0,
-            }
+            "model": request.model,
+            "messages": [
+                {"role": "system", "content": request.system_instruction},
+                {"role": "user", "content": request.context_json},
+            ],
+            "temperature": 0,
+        }
         if self.mode == ProviderMode.EMBEDDED.value:
             request_body["response_format"] = {
                 "type": "json_schema",
