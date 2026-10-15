@@ -123,6 +123,11 @@ def _validated_proposals(
         )
         proposed_domains = set(item.fault_domains)
         for deterministic in report["remaining_hypotheses"]:
+            deterministic_evidence_ids = set(deterministic.get("evidence_ids", []))
+            if item.evidence_ids and any(
+                evidence_id not in deterministic_evidence_ids for evidence_id in item.evidence_ids
+            ):
+                continue
             supported_domains = (
                 category_domains & proposed_domains & set(deterministic.get("fault_domains", []))
             )

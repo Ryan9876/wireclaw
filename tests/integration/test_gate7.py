@@ -236,6 +236,106 @@ def test_finalize_recommendations_cannot_outgrow_deterministic_hypotheses(tmp_pa
         service.close()
 
 
+def test_remaining_recommendation_rejects_evidence_from_another_finding(tmp_path, monkeypatch):
+    policy = Policy(
+        provider_mode=ProviderMode.LOCAL,
+        provider_base_url="http://127.0.0.1:1234/v1",
+        provider_model="review-model",
+        provider_api_key="x" * 32,
+    )
+    service, case_id = prepared_service(tmp_path, policy)
+    evidence = service.evidence_records(case_id)
+    unrelated_evidence_id = evidence[0]["id"]
+    related_evidence_id = evidence[1]["id"]
+    assert evidence[0]["epistemic_class"] in {"observed", "derived"}
+    assert evidence[1]["epistemic_class"] in {"observed", "derived"}
+
+    def report_with_unrelated_finding_evidence(**kwargs):
+        report = build_investigation_result(**kwargs)
+        report["findings"] = [
+            {
+                "id": "finding_review_other",
+                "title": "Unrelated deterministic finding",
+                "category": "tcp.rtt",
+                "confidence": "medium",
+                "statement": "This finding owns the cited evidence.",
+                "epistemic_class": "inferred",
+                "fault_domains": ["server_application"],
+                "affected_scope": {},
+                "evidence_ids": [unrelated_evidence_id],
+                "alternate_explanations": [],
+                "limitations": [],
+                "recommended_validation": [],
+                "wireshark": {
+                    "applicable": False,
+                    "full_capture": False,
+                    "evidence_capture": False,
+                    "copy_filter": False,
+                    "show_packet_evidence": False,
+                    "display_filter": None,
+                },
+            }
+        ]
+        report["remaining_hypotheses"] = [
+            {
+                "statement": "A deterministic server wait remains unresolved.",
+                "fault_domains": ["server_application"],
+                "evidence_ids": [related_evidence_id],
+                "next_evidence": [],
+            }
+        ]
+        return report
+
+    from wireclaw_api import gate7_service
+    from wireclaw_api.investigation import build_investigation_result
+
+    monkeypatch.setattr(
+        gate7_service, "build_investigation_result", report_with_unrelated_finding_evidence
+    )
+    prose_sentinel = "MODEL_RECOMMENDATION_PROSE_SENTINEL"
+    provider = ScriptedCycleProvider(
+        [
+            {
+                "action": "finalize",
+                "hypotheses": [],
+                "remaining_hypotheses": [
+                    {
+                        "category": "server.application_wait",
+                        "evidence_ids": [unrelated_evidence_id],
+                        "fault_domains": ["server_application"],
+                        "next_evidence": ["server_side_capture", prose_sentinel],
+                    }
+                ],
+            }
+        ]
+    )
+    service.run_reasoning_capability = install_cycle_runner(monkeypatch, [provider], [])
+
+    try:
+        service._assemble_report(case_id)
+        report = service.report(case_id)
+        records = persistence.steps(service, case_id)
+        deterministic = report_with_unrelated_finding_evidence(
+            case_id=case_id,
+            symptom=service.get(case_id)["symptom"],
+            evidence=evidence,
+            analyzer_versions=service.analyzer_versions(case_id),
+            max_display_filter_chars=policy.max_display_filter_chars,
+        )
+        assert unrelated_evidence_id in evidence[0]["id"]
+        assert unrelated_evidence_id in deterministic["findings"][0]["evidence_ids"]
+        assert unrelated_evidence_id not in deterministic["remaining_hypotheses"][0]["evidence_ids"]
+        assert report["reasoning"]["mode"] == "model_assisted"
+        assert records[-1]["next_evidence_codes"] == []
+        assert prose_sentinel not in json.dumps(report)
+        assert (
+            "Collect a synchronized server-side capture for the same transaction."
+            not in (report["recommended_next_evidence"])
+        )
+    finally:
+        service.close()
+
+
 def test_valid_hypothesis_summary_sentinel_is_not_persisted_or_exposed(tmp_path, monkeypatch):
     policy = Policy(
         provider_mode=ProviderMode.LOCAL,

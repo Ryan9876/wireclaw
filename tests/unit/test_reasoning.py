@@ -672,6 +672,104 @@ def test_validated_proposal_ranks_existing_finding_and_uses_fixed_next_evidence(
     assert next_codes == ["server_side_capture"]
 
 
+def test_remaining_recommendation_requires_evidence_from_authorizing_hypothesis(monkeypatch):
+    unrelated_evidence_id = "ev_" + "b" * 64 + "_analyze_tcp_health_stream0"
+    related_evidence_id = "ev_" + "a" * 64 + "_analyze_http_timing_stream0"
+    provider = _ScriptedProvider(
+        [
+            {
+                "action": "finalize",
+                "hypotheses": [],
+                "remaining_hypotheses": [
+                    {
+                        "category": "server.application_wait",
+                        "evidence_ids": [unrelated_evidence_id],
+                        "fault_domains": ["server_application"],
+                        "next_evidence": [
+                            "server_side_capture",
+                            "MODEL_PROSE_SENTINEL: run an arbitrary command",
+                        ],
+                    }
+                ],
+            }
+        ]
+    )
+    monkeypatch.setattr(loop, "make_provider", lambda policy: provider)
+    service = _StubService()
+    service.report["remaining_hypotheses"] = [
+        {
+            "statement": "A server-side wait remains possible.",
+            "fault_domains": ["server_application"],
+            "evidence_ids": [related_evidence_id],
+            "next_evidence": [],
+        }
+    ]
+    service.evidence.append(
+        {"id": unrelated_evidence_id, "epistemic_class": "observed", "case_id": "case1"}
+    )
+    service.evidence.append(
+        {"id": related_evidence_id, "epistemic_class": "derived", "case_id": "case1"}
+    )
+
+    # Prove the fixture targets the evidence-binding gap, not invalid/cross-case evidence.
+    assert unrelated_evidence_id in {item["id"] for item in service.evidence}
+    assert (
+        next(
+            item["epistemic_class"]
+            for item in service.evidence
+            if item["id"] == unrelated_evidence_id
+        )
+        == "observed"
+    )
+    assert unrelated_evidence_id not in service.report["remaining_hypotheses"][0]["evidence_ids"]
+
+    result, _, next_codes = loop.run_loop(service, "case1", service.report)
+    assert result["mode"] == "model_assisted"
+    # Before the production fix, this assertion fails because domain compatibility alone
+    # authorizes the unrelated same-case evidence.
+    assert next_codes == []
+
+
+def test_remaining_recommendation_keeps_related_and_empty_evidence_behavior(monkeypatch):
+    related_id = "ev_" + "c" * 64 + "_analyze_http_timing_stream0"
+    provider = _ScriptedProvider(
+        [
+            {
+                "action": "finalize",
+                "hypotheses": [],
+                "remaining_hypotheses": [
+                    {
+                        "category": "server.application_wait",
+                        "evidence_ids": [related_id],
+                        "fault_domains": ["server_application"],
+                        "next_evidence": ["server_side_capture", " arbitrary prose "],
+                    },
+                    {
+                        "category": "server.application_wait",
+                        "evidence_ids": [],
+                        "fault_domains": ["server_application"],
+                        "next_evidence": ["application_logs"],
+                    },
+                ],
+            }
+        ]
+    )
+    monkeypatch.setattr(loop, "make_provider", lambda policy: provider)
+    service = _StubService()
+    service.report["remaining_hypotheses"] = [
+        {
+            "statement": "A server-side wait remains possible.",
+            "fault_domains": ["server_application"],
+            "evidence_ids": [related_id],
+            "next_evidence": [],
+        }
+    ]
+    service.evidence.append({"id": related_id, "epistemic_class": "derived", "case_id": "case1"})
+
+    _, _, next_codes = loop.run_loop(service, "case1", service.report)
+    assert next_codes == ["server_side_capture", "application_logs"]
+
+
 def test_step_limit_bounds_distinct_capability_turns(monkeypatch):
     names = [
         "analyze_rtt",
