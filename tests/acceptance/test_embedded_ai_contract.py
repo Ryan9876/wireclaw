@@ -12,6 +12,7 @@ from wireclaw_api.config import Policy, ProviderMode
 from wireclaw_api.providers.openai_compatible import OpenAICompatibleProvider
 from wireclaw_api.reasoning import loop, persistence
 from wireclaw_api.reasoning.context import SYSTEM_INSTRUCTION
+from wireclaw_api.reasoning.contracts import ACTION_ADAPTER
 
 
 class StepDatabase:
@@ -147,7 +148,15 @@ def test_exact_embedded_provider_request_and_persisted_audit_exclude_private_sen
     assert len(captured) == 1
     request = captured[0]
     body = json.loads(request.content)
-    assert set(body) == {"model", "messages", "temperature"}
+    assert set(body) == {"model", "messages", "temperature", "response_format"}
+    assert body["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "wireclaw_reasoning_action",
+            "strict": True,
+            "schema": ACTION_ADAPTER.json_schema(),
+        },
+    }
     assert body["model"] == "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
     assert body["temperature"] == 0
     assert body["messages"][0] == {"role": "system", "content": SYSTEM_INSTRUCTION}
