@@ -80,8 +80,8 @@ def fixture_ai(tmp_path):
             "listen_host": "127.0.0.1",
             "port": 8767,
             "context_size": 16384,
-            "batch_size": 512,
-            "micro_batch_size": 128,
+            "batch_size": 128,
+            "micro_batch_size": 32,
             "max_tokens": 2048,
             "parallel": 1,
             "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
@@ -115,8 +115,8 @@ def test_embedded_ai_lock_pins_exact_model_runtime_and_policy():
     assert lock["runtime"]["revision"] == "8345f333951c661d166b00e6f9362e553768f292"
     assert lock["conversion"]["huggingface_hub_version"] == "0.34.4"
     assert lock["policy"]["context_size"] == 16384
-    assert lock["policy"]["batch_size"] == 512
-    assert lock["policy"]["micro_batch_size"] == 128
+    assert lock["policy"]["batch_size"] == 128
+    assert lock["policy"]["micro_batch_size"] == 32
     assert lock["policy"]["max_tokens"] == 2048
     assert lock["policy"]["parallel"] == 1
     assert lock["policy"]["port"] == 8767

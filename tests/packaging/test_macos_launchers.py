@@ -57,7 +57,7 @@ def make_ai_assets(release: Path):
         "build_settings": {"metal": True, "server": True},
         "files": [{"path": "macos-arm64/llama-server", "sha256": hashlib.sha256(runtime.read_bytes()).hexdigest(), "size_bytes": runtime.stat().st_size}],
         "license_paths": ["licenses/llama.cpp-MIT.txt"],
-        "policy": {"platform": "macos", "architecture": "arm64", "listen_host": "127.0.0.1", "context_size": 16384, "batch_size": 512, "micro_batch_size": 128, "max_tokens": 2048, "parallel": 1,
+        "policy": {"platform": "macos", "architecture": "arm64", "listen_host": "127.0.0.1", "context_size": 16384, "batch_size": 128, "micro_batch_size": 32, "max_tokens": 2048, "parallel": 1,
                    "port": 8767, "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
                    "authentication_required": True, "agent_tools": False, "web_ui": False, "network_downloads": False},
     }), encoding="utf-8")
@@ -273,7 +273,7 @@ def test_symlinked_ai_secret_state_is_not_overwritten(tmp_path):
 def test_runtime_policy_is_fixed_loopback_only_and_no_user_values_become_argv():
     source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
     assert '--host 127.0.0.1 --port "$wireclaw_ai_port"' in source
-    assert '--ctx-size 16384 --batch-size 512 --ubatch-size 128 --n-predict 2048 --parallel 1' in source
+    assert '--ctx-size 16384 --batch-size 128 --ubatch-size 32 --n-predict 2048 --parallel 1' in source
     assert '--api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui' in source
     assert 'env -i HOME="$wireclaw_runtime_dir"' in source
     assert "pkill" not in source

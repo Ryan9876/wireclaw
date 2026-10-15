@@ -39,7 +39,7 @@
     "agent_tools": false,
     "web_ui": false,
     "network_downloads": false,
-    "batch_size": 512,
-    "micro_batch_size": 128
+    "batch_size": 128,
+    "micro_batch_size": 32
   }
 }
