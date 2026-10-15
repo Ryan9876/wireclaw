@@ -6,7 +6,9 @@
     "archive_sha256": "fb804e0e2f35264464f9577f4dc68d05d312e99c825c621f48ebb799a5bcb281",
     "archive_size_bytes": 2671237120,
     "bundle_tree_sha256": "6408e56d88fef6502fb80aab1bd70424cb1214f3bf5c9183feb3d39d0501d76d",
-    "supersedes_source_sha": "fed0ea7d069b9229f9ccab058c176a443c3070df"
+    "supersedes_source_sha": "fed0ea7d069b9229f9ccab058c176a443c3070df",
+    "record_state": "SUPERSEDED",
+    "superseded_by_source_sha": "647c267cb90307454d949a8e10cdaade0eef2e20"
   },
   "identities": {
     "model_sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc",

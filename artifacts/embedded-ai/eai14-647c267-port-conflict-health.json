@@ -1,0 +1,1 @@
+{"status":"ok","gate":7,"provider_mode":"none","ai":{"effective_provider_mode":"none","embedded_availability":"unavailable","model":"wireclaw-qwen3-4b-instruct-2507-q4_k_m","failure_code":"port-in-use"}}

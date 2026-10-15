@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "result": "PASS_WITH_INDEPENDENT_REVIEW_PENDING",
+  "source_sha": "647c267cb90307454d949a8e10cdaade0eef2e20",
+  "automated_current_head": {
+    "privacy_and_injection_tests": "PASS",
+    "launcher_argv_and_manifest_policy_tests": "PASS",
+    "tamper_and_hash_validation": "PASS",
+    "full_python_suite": "PASS"
+  },
+  "native_candidate": {
+    "runtime_sha256": "84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034",
+    "policy": "cache-ram=0; authentication required; loopback-only; agent/web UI disabled; network downloads disabled",
+    "runtime_token_in_log": false,
+    "current_ephemeral_token_in_log_or_data_root": false,
+    "external_llama_server_socket": false,
+    "port_conflict_degradation": "PASS",
+    "tamper_degradation": "PASS",
+    "safe_process_loss_fallback": "PASS"
+  },
+  "focused_review": {
+    "argument_injection": "No user-controlled runtime flags; the cache value is pinned in lock/manifest validation and the launcher passes the fixed literal.",
+    "manifest_truthfulness": "Runtime policy, release argv template, benchmark argv, and candidate manifests record cache RAM zero.",
+    "recovery_fix": "Initialization order only; no request/input controls the field.",
+    "result": "No issue found in focused source review."
+  },
+  "independent_whole_branch_security_review": "PENDING",
+  "limitations": ["No full-host packet capture was made for model-download observation."]
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "result": "PASS",
+  "source_sha": "647c267cb90307454d949a8e10cdaade0eef2e20",
+  "python_local": {"command": ".venv/bin/python -m pytest -q", "passed": 397, "skipped": 147, "failed": 0, "warnings": 1},
+  "python_exact_head_ci": {"workflow_run_id": 38780319845, "result": "PASS", "linux_full": "PASS", "docker_release": "PASS"},
+  "bridge_platform_ci": {"macos_14": "PASS", "ubuntu_24_04": "PASS", "windows_2025": "PASS"},
+  "focused_recovery_regression": {"result": "PASS", "test": "test_embedded_runtime_failure_state_is_initialized_before_recovery"},
+  "web": {"vitest_passed": 54, "lint": "PASS", "build_and_typecheck": "PASS"},
+  "host_bridge": {"go_test": "PASS", "go_vet": "PASS"},
+  "python_style": {"ruff_check": "PASS", "changed_python_files_format": "PASS", "repository_wide_format_check": "FAIL", "detail": "One pre-existing formatting difference at specs/v1/solution.md:318; frozen V1 spec left untouched."},
+  "discovered_and_fixed": {
+    "issue": "Gate 7 runtime failure state was initialized after the parent constructor, although parent construction performs recovery through overridden get()/ai_status().",
+    "fix": "Initialize _embedded_runtime_failure_code before super().__init__().",
+    "test_first": "New regression test failed before the fix and passed after it."
+  }
+}

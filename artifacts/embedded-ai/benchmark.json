@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "source_sha": "b64a0fdaa80ef5a9c4115a757e677942cd685beb",
-  "core_image_id": "sha256:5058f19fe815fccf5306485d93c49a1a7c9037cec1671c4545b667cfe75e3130",
+  "source_sha": "647c267cb90307454d949a8e10cdaade0eef2e20",
+  "core_image_id": "sha256:6a06e8228a227781d3a99f7846e264ea883f0e8baf166c8b34180621a1881003",
   "model": {
     "id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
     "repository": "Qwen/Qwen3-4B-Instruct-2507",
@@ -38,7 +38,7 @@
     "argv": [
       "<packaged-runtime>/llama-server",
       "--model",
-      "/private/tmp/wireclaw-candidate-b64a0fd/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf",
+      "/private/tmp/wireclaw-candidate-647c267/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf",
       "--alias",
       "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
       "--host",
@@ -76,8 +76,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19684,
-        704
+        19662,
+        655
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -110,7 +110,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        60064
+        60048
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -149,7 +149,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 1,
       "provider_step_latencies_ms": [
-        18
+        20
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -184,7 +184,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 1,
       "provider_step_latencies_ms": [
-        17528
+        17136
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -217,8 +217,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20666,
-        681
+        20545,
+        639
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -249,7 +249,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        29970
+        29966
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -284,8 +284,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20282,
-        695
+        20270,
+        693
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -321,8 +321,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19898,
-        631
+        19800,
+        633
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -359,7 +359,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        18
+        42
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -464,8 +464,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20426,
-        747
+        20161,
+        629
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -501,7 +501,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        15341
+        15377
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -536,8 +536,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20079,
-        631
+        19980,
+        619
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -569,7 +569,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20926
+        20886
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -606,7 +606,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        23075
+        23010
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -641,7 +641,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        23347
+        23311
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -676,8 +676,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        407,
-        17
+        404,
+        18
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -713,8 +713,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        33148,
-        801
+        33389,
+        860
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -751,7 +751,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        23161
+        23284
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -786,7 +786,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19
+        18
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -821,8 +821,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19737,
-        632
+        19810,
+        630
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -855,41 +855,41 @@
   "uncertainty_failures": 0,
   "original_capture_hashes_unchanged": true,
   "metrics": {
-    "cold_readiness_seconds": 1.049,
-    "peak_ai_rss_bytes": 5083529216,
-    "median_provider_step_ms": 15341,
+    "cold_readiness_seconds": 1.031,
+    "peak_ai_rss_bytes": 5059117056,
+    "median_provider_step_ms": 15377,
     "provider_step_latencies_ms": [
-      20666,
-      681,
-      19684,
-      704,
-      17528,
-      23161,
-      29970,
-      23347,
-      33148,
-      801,
-      19737,
-      632,
-      20282,
-      695,
-      20079,
-      631,
-      20926,
-      19898,
-      631,
-      15341,
-      20426,
-      747,
-      60064,
-      23075,
+      20545,
+      639,
+      19662,
+      655,
+      17136,
+      23284,
+      29966,
+      23311,
+      33389,
+      860,
+      19810,
+      630,
+      20270,
+      693,
+      19980,
+      619,
+      20886,
+      19800,
+      633,
+      15377,
+      20161,
+      629,
+      60048,
+      23010,
       19,
+      20,
+      404,
       18,
-      407,
-      17,
+      42,
       18,
-      18,
-      19
+      18
     ],
     "model_size_bytes": 2497279040,
     "bundle_size_bytes": 2671503828,
