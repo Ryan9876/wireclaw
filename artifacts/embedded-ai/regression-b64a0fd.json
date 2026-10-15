@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "result": "PASS",
+  "source_sha": "b64a0fdaa80ef5a9c4115a757e677942cd685beb",
+  "python": {"command": ".venv/bin/python -m pytest -q", "passed": 396, "skipped": 147, "failed": 0, "warnings": 1},
+  "web": {"vitest": {"command": "npm test", "passed": 54, "failed": 0}, "lint": "PASS", "build_and_typecheck": "PASS"},
+  "host_bridge": {"command": "go test ./... && go vet ./...", "result": "PASS"},
+  "python_style": {"ruff_check": "PASS", "ruff_format_check": "FAIL", "detail": "One pre-existing formatting difference in specs/v1/solution.md:318; 126 other files are formatted. The file is outside this change and was not modified."},
+  "candidate": {
+    "archive_sha256": "fb804e0e2f35264464f9577f4dc68d05d312e99c825c621f48ebb799a5bcb281",
+    "source_sha": "b64a0fdaa80ef5a9c4115a757e677942cd685beb"
+  },
+  "disposition": "Functional regression suites passed; repository-wide formatter check has one unrelated existing failure."
+}
