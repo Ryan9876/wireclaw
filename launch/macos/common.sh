@@ -14,6 +14,7 @@ wireclaw_ai_fifo="${wireclaw_runtime_dir}/ai-log.fifo"
 wireclaw_ai_port=8767
 wireclaw_ai_model_id=wireclaw-qwen3-4b-instruct-2507-q4_k_m
 wireclaw_ai_model_file=qwen3-4b-instruct-2507-q4_k_m.gguf
+wireclaw_ai_base_url=http://host.docker.internal:8767/v1
 
 fail() {
   printf 'Wireclaw: %s\n' "$1" >&2
@@ -134,11 +135,13 @@ start_ai() {
   app_port="$2"
   bridge_port="$3"
   mode="$4"
+  configured_ai_port="${5:-8767}"
   if [ "$mode" != embedded_local ]; then
     if ! stop_ai; then printf 'Wireclaw: existing embedded AI state could not be safely stopped; configured provider remains unchanged.\n' >&2; fi
     rm -f "$wireclaw_ai_status_file"
     return 0
   fi
+  if [ "$configured_ai_port" != "$wireclaw_ai_port" ]; then ai_unavailable "invalid-port"; return 0; fi
   for state_file in "$wireclaw_ai_pid_file" "$wireclaw_ai_status_file" "$wireclaw_ai_key_file" "$wireclaw_ai_log_file" "$wireclaw_ai_fifo"; do
     if [ -L "$state_file" ]; then printf 'Wireclaw: Local embedded AI unavailable — deterministic analysis remains available (unsafe-state).\n'; return 0; fi
   done
@@ -219,6 +222,41 @@ PY
   fi
   printf 'ready\n' > "$wireclaw_ai_status_file"
   chmod 600 "$wireclaw_ai_status_file"
+}
+
+configure_provider_environment() {
+  configured_mode="$1"
+  if [ "$configured_mode" != embedded_local ]; then
+    export WIRECLAW_PROVIDER_MODE="$configured_mode"
+    export WIRECLAW_PROVIDER_BASE_URL="${2:-}"
+    export WIRECLAW_PROVIDER_MODEL="${3:-}"
+    export WIRECLAW_PROVIDER_API_KEY="${4:-}"
+    export WIRECLAW_EMBEDDED_AI_STATUS=not_applicable
+    return 0
+  fi
+  status="$(cat "$wireclaw_ai_status_file" 2>/dev/null || printf 'unavailable:not-ready')"
+  if [ "$status" = ready ] && [ -f "$wireclaw_ai_key_file" ] && [ ! -L "$wireclaw_ai_key_file" ]; then
+    export WIRECLAW_PROVIDER_MODE=embedded_local
+    export WIRECLAW_PROVIDER_BASE_URL="$wireclaw_ai_base_url"
+    export WIRECLAW_PROVIDER_MODEL="$wireclaw_ai_model_id"
+    export WIRECLAW_PROVIDER_API_KEY="$(cat "$wireclaw_ai_key_file")"
+    export WIRECLAW_EMBEDDED_AI_STATUS=ready
+    return 0
+  fi
+  failure="${status#unavailable:}"
+  [ "$failure" != "$status" ] || failure=not-ready
+  export WIRECLAW_PROVIDER_MODE=none
+  export WIRECLAW_PROVIDER_BASE_URL=
+  export WIRECLAW_PROVIDER_MODEL=
+  export WIRECLAW_PROVIDER_API_KEY=
+  export WIRECLAW_EMBEDDED_AI_STATUS="unavailable:$failure"
+}
+
+probe_ai_from_core() {
+  release_dir="$1"
+  env_file="$2"
+  probe_script='import json,os,urllib.request; req=urllib.request.Request("http://host.docker.internal:8767/v1/models",headers={"Authorization":"Bearer "+os.environ["WIRECLAW_PROVIDER_API_KEY"]}); opener=urllib.request.build_opener(urllib.request.ProxyHandler({})); body=json.load(opener.open(req,timeout=3)); expected="wireclaw-qwen3-4b-instruct-2507-q4_k_m"; raise SystemExit(0 if any(item.get("id")==expected for item in body.get("data",[])) else 1)'
+  docker compose --env-file "$env_file" -f "$release_dir/compose.yaml" run --rm --no-deps --entrypoint python wireclaw-core -c "$probe_script" >/dev/null 2>&1
 }
 
 load_release_image() {

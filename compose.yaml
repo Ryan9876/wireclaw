@@ -20,6 +20,7 @@ services:
       WIRECLAW_PROVIDER_BASE_URL: "${WIRECLAW_PROVIDER_BASE_URL:-}"
       WIRECLAW_PROVIDER_MODEL: "${WIRECLAW_PROVIDER_MODEL:-}"
       WIRECLAW_PROVIDER_API_KEY: "${WIRECLAW_PROVIDER_API_KEY:-}"
+      WIRECLAW_EMBEDDED_AI_STATUS: "${WIRECLAW_EMBEDDED_AI_STATUS:-not_applicable}"
     security_opt:
       - no-new-privileges:true
     cap_drop:

@@ -19,6 +19,11 @@ APP_PORT="$(read_env_value WIRECLAW_PORT "$ENV_FILE")"
 BRIDGE_PORT="$(read_env_value WIRECLAW_BRIDGE_PORT "$ENV_FILE")"
 DATA_CONFIG="$(read_env_value WIRECLAW_DATA_ROOT "$ENV_FILE")"
 PROVIDER_MODE="$(read_env_value WIRECLAW_PROVIDER_MODE "$ENV_FILE")"
+PROVIDER_BASE_URL="$(read_env_value WIRECLAW_PROVIDER_BASE_URL "$ENV_FILE")"
+PROVIDER_MODEL="$(read_env_value WIRECLAW_PROVIDER_MODEL "$ENV_FILE")"
+PROVIDER_API_KEY="$(read_env_value WIRECLAW_PROVIDER_API_KEY "$ENV_FILE")"
+AI_PORT_CONFIG="$(read_env_value WIRECLAW_AI_PORT "$ENV_FILE")"
+[ -n "$AI_PORT_CONFIG" ] || AI_PORT_CONFIG=8767
 validate_port WIRECLAW_PORT "$APP_PORT"
 validate_port WIRECLAW_BRIDGE_PORT "$BRIDGE_PORT"
 [ "$APP_PORT" != "$BRIDGE_PORT" ] || fail "application and bridge ports must differ"
@@ -50,13 +55,21 @@ if [ -L "$wireclaw_support_root" ] || [ -L "$wireclaw_runtime_dir" ]; then
 fi
 mkdir -p "$wireclaw_runtime_dir"
 chmod 700 "$wireclaw_support_root" "$wireclaw_runtime_dir"
-start_ai "$RELEASE_DIR" "$APP_PORT" "$BRIDGE_PORT" "$PROVIDER_MODE"
+start_ai "$RELEASE_DIR" "$APP_PORT" "$BRIDGE_PORT" "$PROVIDER_MODE" "$AI_PORT_CONFIG"
 export WIRECLAW_DATA_ROOT="$DATA_ROOT"
 export WIRECLAW_UID="$(id -u)"
 export WIRECLAW_GID="$(id -g)"
+load_release_image "$RELEASE_DIR"
+configure_provider_environment "$PROVIDER_MODE" "$PROVIDER_BASE_URL" "$PROVIDER_MODEL" "$PROVIDER_API_KEY"
+if [ "$PROVIDER_MODE" = embedded_local ] && [ "$WIRECLAW_PROVIDER_MODE" = embedded_local ]; then
+  if ! probe_ai_from_core "$RELEASE_DIR" "$ENV_FILE"; then
+    stop_ai || true
+    ai_unavailable "docker-connectivity"
+    configure_provider_environment embedded_local
+  fi
+fi
 docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" config --quiet \
   || fail "Compose configuration is invalid; review .env against .env.example."
-load_release_image "$RELEASE_DIR"
 if ! docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" up -d; then
   docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
   fail "Wireclaw core did not start. Check Docker Desktop and the packaged release files."
