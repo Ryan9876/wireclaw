@@ -203,6 +203,7 @@ def test_ai_listener_ownership_is_checked_before_health_probe():
     assert "ai_listener_matches()" in source
     assert "probe_ai_health \"$AI_PID\"" in source
     assert source.index('ai_listener_matches "$AI_PID"') < source.index('probe_ai_health "$AI_PID"')
+    assert "getsockopt(0, 2, 4)" not in source
 
 
 def test_ai_listener_match_requires_the_owned_loopback_socket():

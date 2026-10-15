@@ -147,7 +147,7 @@ stop_ai() {
 
 probe_ai_health() {
   /usr/bin/python3 - "$wireclaw_ai_key_file" "$wireclaw_ai_model_id" "$1" <<'PY'
-import json, socket, struct, subprocess, sys, time
+import json, socket, subprocess, sys, time
 
 key_path, model_id, pid = sys.argv[1:]
 key = open(key_path, encoding="ascii").read().strip()
@@ -160,9 +160,6 @@ for _ in range(60):
         if listener.returncode or "n127.0.0.1:8767" not in listener.stdout.splitlines():
             raise RuntimeError("listener_not_owned")
         with socket.create_connection(("127.0.0.1", 8767), timeout=1) as connection:
-            peer_pid = struct.unpack("i", connection.getsockopt(0, 2, 4))[0]
-            if peer_pid != int(pid):
-                raise RuntimeError("listener_peer_mismatch")
             connection.sendall((
                 "GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\n"
                 "Authorization: Bearer " + key + "\r\nConnection: close\r\n\r\n"
