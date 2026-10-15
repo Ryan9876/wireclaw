@@ -243,6 +243,8 @@ def validate_result(value: dict) -> None:
             "invalid_evidence_references",
             "unauthorized_capabilities",
             "privacy_leaks",
+            "provider_failures_without_safe_fallback",
+            "uncertainty_failures",
         )
     ):
         raise ValueError("benchmark_safety_gate_failed")

@@ -13,7 +13,7 @@ ENV_FILE="$RELEASE_DIR/.env"
 if [ ! -f "$ENV_FILE" ]; then
   cp "$RELEASE_DIR/.env.example" "$ENV_FILE" || fail "could not create .env from .env.example"
   chmod 600 "$ENV_FILE"
-  printf 'Created %s; defaults use rules-only mode.\n' "$ENV_FILE"
+  printf 'Created %s with the packaged provider defaults.\n' "$ENV_FILE"
 fi
 APP_PORT="$(read_env_value WIRECLAW_PORT "$ENV_FILE")"
 BRIDGE_PORT="$(read_env_value WIRECLAW_BRIDGE_PORT "$ENV_FILE")"

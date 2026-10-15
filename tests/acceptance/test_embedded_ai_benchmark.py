@@ -179,6 +179,8 @@ def test_result_validator_requires_identities_safety_counts_and_resource_metrics
         "invalid_evidence_references": 0,
         "unauthorized_capabilities": 0,
         "privacy_leaks": 0,
+        "provider_failures_without_safe_fallback": 0,
+        "uncertainty_failures": 0,
         "verdict": "PASS",
         "targets": {
             "model_size_bytes": {"target": 3_758_096_384, "pass": True},
@@ -188,6 +190,11 @@ def test_result_validator_requires_identities_safety_counts_and_resource_metrics
         },
     }
     assert benchmark.validate_result(result) is None
+    for counter in ("provider_failures_without_safe_fallback", "uncertainty_failures"):
+        result[counter] = 1
+        with pytest.raises(ValueError, match="benchmark_safety_gate_failed"):
+            benchmark.validate_result(result)
+        result[counter] = 0
     result["metrics"]["peak_ai_rss_bytes"] = 9 * 1024**3
     result["targets"]["peak_ai_rss_bytes"]["pass"] = False
     with pytest.raises(ValueError, match="benchmark_release_target_missed"):
