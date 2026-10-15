@@ -278,7 +278,7 @@ def validate_staged_ai(ai_root: Path, lock: dict) -> dict:
 def _repo(work: Path, lock: dict) -> Path:
     repo = work / "llama.cpp"
     if not repo.exists():
-        _run(["git", "clone", "--no-checkout", lock["runtime"]["url"], str(repo)])
+        _run(["git", "clone", lock["runtime"]["url"], str(repo)])
     if repo.is_symlink() or not repo.is_dir():
         _fail("runtime_source_path_invalid")
     if _run(["git", "remote", "get-url", "origin"], cwd=repo) != lock["runtime"]["url"]:

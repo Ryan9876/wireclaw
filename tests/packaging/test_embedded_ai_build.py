@@ -268,6 +268,56 @@ def test_runtime_checkout_reuses_verified_pinned_cache_without_network(monkeypat
     )
 
 
+def test_runtime_checkout_clones_clean_source_before_pinning_revision(tmp_path):
+    module = builder()
+    source_repo = tmp_path / "source"
+    source_repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=source_repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "wireclaw@example.invalid"],
+        cwd=source_repo,
+        check=True,
+    )
+    subprocess.run(["git", "config", "user.name", "Wireclaw Test"], cwd=source_repo, check=True)
+    (source_repo / "source.txt").write_text("pinned source", encoding="utf-8")
+    subprocess.run(["git", "add", "source.txt"], cwd=source_repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "pinned source"], cwd=source_repo, check=True)
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "tag", "v0.6.0", revision], cwd=source_repo, check=True)
+    bare_source = tmp_path / "upstream.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(source_repo), str(bare_source)],
+        check=True,
+        capture_output=True,
+    )
+    work = tmp_path / "work"
+    lock = {
+        "runtime": {
+            "url": str(bare_source),
+            "revision": revision,
+            "tag": "v0.6.0",
+            "tag_revision": revision,
+        }
+    }
+
+    repo = module._repo(work, lock)
+
+    assert (repo / "source.txt").read_text(encoding="utf-8") == "pinned source"
+    assert subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == ""
+
+
 def test_runtime_checkout_rejects_dirty_cached_source(monkeypatch, tmp_path):
     module = builder()
     work = tmp_path / "work"
