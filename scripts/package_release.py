@@ -1,6 +1,8 @@
 """Stage a self-contained macOS release bundle and build its local core image."""
 
+import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -61,14 +63,107 @@ def tree_sha256(directory: Path) -> str:
     return digest.hexdigest()
 
 
+def _embedded_ai_builder():
+    path = ROOT / "scripts/build_embedded_ai.py"
+    spec = importlib.util.spec_from_file_location("wireclaw_build_embedded_ai", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("embedded_ai_builder_unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def stage_embedded_ai(source: Path, release_root: Path) -> dict:
+    """Verify and copy the separately built AI release assets into a bundle."""
+    source = source.expanduser()
+    if source.is_symlink():
+        raise ValueError("manifest_symlink_invalid")
+    source = source.resolve(strict=True)
+    builder = _embedded_ai_builder()
+    lock = builder.load_lock(ROOT / "ai/embedded-ai.lock.json")
+    validated = builder.validate_staged_ai(source, lock)
+    model = validated["model"]
+    runtime = validated["runtime"]
+    expected_files = {
+        "model-manifest.json",
+        "runtime-manifest.json",
+        model["artifact"]["path"],
+        model["license_path"],
+        runtime["entrypoint"],
+        *[item["path"] for item in runtime["files"]],
+        *runtime["license_paths"],
+    }
+    actual_files = {
+        path.relative_to(source).as_posix() for path in source.rglob("*") if path.is_file()
+    }
+    if actual_files != expected_files:
+        raise ValueError("release_ai_unmanifested_asset")
+    destination = release_root / "ai"
+    if destination.exists() or destination.is_symlink():
+        raise ValueError("release_ai_destination_exists")
+    shutil.copytree(source, destination, symlinks=True)
+    validated = builder.validate_staged_ai(destination, lock)
+    model = validated["model"]
+    runtime = validated["runtime"]
+    model_artifact = model["artifact"]
+    runtime_files = [
+        {"path": item["path"], "sha256": item["sha256"], "size_bytes": item["size_bytes"]}
+        for item in runtime["files"]
+    ]
+    licenses = []
+    for relative in [model["license_path"], *runtime["license_paths"]]:
+        path = destination / relative
+        licenses.append(
+            {
+                "path": f"ai/{relative}",
+                "sha256": builder.sha256(path),
+                "size_bytes": path.stat().st_size,
+            }
+        )
+    return {
+        "model": {
+            "id": model["model_id"],
+            "repository": model["repository"],
+            "source_revision": model["revision"],
+            "license": model["license"],
+            "quantization": model["quantization"],
+            "architecture": model["architecture"],
+            "sha256": model_artifact["sha256"],
+            "size_bytes": model_artifact["size_bytes"],
+        },
+        "runtime": {
+            "repository": runtime["repository"],
+            "tag": runtime["tag"],
+            "revision": runtime["revision"],
+            "platform": runtime["platform"],
+            "architecture": runtime["architecture"],
+            "files": runtime_files,
+        },
+        "licenses": licenses,
+        "model_manifest_sha256": builder.sha256(destination / "model-manifest.json"),
+        "runtime_manifest_sha256": builder.sha256(destination / "runtime-manifest.json"),
+        "policy": {
+            "default_provider_mode": "embedded_local",
+            "port": runtime["policy"]["port"],
+            "context_size": runtime["policy"]["context_size"],
+            "max_tokens": runtime["policy"]["max_tokens"],
+            "parallel": runtime["policy"]["parallel"],
+            "platform": runtime["platform"],
+            "architecture": runtime["architecture"],
+        },
+    }
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: python scripts/package_release.py OUTPUT_DIRECTORY")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("output_directory", type=Path)
+    parser.add_argument("--embedded-ai-stage", type=Path, required=True)
+    args = parser.parse_args()
     status = run(["git", "status", "--porcelain"], cwd=ROOT)
     if status:
         raise SystemExit("release staging requires a clean, committed source tree")
     source_sha = run(["git", "rev-parse", "HEAD"], cwd=ROOT)
-    output = Path(sys.argv[1]).expanduser().resolve()
+    output = args.output_directory.expanduser().resolve()
     if output.exists():
         raise SystemExit(f"output directory already exists: {output}")
     stage = output / "wireclaw-release"
@@ -84,6 +179,11 @@ def main() -> int:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
     shutil.copy2(ROOT / "wireclaw-release/README.md", stage / "README.md")
+    shutil.copy2(ROOT / "wireclaw-release/.env.example", stage / ".env.example")
+    metadata_embedded_ai = stage_embedded_ai(args.embedded_ai_stage, stage)
+    builder = _embedded_ai_builder()
+    builder.smoke_test(stage / "ai", builder.load_lock(ROOT / "ai/embedded-ai.lock.json"))
+    metadata_embedded_ai["protocol_smoke"] = "PASS"
 
     architecture = run(["uname", "-m"], cwd=ROOT)
     if architecture != "arm64":
@@ -116,6 +216,7 @@ def main() -> int:
         "bridge_binary": bridge.name,
         "bridge_sha256": sha256(bridge),
         "core_image_id": None,
+        "embedded_ai": metadata_embedded_ai,
     }
     env = os.environ | {"WIRECLAW_DATA_ROOT": str(output / "Wireclaw Release Data")}
     run(
@@ -156,5 +257,5 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (OSError, RuntimeError, json.JSONDecodeError) as error:
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         raise SystemExit(str(error)) from None
