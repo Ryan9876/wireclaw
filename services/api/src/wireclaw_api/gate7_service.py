@@ -10,8 +10,8 @@ from .reasoning.loop import NEXT_EVIDENCE, run_loop
 
 class Service(Gate6Service):
     def __init__(self, root, policy):
-        super().__init__(root, policy)
         self._embedded_runtime_failure_code = None
+        super().__init__(root, policy)
 
     def ai_status(self):
         return effective_ai_status(

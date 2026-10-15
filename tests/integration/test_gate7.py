@@ -12,6 +12,7 @@ from wireclaw_api.gate7_service import Service
 from wireclaw_api.models import CapabilityRequest, State
 from wireclaw_api.providers.models import ProviderResult
 from wireclaw_api.reasoning import loop, persistence
+from wireclaw_api.service import Service as Gate3Service
 
 
 def prepared_service(tmp_path, policy):
@@ -412,6 +413,18 @@ def test_embedded_reasoning_audit_records_model_and_launcher_fallback_without_se
     assert fallback["reasoning"]["mode"] == "rules_only"
     assert fallback["reasoning"]["embedded_availability"] == "unavailable"
     assert fallback["reasoning"]["embedded_failure_code"] == "docker-connectivity"
+
+
+def test_embedded_runtime_failure_state_is_initialized_before_recovery(tmp_path, monkeypatch):
+    original_recover = Gate3Service.recover
+
+    def recover_during_parent_init(self):
+        assert self._embedded_runtime_failure_code is None
+        return original_recover(self)
+
+    monkeypatch.setattr(Gate3Service, "recover", recover_during_parent_init)
+    service = Service(tmp_path, Policy())
+    service.close()
 
 
 def test_embedded_provider_failure_degrades_health_and_case_ai_status(tmp_path, monkeypatch):
