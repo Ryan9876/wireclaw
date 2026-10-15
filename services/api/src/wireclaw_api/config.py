@@ -12,6 +12,7 @@ class ProviderMode(StrEnum):
     NONE = "none"
     CLOUD = "openai_compatible_cloud"
     LOCAL = "openai_compatible_local"
+    EMBEDDED = "embedded_local"
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,18 @@ class Policy:
             ord(char) < 33 or ord(char) == 127 for char in self.provider_api_key
         ):
             raise ValueError("invalid_provider_key")
+        if mode is ProviderMode.EMBEDDED:
+            if (
+                parsed.scheme != "http"
+                or parsed.hostname != "host.docker.internal"
+                or port != 8767
+                or parsed.path != "/v1"
+            ):
+                raise ValueError("invalid_provider_url")
+            if self.provider_model != "wireclaw-qwen3-4b-instruct-2507-q4_k_m":
+                raise ValueError("invalid_provider_model")
+            if not isinstance(self.provider_api_key, str) or len(self.provider_api_key) < 32:
+                raise ValueError("invalid_provider_key")
 
     @classmethod
     def from_environment(cls, **overrides):

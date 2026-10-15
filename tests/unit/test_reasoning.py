@@ -31,6 +31,46 @@ def test_provider_configuration_is_startup_only_and_cloud_requires_https():
     assert local.provider_mode is ProviderMode.LOCAL
 
 
+def test_embedded_provider_configuration_uses_authenticated_fixed_local_endpoint():
+    assert ProviderMode("embedded_local") is ProviderMode.EMBEDDED
+    policy = Policy(
+        provider_mode="embedded_local",
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model="wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        provider_api_key="x" * 32,
+    )
+    assert policy.provider_mode is ProviderMode.EMBEDDED
+    provider = loop.make_provider(policy)
+    assert provider.mode == "embedded_local"
+    assert provider.base_url == "http://host.docker.internal:8767/v1"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"provider_base_url": None},
+        {"provider_model": None},
+        {"provider_api_key": None},
+        {"provider_base_url": "http://user:pass@host.docker.internal:8767/v1"},
+        {"provider_base_url": "http://host.docker.internal:8767/v1?token=x"},
+        {"provider_base_url": "http://host.docker.internal:8767/v1/../admin"},
+        {"provider_base_url": "http://provider.example/v1"},
+        {"provider_base_url": "http://host.docker.internal:8768/v1"},
+        {"provider_api_key": "short"},
+    ],
+)
+def test_embedded_provider_configuration_rejects_unsafe_values(overrides):
+    values = {
+        "provider_mode": ProviderMode.EMBEDDED,
+        "provider_base_url": "http://host.docker.internal:8767/v1",
+        "provider_model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        "provider_api_key": "x" * 32,
+    }
+    values.update(overrides)
+    with pytest.raises(ValueError):
+        Policy(**values)
+
+
 def test_context_is_canonical_allowlisted_and_removes_path_credentials():
     evidence = [
         {
@@ -477,6 +517,22 @@ def test_unsafe_or_malformed_provider_actions_never_reach_capability(content, co
     assert result["mode"] == "model_fallback"
     assert result["failure_code"] == code
     assert service.calls == 0
+
+
+def test_embedded_provider_invalid_capability_never_reaches_analyzer(monkeypatch):
+    provider = _ScriptedProvider(
+        [ProviderResult(content='{"action":"request_capability","capability":"exec","parameters":{}}')]
+    )
+    monkeypatch.setattr(loop, "make_provider", lambda policy: provider)
+    service = _StubService(mode=ProviderMode.EMBEDDED)
+    result, _, _ = loop.run_loop(service, "case1", service.report)
+    assert result["mode"] == "model_fallback"
+    assert result["failure_code"] == "provider_invalid_response"
+    assert service.calls == 0
+    [step] = loop.persistence.steps(service, "case1")
+    assert step["provider_mode"] == ProviderMode.EMBEDDED.value
+    assert step["endpoint_class"] == "local"
+    assert step["model"] == "fake-model"
 
 
 def test_oversized_provider_response_stops_with_fallback(monkeypatch):
