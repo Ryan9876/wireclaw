@@ -6,6 +6,7 @@ import json
 import httpx
 
 from ..config import ProviderMode
+from ..reasoning.contracts import ACTION_ADAPTER
 from .models import ProviderFailure, ProviderResult, ReasoningRequest
 
 
@@ -26,15 +27,25 @@ class OpenAICompatibleProvider:
         self.api_key = api_key
 
     def propose(self, request: ReasoningRequest) -> ProviderResult:
-        body = json.dumps(
-            {
+        request_body = {
                 "model": request.model,
                 "messages": [
                     {"role": "system", "content": request.system_instruction},
                     {"role": "user", "content": request.context_json},
                 ],
                 "temperature": 0,
-            },
+            }
+        if self.mode == ProviderMode.EMBEDDED.value:
+            request_body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "wireclaw_reasoning_action",
+                    "strict": True,
+                    "schema": ACTION_ADAPTER.json_schema(),
+                },
+            }
+        body = json.dumps(
+            request_body,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=True,
