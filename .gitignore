@@ -42,3 +42,6 @@ temp/
 # Test outputs
 artifacts/
 test-results/
+
+# Superpowers execution workspace
+.superpowers/sdd/
