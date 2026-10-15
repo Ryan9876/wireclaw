@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "model": {
+    "repository": "Qwen/Qwen3-4B-Instruct-2507",
+    "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+    "license": "Apache-2.0",
+    "quantization": "Q4_K_M",
+    "gguf_architecture": "qwen3",
+    "id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+    "artifact": "models/qwen3-4b-instruct-2507-q4_k_m.gguf",
+    "max_size_bytes": 3758096384
+  },
+  "runtime": {
+    "repository": "ggml-org/llama.cpp",
+    "url": "https://github.com/ggml-org/llama.cpp.git",
+    "tag": "v0.6.0",
+    "revision": "8345f333951c661d166b00e6f9362e553768f292",
+    "required_resources": [
+      "macos-arm64/llama-server",
+      "macos-arm64/libggml-metal.dylib"
+    ]
+  },
+  "conversion": {
+    "huggingface_hub_version": "0.34.4",
+    "source_snapshot_excludes": [".cache/**"]
+  },
+  "policy": {
+    "platform": "macos",
+    "architecture": "arm64",
+    "listen_host": "127.0.0.1",
+    "context_size": 16384,
+    "max_tokens": 2048,
+    "parallel": 1,
+    "port": 8767,
+    "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+    "authentication_required": true,
+    "agent_tools": false,
+    "web_ui": false,
+    "network_downloads": false
+  }
+}

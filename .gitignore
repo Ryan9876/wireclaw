@@ -45,3 +45,9 @@ test-results/
 
 # Superpowers execution workspace
 .superpowers/sdd/
+
+# Generated embedded-AI release assets
+ai/staging/
+ai/build/
+ai/release/
+*.gguf
