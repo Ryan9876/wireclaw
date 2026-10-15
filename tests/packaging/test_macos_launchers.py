@@ -198,11 +198,16 @@ def test_runtime_state_path_rejects_symlinked_ancestor(tmp_path):
     assert result.returncode != 0
 
 
-def test_ai_listener_ownership_is_checked_before_health_probe():
+def test_ai_listener_is_verified_during_bounded_health_probe_before_final_check():
     source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
     assert "ai_listener_matches()" in source
-    assert "probe_ai_health \"$AI_PID\"" in source
-    assert source.index('ai_listener_matches "$AI_PID"') < source.index('probe_ai_health "$AI_PID"')
+    startup_start = source.index('if ! ai_process_matches "$AI_PID"')
+    startup = source[startup_start : source.index("  printf 'ready", startup_start)]
+    assert startup.index('! ai_process_matches "$AI_PID"') < startup.index('! probe_ai_health "$AI_PID"')
+    assert startup.index('! probe_ai_health "$AI_PID"') < startup.index('! ai_listener_matches "$AI_PID"')
+    probe = source[source.index("probe_ai_health()") : source.index("start_ai()")]
+    assert '"/usr/sbin/lsof"' in probe
+    assert '"n127.0.0.1:8767"' in probe
     assert "getsockopt(0, 2, 4)" not in source
 
 
@@ -268,6 +273,15 @@ def test_symlinked_ai_secret_state_is_not_overwritten(tmp_path):
     assert "(unsafe-state)" in result.stdout
     assert not (runtime_dir / "ai-status").exists()
     assert sentinel.read_text() == "preserve"
+
+
+def test_ai_log_fifo_is_not_unlinked_before_runtime_opens_it():
+    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    runtime_started = source.index("  AI_PID=$!")
+    runtime_ready = source.index('probe_ai_health "$AI_PID"', runtime_started)
+    startup_block = source[runtime_started:runtime_ready]
+    assert 'rm -f "$wireclaw_ai_fifo"' not in startup_block
+    assert 'rm -f "$wireclaw_ai_fifo"' in source[source.index("stop_ai()") :]
 
 
 def test_runtime_policy_is_fixed_loopback_only_and_no_user_values_become_argv():

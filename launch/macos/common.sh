@@ -244,7 +244,6 @@ PY
       --host 127.0.0.1 --port "$wireclaw_ai_port" --ctx-size 16384 --batch-size 128 --ubatch-size 32 --n-predict 2048 --parallel 1 \
       --api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui ) > "$wireclaw_ai_fifo" 2>&1 &
   AI_PID=$!
-  rm -f "$wireclaw_ai_fifo"
   AI_START="$(ps -p "$AI_PID" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   if [ -z "$AI_START" ]; then ai_unavailable "runtime-start-failed"; rm -f "$wireclaw_ai_key_file"; return 0; fi
   if ! /usr/bin/python3 - "$wireclaw_ai_pid_file" "$AI_PID" "$AI_START" <<'PY'
@@ -269,7 +268,6 @@ PY
     return 0
   fi
   if ! ai_process_matches "$AI_PID" "$AI_START" "$ai_bin" \
-    || ! ai_listener_matches "$AI_PID" "$wireclaw_ai_port" \
     || ! probe_ai_health "$AI_PID" \
     || ! ai_process_matches "$AI_PID" "$AI_START" "$ai_bin" \
     || ! ai_listener_matches "$AI_PID" "$wireclaw_ai_port"; then
