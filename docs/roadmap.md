@@ -38,6 +38,8 @@ Approved design direction:
 
 Implementation and acceptance are governed by `specs/post-v1/embedded-local-ai.md` and ADR-0007. This stage qualifies macOS arm64 only. The accepted V1 release record remains unchanged.
 
+Current implementation evidence is tracked in `docs/post-v1-embedded-ai-acceptance.md`. The exact-head benchmark meets all recorded size, memory, readiness, and latency targets. Full frozen-package native acceptance, exact-head hosted CI, independent review, and the draft PR remain outstanding; this work is not yet release-qualified. Windows/Linux embedded-AI qualification remains `NOT_RUN`.
+
 ## Post-V1 — Windows and Linux release qualification
 
 Goal: extend the macOS-qualified product to Windows and Linux without weakening the local-first/security model or redesigning the core analysis architecture.

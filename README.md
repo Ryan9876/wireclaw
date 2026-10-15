@@ -87,6 +87,9 @@ The analyzer and web application are containerized. V1 uses a small native macOS
 
 ## Current status
 
+Post-V1 embedded local AI implementation is on `post-v1-embedded-ai-impl`. The pinned model/runtime package and benchmark are recorded in [the post-V1 acceptance record](docs/post-v1-embedded-ai-acceptance.md); packaged native acceptance, exact-head CI, independent review, and draft PR remain pending. This feature does not change the V1 acceptance history.
+
+
 Gates 1 through 9 are merged and complete for V1.
 
 Gate 6 completed the evidence-capture and native Wireshark path and passed native GUI acceptance on the supported V1 host, macOS. Windows and Linux release qualification are deferred to the [product roadmap](docs/roadmap.md), while their existing build/discovery/argv CI coverage remains portability evidence.

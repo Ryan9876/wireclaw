@@ -5,6 +5,10 @@ analyzer in one Docker core container. The Go host bridge runs natively and
 opens approved captures in native Wireshark. It also includes the pinned native
 macOS arm64 llama.cpp runtime and Qwen model for optional local reasoning.
 
+## Post-V1 acceptance status
+
+The embedded AI implementation and performance benchmark are recorded in `docs/post-v1-embedded-ai-acceptance.md`. A full 16-check packaged native acceptance and final CI/review/PR workflow remain pending; this candidate must not be described as release-qualified until the acceptance record reports EAI.14 and EAI.15 as PASS.
+
 ## Requirements
 
 - macOS arm64 (the only architecture included in this candidate)
