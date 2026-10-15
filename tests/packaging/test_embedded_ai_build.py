@@ -462,6 +462,27 @@ def test_runtime_relocation_removes_build_tree_rpaths_and_uses_packaged_librarie
     ] in commands
 
 
+def test_runtime_relocation_accepts_system_framework_dependency(monkeypatch, tmp_path):
+    module = builder()
+    runtime = tmp_path / "ai/macos-arm64"
+    runtime.mkdir(parents=True)
+    (runtime / "llama-server").write_bytes(b"server")
+
+    def fake_run(argv, *, cwd=None, env=None):
+        if argv[0] == "otool" and argv[1] == "-l":
+            return "Load command 1\n cmd LC_RPATH\n path @loader_path (offset 12)\n"
+        if argv[0] == "otool" and argv[1] == "-L":
+            return (
+                f"{argv[2]}:\\n"
+                "\\t/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation "
+                "(compatibility version 300.0.0)\\n"
+            )
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    module.relocate_macos_runtime(runtime, tmp_path / "llama-build/bin")
+
+
 def test_runtime_relocation_rejects_unbundled_absolute_dependencies(monkeypatch, tmp_path):
     module = builder()
     runtime = tmp_path / "ai/macos-arm64"
@@ -477,6 +498,50 @@ def test_runtime_relocation_rejects_unbundled_absolute_dependencies(monkeypatch,
 
     monkeypatch.setattr(module, "_run", fake_run)
     with pytest.raises(ValueError, match="runtime_external_dependency"):
+        module.relocate_macos_runtime(runtime, tmp_path / "llama-build/bin")
+
+
+def test_runtime_relocation_rejects_system_prefixed_dependency_that_escapes(monkeypatch, tmp_path):
+    module = builder()
+    runtime = tmp_path / "ai/macos-arm64"
+    runtime.mkdir(parents=True)
+    (runtime / "llama-server").write_bytes(b"server")
+
+    def fake_run(argv, *, cwd=None, env=None):
+        if argv[0] == "otool" and argv[1] == "-l":
+            return "Load command 1\n cmd LC_RPATH\n path @loader_path (offset 12)\n"
+        if argv[0] == "otool" and argv[1] == "-L":
+            return (
+                f"{argv[2]}:\n"
+                "\t/System/Library/../../private/tmp/libevil.dylib "
+                "(compatibility version 1.0.0)\n"
+            )
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    with pytest.raises(ValueError, match="runtime_external_dependency"):
+        module.relocate_macos_runtime(runtime, tmp_path / "llama-build/bin")
+
+
+def test_runtime_relocation_rejects_system_prefixed_rpath_that_escapes(monkeypatch, tmp_path):
+    module = builder()
+    runtime = tmp_path / "ai/macos-arm64"
+    runtime.mkdir(parents=True)
+    (runtime / "llama-server").write_bytes(b"server")
+
+    def fake_run(argv, *, cwd=None, env=None):
+        if argv[0] == "otool" and argv[1] == "-l":
+            return (
+                "Load command 1\n cmd LC_RPATH\n path @loader_path (offset 12)\n"
+                "Load command 2\n cmd LC_RPATH\n "
+                "path /System/Library/../../private/tmp (offset 12)\n"
+            )
+        if argv[0] == "otool" and argv[1] == "-L":
+            return f"{argv[2]}:\n"
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    with pytest.raises(ValueError, match="runtime_external_rpath"):
         module.relocate_macos_runtime(runtime, tmp_path / "llama-build/bin")
 
 

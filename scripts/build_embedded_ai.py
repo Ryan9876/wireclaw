@@ -332,6 +332,15 @@ def _macho_rpaths(path: Path) -> list[str]:
     return rpaths
 
 
+def _is_system_library_path(path: str) -> bool:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        return False
+    resolved = candidate.resolve()
+    roots = (Path("/System/Library").resolve(), Path("/usr/lib").resolve())
+    return any(resolved == root or root in resolved.parents for root in roots)
+
+
 def _validate_macho_dependencies(runtime_root: Path, path: Path) -> None:
     files = {
         item.name for item in runtime_root.iterdir() if item.is_file() and not item.is_symlink()
@@ -351,9 +360,7 @@ def _validate_macho_dependencies(runtime_root: Path, path: Path) -> None:
                 _fail("runtime_dependency_path_invalid")
             if Path(runtime_root / name).is_symlink():
                 _fail("runtime_dependency_missing")
-        elif dependency.startswith("/") and not dependency.startswith(
-            ("/System/Library/", "/usr/lib/")
-        ):
+        elif dependency.startswith("/") and not _is_system_library_path(dependency):
             _fail("runtime_external_dependency")
         elif dependency.startswith("@"):
             _fail("runtime_dependency_path_invalid")
@@ -371,7 +378,7 @@ def relocate_macos_runtime(runtime_root: Path, build_bin: Path) -> None:
                 resolved_rpath = Path(rpath).resolve()
                 if resolved_rpath == build_root or build_root in resolved_rpath.parents:
                     _run(["install_name_tool", "-delete_rpath", rpath, str(path)])
-                elif not rpath.startswith(("/System/Library/", "/usr/lib/")):
+                elif not _is_system_library_path(rpath):
                     _fail("runtime_external_rpath")
             elif rpath != "@loader_path":
                 _fail("runtime_external_rpath")
@@ -379,8 +386,7 @@ def relocate_macos_runtime(runtime_root: Path, build_bin: Path) -> None:
             _run(["install_name_tool", "-add_rpath", "@loader_path", str(path)])
         final_rpaths = _macho_rpaths(path)
         if "@loader_path" not in final_rpaths or any(
-            rpath.startswith("/") and not rpath.startswith(("/System/Library/", "/usr/lib/"))
-            for rpath in final_rpaths
+            rpath.startswith("/") and not _is_system_library_path(rpath) for rpath in final_rpaths
         ):
             _fail("runtime_relocation_failed")
         _validate_macho_dependencies(runtime_root, path)
