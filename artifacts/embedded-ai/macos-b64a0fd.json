@@ -33,29 +33,95 @@
     "core_image_id": "sha256:aa43a91bf2113dd5c9db520e9a448d9137e1ecdbbe2e14672c459db5700244b1"
   },
   "environment": {
-    "macos": "macOS arm64 host; current host version recorded in native execution environment",
+    "macos": "macOS 27.0.1 (build 26A434), arm64",
     "cmake": "4.4.4",
     "xcode": "27.0 (27A266a)",
     "paths_with_spaces": true
   },
   "checks": [
-    {"id":"EAI.14.1","status":"PASS","evidence":"Frozen release contains the model and llama-server plus bundled dylibs; launcher invokes only packaged runtime. No separately installed llama-server was used."},
-    {"id":"EAI.14.2","status":"PASS","evidence":"First normal packaged launch used bundled model/runtime; runtime policy has network_downloads=false and launcher has no runtime/model fetch path. Model SHA remained the frozen value; final live AI process had only its loopback listener and no external socket."},
-    {"id":"EAI.14.3","status":"PASS","evidence":"Frozen candidate hashes match model/runtime manifests and candidate-freeze metadata; tamper test rejected altered runtime and restored SHA matched."},
-    {"id":"EAI.14.4","status":"PASS","evidence":"Packaged start automatically launched AI and returned ready; final consolidated start observed a live candidate PID and 127.0.0.1:8767 listener."},
-    {"id":"EAI.14.5","status":"PASS","evidence":"Runtime manifest records Metal enabled; final live candidate process loaded bundled libggml-metal.0.dylib and the expected GGUF (lsof identity inspection)."},
-    {"id":"EAI.14.6","status":"PASS","evidence":"Packaged launcher Docker-core probe passed; API health returned embedded_local ready through packaged core and host.docker.internal route."},
-    {"id":"EAI.14.7","status":"PASS","evidence":"Playwright on frozen candidate UI displayed Local embedded AI ready; screenshot at artifacts/embedded-ai/eai14-b64a0fd-ui.png."},
-    {"id":"EAI.14.8","status":"PASS","evidence":"Synthetic high_rtt investigation completed model_assisted with one accepted tcp.rtt category, 17 evidence links, and unchanged original SHA; see eai14-b64a0fd-case.json."},
-    {"id":"EAI.14.9","status":"PASS","evidence":"Frozen candidate UI invoked both Full Capture and Evidence Capture in native Wireshark. Filter tcp.stream == 0; derived artifact SHA and parent capture SHA are recorded in eai14-b64a0fd-native-artifacts.json and eai14-b64a0fd-ui-actions.json."},
-    {"id":"EAI.14.10","status":"PASS","evidence":"Terminated only the PID after confirming its executable path was the frozen candidate runtime. API stayed healthy; a new case returned model_fallback/runtime-unhealthy and retained deterministic tcp.rtt; see eai14-b64a0fd-fallback.json."},
-    {"id":"EAI.14.11","status":"PASS","evidence":"Packaged stop/start returned AI ready; earlier model-assisted case, report, capture hash, and 17 evidence rows remained retrievable; see eai14-b64a0fd-recovery.json."},
-    {"id":"EAI.14.12","status":"PASS","evidence":"Release, isolated HOME, data root, and captures used paths containing spaces; packaged stop/start preserved candidate data and model assets."},
-    {"id":"EAI.14.13","status":"PASS","evidence":"Controlled loopback listener on 127.0.0.1:8767 produced explicit port-in-use status and healthy deterministic-only API."},
-    {"id":"EAI.14.14","status":"PASS","evidence":"Flipping one byte in extracted disposable candidate runtime caused invalid-bundle and deterministic-only health; byte was restored and runtime SHA reverified before restart."},
-    {"id":"EAI.14.15","status":"PASS","evidence":"Final consolidated lsof capture showed app 127.0.0.1:28765, bridge 127.0.0.1:28766, AI 127.0.0.1:8767 only. AI had no external network socket."},
-    {"id":"EAI.14.16","status":"PASS","evidence":"Current ephemeral AI key was absent from runtime log and isolated data root; prior security/privacy sentinels and adversarial suite passed, and full current-head suite is being rerun."}
+    {
+      "id": "EAI.14.1",
+      "status": "PASS",
+      "evidence": "Frozen release contains the model and llama-server plus bundled dylibs; launcher invokes only packaged runtime. No separately installed llama-server was used."
+    },
+    {
+      "id": "EAI.14.2",
+      "status": "PASS",
+      "evidence": "First normal packaged launch used bundled model/runtime; runtime policy has network_downloads=false and launcher has no runtime/model fetch path. Model SHA remained the frozen value; final live AI process had only its loopback listener and no external socket."
+    },
+    {
+      "id": "EAI.14.3",
+      "status": "PASS",
+      "evidence": "Frozen candidate hashes match model/runtime manifests and candidate-freeze metadata; tamper test rejected altered runtime and restored SHA matched."
+    },
+    {
+      "id": "EAI.14.4",
+      "status": "PASS",
+      "evidence": "Packaged start automatically launched AI and returned ready; final consolidated start observed a live candidate PID and 127.0.0.1:8767 listener."
+    },
+    {
+      "id": "EAI.14.5",
+      "status": "PASS",
+      "evidence": "Runtime manifest records Metal enabled; final live candidate process loaded bundled libggml-metal.0.dylib and the expected GGUF (lsof identity inspection)."
+    },
+    {
+      "id": "EAI.14.6",
+      "status": "PASS",
+      "evidence": "Packaged launcher Docker-core probe passed; API health returned embedded_local ready through packaged core and host.docker.internal route."
+    },
+    {
+      "id": "EAI.14.7",
+      "status": "PASS",
+      "evidence": "Playwright on frozen candidate UI displayed Local embedded AI ready; screenshot at artifacts/embedded-ai/eai14-b64a0fd-ui.png."
+    },
+    {
+      "id": "EAI.14.8",
+      "status": "PASS",
+      "evidence": "Synthetic high_rtt investigation completed model_assisted with one accepted tcp.rtt category, 17 evidence links, and unchanged original SHA; see eai14-b64a0fd-case.json."
+    },
+    {
+      "id": "EAI.14.9",
+      "status": "PASS",
+      "evidence": "Frozen candidate UI invoked both Full Capture and Evidence Capture in native Wireshark. Filter tcp.stream == 0; derived artifact SHA and parent capture SHA are recorded in eai14-b64a0fd-native-artifacts.json and eai14-b64a0fd-ui-actions.json."
+    },
+    {
+      "id": "EAI.14.10",
+      "status": "PASS",
+      "evidence": "Terminated only the PID after confirming its executable path was the frozen candidate runtime. API stayed healthy; a new case returned model_fallback/runtime-unhealthy and retained deterministic tcp.rtt; see eai14-b64a0fd-fallback.json."
+    },
+    {
+      "id": "EAI.14.11",
+      "status": "PASS",
+      "evidence": "Packaged stop/start returned AI ready; earlier model-assisted case, report, capture hash, and 17 evidence rows remained retrievable; see eai14-b64a0fd-recovery.json."
+    },
+    {
+      "id": "EAI.14.12",
+      "status": "PASS",
+      "evidence": "Release, isolated HOME, data root, and captures used paths containing spaces; packaged stop/start preserved candidate data and model assets."
+    },
+    {
+      "id": "EAI.14.13",
+      "status": "PASS",
+      "evidence": "Controlled loopback listener on 127.0.0.1:8767 produced explicit port-in-use status and healthy deterministic-only API."
+    },
+    {
+      "id": "EAI.14.14",
+      "status": "PASS",
+      "evidence": "Flipping one byte in extracted disposable candidate runtime caused invalid-bundle and deterministic-only health; byte was restored and runtime SHA reverified before restart."
+    },
+    {
+      "id": "EAI.14.15",
+      "status": "PASS",
+      "evidence": "Final consolidated lsof capture showed app 127.0.0.1:28765, bridge 127.0.0.1:28766, AI 127.0.0.1:8767 only. AI had no external network socket."
+    },
+    {
+      "id": "EAI.14.16",
+      "status": "PASS",
+      "evidence": "Current ephemeral AI key was absent from runtime log and isolated data root; prior security/privacy sentinels and adversarial suite passed, and full current-head suite is being rerun."
+    }
   ],
   "verdict": "PASS",
-  "limitations": ["First-launch no-download finding is established from the packaged offline runtime/model and launcher path, the network_downloads=false manifest policy, unchanged model SHA, and observed no external llama-server socket; this was not a packet capture of all host traffic."]
+  "limitations": [
+    "First-launch no-download finding is established from the packaged offline runtime/model and launcher path, the network_downloads=false manifest policy, unchanged model SHA, and observed no external llama-server socket; this was not a packet capture of all host traffic."
+  ]
 }
