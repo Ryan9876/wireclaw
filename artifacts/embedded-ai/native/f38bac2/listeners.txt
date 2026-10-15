@@ -1,0 +1,4 @@
+COMMAND     PID   USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+com.docke 60731 smithr  135u  IPv4 0xa79af161ca2a8731      0t0  TCP 127.0.0.1:8765 (LISTEN)
+llama-ser 82519 smithr    3u  IPv4 0x6d972b21eac2218f      0t0  TCP 127.0.0.1:8767 (LISTEN)
+wireclaw- 82608 smithr    3u  IPv4 0xfbc760e2c3da3b48      0t0  TCP 127.0.0.1:8766 (LISTEN)

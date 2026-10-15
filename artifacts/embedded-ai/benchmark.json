@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "source_sha": "647c267cb90307454d949a8e10cdaade0eef2e20",
-  "core_image_id": "sha256:6a06e8228a227781d3a99f7846e264ea883f0e8baf166c8b34180621a1881003",
+  "source_sha": "f38bac27cb893aec2530931c93cc2d1806a1b1d5",
+  "core_image_id": "sha256:8461a2d0e87a78f3d8034aef6238ed7bcbc545ce559484e25ea0703aab821404",
   "model": {
     "id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
     "repository": "Qwen/Qwen3-4B-Instruct-2507",
@@ -38,7 +38,7 @@
     "argv": [
       "<packaged-runtime>/llama-server",
       "--model",
-      "/private/tmp/wireclaw-candidate-647c267/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf",
+      "/private/tmp/wireclaw-candidate-f38bac2/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf",
       "--alias",
       "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
       "--host",
@@ -76,8 +76,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19662,
-        655
+        19645,
+        693
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -110,7 +110,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        60048
+        60043
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -149,7 +149,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 1,
       "provider_step_latencies_ms": [
-        20
+        17
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -184,7 +184,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 1,
       "provider_step_latencies_ms": [
-        17136
+        17206
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -217,8 +217,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20545,
-        639
+        20786,
+        676
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -249,7 +249,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        29966
+        29334
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -284,8 +284,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20270,
-        693
+        20378,
+        706
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -321,8 +321,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19800,
-        633
+        19827,
+        632
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -359,7 +359,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        42
+        17
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -394,7 +394,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 1,
       "provider_step_latencies_ms": [
-        19
+        18
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -429,7 +429,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        18
+        17
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -464,8 +464,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20161,
-        629
+        20269,
+        631
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -501,7 +501,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        15377
+        15440
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -536,8 +536,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19980,
-        619
+        20052,
+        645
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -569,7 +569,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        20886
+        20933
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -606,7 +606,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        23010
+        23054
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -641,7 +641,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        23311
+        23558
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -676,8 +676,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        404,
-        18
+        434,
+        17
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -713,8 +713,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        33389,
-        860
+        33236,
+        816
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -751,7 +751,7 @@
       "accepted_model_proposals": 1,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        23284
+        23213
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -786,7 +786,7 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        18
+        17
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -821,8 +821,8 @@
       "accepted_model_proposals": 0,
       "rejected_model_proposals": 0,
       "provider_step_latencies_ms": [
-        19810,
-        630
+        19871,
+        651
       ],
       "unauthorized_capabilities": 0,
       "comparison": {
@@ -855,44 +855,44 @@
   "uncertainty_failures": 0,
   "original_capture_hashes_unchanged": true,
   "metrics": {
-    "cold_readiness_seconds": 1.031,
-    "peak_ai_rss_bytes": 5059117056,
-    "median_provider_step_ms": 15377,
+    "cold_readiness_seconds": 0.831,
+    "peak_ai_rss_bytes": 5060771840,
+    "median_provider_step_ms": 15440,
     "provider_step_latencies_ms": [
-      20545,
-      639,
-      19662,
-      655,
-      17136,
-      23284,
-      29966,
-      23311,
-      33389,
-      860,
-      19810,
-      630,
-      20270,
+      20786,
+      676,
+      19645,
       693,
-      19980,
-      619,
-      20886,
-      19800,
-      633,
-      15377,
-      20161,
-      629,
-      60048,
-      23010,
-      19,
-      20,
-      404,
+      17206,
+      23213,
+      29334,
+      23558,
+      33236,
+      816,
+      19871,
+      651,
+      20378,
+      706,
+      20052,
+      645,
+      20933,
+      19827,
+      632,
+      15440,
+      20269,
+      631,
+      60043,
+      23054,
       18,
-      42,
-      18,
-      18
+      17,
+      434,
+      17,
+      17,
+      17,
+      17
     ],
     "model_size_bytes": 2497279040,
-    "bundle_size_bytes": 2671503828,
+    "bundle_size_bytes": 2671513773,
     "bundle_size_method": "core-image.tar + staged AI assets + packaged source payloads + darwin/arm64 bridge, excluding archive metadata"
   },
   "targets": {

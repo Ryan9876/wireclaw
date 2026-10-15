@@ -1,0 +1,39 @@
+p82519
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/llama-server
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libggml.0.dylib
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libggml-blas.0.dylib
+ftxt
+n/private/var/db/diagnostics/logd/.plist-cache.l01RgDeN
+ftxt
+n/System/Library/CoreServices/SystemVersion.bundle/English.lproj/SystemVersion.strings
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libmtmd.0.dylib
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libggml-base.0.dylib
+ftxt
+n/usr/lib/dyld
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libggml-cpu.0.dylib
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libllama-server-impl.dylib
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libllama-common.0.dylib
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libllama.0.dylib
+ftxt
+n/private/var/db/analyticsd/events.allowlist
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/libggml-metal.0.dylib
+ftxt
+n/usr/share/icu/icudt78l.dat
+ftxt
+n/System/Library/Extensions/AGXMetalG15X_M1.bundle/Contents/Resources/ds.binary.metallib.g15s-b1
+ftxt
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/16777235_419/functions.data
+ftxt
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/32024/libraries.data
+ftxt
+n/private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf
