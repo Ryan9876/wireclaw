@@ -11,19 +11,21 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from wireclaw_analyzer import AnalyzerError
 
-from .config import Policy
+from .config import Policy, effective_ai_status
 from .gate7_service import Service
 from .models import (
     CAPABILITIES,
     ArtifactResponse,
     BridgeGrantRequest,
     BridgeGrantResponse,
+    CapabilitiesResponse,
     CapabilityRequest,
     CaseResponse,
     CreateCase,
     DeletionResponse,
     EvidenceCaptureRequest,
     EvidenceCaptureResponse,
+    HealthResponse,
 )
 from .storage import ApiError
 from .web import register_web
@@ -138,11 +140,16 @@ def create_app(data_root: Path, policy: Policy | None = None):
     def service():
         return app.state.service
 
-    @app.get("/api/health")
+    @app.get("/api/health", response_model=HealthResponse)
     def health():
-        return {"status": "ok", "gate": 7, "provider_mode": policy.provider_mode.value}
+        return {
+            "status": "ok",
+            "gate": 7,
+            "provider_mode": policy.provider_mode.value,
+            "ai": effective_ai_status(policy),
+        }
 
-    @app.get("/api/config/capabilities")
+    @app.get("/api/config/capabilities", response_model=CapabilitiesResponse)
     def capabilities():
         return {
             "capabilities": list(CAPABILITIES),
@@ -151,6 +158,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
                 "none",
                 "openai_compatible_cloud",
                 "openai_compatible_local",
+                "embedded_local",
             ],
             "bridge": {"origin": f"http://127.0.0.1:{policy.bridge_port}"},
             "limits": {
@@ -161,6 +169,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
                 "max_result_items": policy.max_result_items,
                 "max_evidence_capture_bytes": policy.max_evidence_capture_bytes,
             },
+            "ai": effective_ai_status(policy),
         }
 
     @app.post("/api/cases", status_code=201, response_model=CaseResponse)

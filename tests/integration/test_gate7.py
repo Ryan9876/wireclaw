@@ -2,6 +2,8 @@
 
 import json
 
+from fastapi.testclient import TestClient
+from wireclaw_api import create_app
 from wireclaw_api.config import Policy, ProviderMode
 from wireclaw_api.gate4_service import Service as Gate4Service
 from wireclaw_api.gate6_service import Service as Gate6Service
@@ -327,12 +329,88 @@ def test_rules_only_report_exposes_mode_and_keeps_database_reasoning_table(tmp_p
             "steps": 0,
             "provider_mode": "none",
             "model": None,
+            "embedded_availability": "not_applicable",
+            "embedded_failure_code": None,
         }
         with service.db.connect() as conn:
             assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
             assert conn.execute("SELECT count(*) FROM reasoning_steps").fetchone()[0] == 0
     finally:
         service.close()
+
+
+def test_embedded_health_and_capabilities_expose_safe_ready_status(tmp_path, monkeypatch):
+    token = "API_KEY_SENTINEL_" + "x" * 40
+    path_sentinel = "/private/model/path/SECRET.gguf"
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model="wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        provider_api_key=token,
+    )
+    app = create_app(tmp_path / "api", policy)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        health = client.get("/api/health").json()
+        capabilities = client.get("/api/config/capabilities").json()
+    for value in (health, capabilities):
+        encoded = json.dumps(value)
+        assert token not in encoded
+        assert path_sentinel not in encoded
+        assert "Authorization" not in encoded
+        assert value["ai"] == {
+            "effective_provider_mode": "embedded_local",
+            "embedded_availability": "ready",
+            "model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+            "failure_code": None,
+        }
+
+
+def test_launcher_unavailable_status_does_not_change_core_health(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "unavailable:docker-connectivity")
+    app = create_app(tmp_path / "api", Policy())
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        health_response = client.get("/api/health")
+        health = health_response.json()
+    assert health_response.status_code == 200
+    assert health["status"] == "ok"
+    assert health["ai"] == {
+        "effective_provider_mode": "none",
+        "embedded_availability": "unavailable",
+        "model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        "failure_code": "docker-connectivity",
+    }
+
+
+def test_embedded_reasoning_audit_records_model_and_launcher_fallback_without_secrets(
+    tmp_path, monkeypatch
+):
+    token = "API_KEY_SENTINEL_" + "x" * 40
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model="wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        provider_api_key=token,
+        max_reasoning_steps=1,
+    )
+    service, case_id = prepared_service(tmp_path / "embedded", policy)
+    provider = ScriptedCycleProvider([finalize_action()])
+    service.run_reasoning_capability = install_cycle_runner(monkeypatch, [provider], [])
+    service._assemble_report(case_id)
+    assisted = service.report(case_id)
+    assert assisted["reasoning"]["provider_mode"] == "embedded_local"
+    assert assisted["reasoning"]["model"] == "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+    assert assisted["reasoning"]["embedded_availability"] == "ready"
+    assert token not in json.dumps(assisted)
+
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "unavailable:docker-connectivity")
+    rules_service, rules_case = prepared_service(tmp_path / "rules", Policy())
+    rules_service._assemble_report(rules_case)
+    fallback = rules_service.report(rules_case)
+    assert fallback["reasoning"]["mode"] == "rules_only"
+    assert fallback["reasoning"]["embedded_availability"] == "unavailable"
+    assert fallback["reasoning"]["embedded_failure_code"] == "docker-connectivity"
 
 
 def test_provider_timeout_persists_bounded_audit_and_keeps_report_usable(tmp_path, monkeypatch):

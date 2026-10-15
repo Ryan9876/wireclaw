@@ -14,7 +14,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
               }
             }
           }
@@ -30,7 +32,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesResponse"
+                }
               }
             }
           }
@@ -639,6 +643,60 @@
   },
   "components": {
     "schemas": {
+      "AIStatusResponse": {
+        "properties": {
+          "effective_provider_mode": {
+            "type": "string",
+            "enum": [
+              "none",
+              "openai_compatible_cloud",
+              "openai_compatible_local",
+              "embedded_local"
+            ],
+            "title": "Effective Provider Mode"
+          },
+          "embedded_availability": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "Embedded Availability"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "effective_provider_mode",
+          "embedded_availability",
+          "model",
+          "failure_code"
+        ],
+        "title": "AIStatusResponse"
+      },
       "ArtifactResponse": {
         "properties": {
           "id": {
@@ -722,6 +780,63 @@
           "expires_unix"
         ],
         "title": "BridgeGrantResponse"
+      },
+      "CapabilitiesResponse": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities"
+          },
+          "provider_mode": {
+            "type": "string",
+            "title": "Provider Mode"
+          },
+          "provider_modes_supported_by_interface": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Provider Modes Supported By Interface"
+          },
+          "bridge": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Bridge"
+          },
+          "limits": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Limits"
+          },
+          "ai": {
+            "$ref": "#/components/schemas/AIStatusResponse"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "capabilities",
+          "provider_mode",
+          "provider_modes_supported_by_interface",
+          "bridge",
+          "limits",
+          "ai"
+        ],
+        "title": "CapabilitiesResponse"
       },
       "CapabilityRequest": {
         "properties": {
@@ -874,6 +989,9 @@
           "provider_mode": {
             "type": "string",
             "title": "Provider Mode"
+          },
+          "ai_status": {
+            "$ref": "#/components/schemas/AIStatusResponse"
           }
         },
         "additionalProperties": false,
@@ -893,7 +1011,8 @@
           "artifacts",
           "evidence_count",
           "gate_boundary",
-          "provider_mode"
+          "provider_mode",
+          "ai_status"
         ],
         "title": "CaseResponse"
       },
@@ -1070,6 +1189,34 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "gate": {
+            "type": "integer",
+            "title": "Gate"
+          },
+          "provider_mode": {
+            "type": "string",
+            "title": "Provider Mode"
+          },
+          "ai": {
+            "$ref": "#/components/schemas/AIStatusResponse"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "gate",
+          "provider_mode",
+          "ai"
+        ],
+        "title": "HealthResponse"
       },
       "HistoryResponse": {
         "properties": {

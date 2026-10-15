@@ -1,5 +1,6 @@
 """Gate 7 provider loop layered over the accepted Gate 6 case/report service."""
 
+from .config import EMBEDDED_MODEL_ID, effective_ai_status
 from .gate4_service import Service as Gate4Service
 from .gate6_service import Service as Gate6Service
 from .investigation import build_investigation_result
@@ -14,6 +15,7 @@ class Service(Gate6Service):
             "Gate 7: deterministic evidence with bounded optional model reasoning"
         )
         case["provider_mode"] = self.policy.provider_mode.value
+        case["ai_status"] = effective_ai_status(self.policy)
         return case
 
     def build_investigation_result(self, **kwargs):
@@ -91,12 +93,15 @@ class Service(Gate6Service):
         report["recommended_next_evidence"] = list(
             dict.fromkeys([*report.get("recommended_next_evidence", []), *recommendations])
         )
+        embedded_status = effective_ai_status(self.policy)
         report["reasoning"] = {
             **reasoning,
             "provider_mode": self.policy.provider_mode.value,
             "model": self.policy.provider_model
             if self.policy.provider_mode.value != "none"
-            else None,
+            else (EMBEDDED_MODEL_ID if embedded_status["embedded_availability"] == "unavailable" else None),
+            "embedded_availability": embedded_status["embedded_availability"],
+            "embedded_failure_code": embedded_status["failure_code"],
         }
         self.save_report(case_id, report)
         return self.get(case_id)

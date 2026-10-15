@@ -55,8 +55,10 @@
         "mode": {"type": "string", "enum": ["rules_only", "model_assisted", "model_fallback"]},
         "status": {"type": "string", "enum": ["complete", "fallback"]},
         "steps": {"type": "integer", "minimum": 0, "maximum": 32},
-        "provider_mode": {"type": "string", "enum": ["none", "openai_compatible_cloud", "openai_compatible_local"]},
+        "provider_mode": {"type": "string", "enum": ["none", "openai_compatible_cloud", "openai_compatible_local", "embedded_local"]},
         "model": {"oneOf": [{"type": "string", "maxLength": 128}, {"type": "null"}]},
+        "embedded_availability": {"type": "string", "enum": ["ready", "unavailable", "not_applicable"]},
+        "embedded_failure_code": {"oneOf": [{"type": "string", "maxLength": 64}, {"type": "null"}]},
         "failure_code": {"type": "string", "maxLength": 64},
         "accepted_categories": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 64}},
         "rejected_proposals": {"type": "integer", "minimum": 0, "maximum": 16}
