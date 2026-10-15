@@ -9,6 +9,51 @@ from ..config import ProviderMode
 from ..reasoning.contracts import ACTION_ADAPTER
 from .models import ProviderFailure, ProviderResult, ReasoningRequest
 
+EMBEDDED_STATUS_TIMEOUT_SECONDS = 0.2
+EMBEDDED_STATUS_MAX_BYTES = 16_384
+
+
+def embedded_runtime_available(policy) -> bool:
+    """Probe the authenticated embedded model endpoint with a short fixed deadline."""
+    if policy.provider_mode is not ProviderMode.EMBEDDED:
+        return False
+    headers = {"accept": "application/json"}
+    if policy.provider_api_key:
+        headers["authorization"] = f"Bearer {policy.provider_api_key}"
+
+    async def probe():
+        async with asyncio.timeout(EMBEDDED_STATUS_TIMEOUT_SECONDS):
+            async with (
+                httpx.AsyncClient(
+                    timeout=EMBEDDED_STATUS_TIMEOUT_SECONDS,
+                    follow_redirects=False,
+                    trust_env=False,
+                ) as client,
+                client.stream(
+                    "GET",
+                    f"{policy.provider_base_url.rstrip('/')}/models",
+                    headers=headers,
+                ) as response,
+            ):
+                if response.status_code != 200:
+                    return False
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(body) + len(chunk) > EMBEDDED_STATUS_MAX_BYTES:
+                        return False
+                    body.extend(chunk)
+        decoded = json.loads(body)
+        models = decoded.get("data") if isinstance(decoded, dict) else None
+        return isinstance(models, list) and any(
+            isinstance(item, dict) and item.get("id") == policy.provider_model for item in models
+        )
+
+    try:
+        return asyncio.run(probe())
+    except Exception:
+        # Provider errors may contain credentials or host details; status exposes none.
+        return False
+
 
 class OpenAICompatibleProvider:
     def __init__(

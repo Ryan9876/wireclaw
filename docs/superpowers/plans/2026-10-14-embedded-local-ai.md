@@ -28,7 +28,7 @@
 ## Review Focus
 
 1. **Docker-to-host loopback reachability:** prove the actual packaged core can reach a host service bound only to `127.0.0.1`; if it cannot, stop `BLOCKED` rather than bind the AI server to `0.0.0.0` or LAN interfaces. Covered by Preflight P0 and Task 4 tests.
-2. **Stale/reused PID and symlink substitution:** a malicious/stale state file or symlinked model/runtime path must never cause Wireclaw to signal/execute an unrelated process/file. Covered by Task 3 launcher tests.
+2. **Stale/reused PID and symlink substitution:** reject stale state unless both the recorded start time and executable path match the packaged runtime; reject symlinked model/runtime paths. Tests cover these checks and preservation of unrelated processes. macOS `kill` accepts a numeric PID, so an exit/PID-reuse race between the final identity check and signal delivery remains a documented residual; this design does not claim atomic identity-bound signaling.
 3. **Missing/tampered model/runtime:** hash, manifest, model, runtime, or port failures must produce explicit embedded-AI-unavailable state while deterministic analysis remains usable. Covered by Tasks 3, 5, and 8.
 4. **Secret/context leakage:** the per-launch token, raw payload sentinels, paths, cookies/credentials, and bridge secrets must be absent from browser/API output, logs, case data, reports, and reasoning context. Covered by Tasks 1, 5, and 8.
 5. **Untrusted model output:** malformed JSON, invented/cross-case evidence IDs, invalid/repeated capabilities, prompt injection, and runtime crashes must not alter authoritative findings or gain execution privileges. Covered by Tasks 1 and 8.
@@ -255,8 +255,8 @@ Create fake `ai/model-manifest.json`, `ai/runtime-manifest.json`, fake GGUF, and
 - runtime binds `127.0.0.1` only;
 - per-launch token has >= 256 bits of entropy representation and is not written to `.env`;
 - missing/tampered AI assets return an explicit AI-unavailable path rather than deleting/stopping deterministic data;
-- stale/reused AI PID is ignored without signaling unrelated process;
-- `stop.sh` signals only a verified packaged AI executable and never uses `pkill`/process-name kills;
+- stale/reused AI PID, unrelated executable, and start-time mismatch are ignored without signaling the unrelated process;
+- `stop.sh` validates packaged AI process identity before signaling and rechecks before forced termination; it never uses `pkill`/process-name kills. Numeric-PID signal delivery retains the documented narrow PID-reuse race;
 - repeated start cannot leave duplicate managed AI processes.
 
 - [ ] **Step 2: Run tests and verify failure**

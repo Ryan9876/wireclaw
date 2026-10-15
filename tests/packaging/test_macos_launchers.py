@@ -347,6 +347,117 @@ def test_stale_or_reused_ai_pid_never_signals_an_unrelated_process(tmp_path):
         unrelated.wait(timeout=5)
 
 
+def test_ai_stop_ignores_pid_with_unrelated_executable(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    release = make_release(tmp_path, "")
+    make_ai_assets(release)
+    unrelated = subprocess.Popen(["/bin/sleep", "60"])
+    env, _ = make_fake_tools(tmp_path)
+    runtime_dir.joinpath("ai.pid").write_text(
+        f"{unrelated.pid}\nWed Oct 14 23:00:00 2026\n", encoding="utf-8"
+    )
+    fake_ps = Path(env["PATH"].split(":", 1)[0]) / "ps"
+    fake_ps.write_text("#!/bin/sh\nprintf 'Wed Oct 14 23:00:00 2026\\n'\n", encoding="utf-8")
+    fake_ps.chmod(0o700)
+    fake_lsof = Path(env["PATH"].split(":", 1)[0]) / "lsof"
+    fake_lsof.write_text("#!/bin/sh\nprintf 'n/bin/sleep\\n'\n", encoding="utf-8")
+    fake_lsof.chmod(0o700)
+    try:
+        result = run_bash(
+            '. "$1/launch/macos/common.sh"; stop_ai',
+            str(release),
+            env=env | {"HOME": str(home)},
+        )
+        assert result.returncode == 0, result.stderr
+        assert "stale AI PID ignored" in result.stderr
+        assert unrelated.poll() is None
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
+
+
+def test_ai_stop_ignores_same_executable_with_mismatched_start_time(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    release = make_release(tmp_path, "")
+    make_ai_assets(release)
+    unrelated = subprocess.Popen(["/bin/sleep", "60"])
+    env, _ = make_fake_tools(tmp_path)
+    runtime_dir.joinpath("ai.pid").write_text(
+        f"{unrelated.pid}\nold-start-time\n", encoding="utf-8"
+    )
+    fake_ps = Path(env["PATH"].split(":", 1)[0]) / "ps"
+    fake_ps.write_text("#!/bin/sh\nprintf 'current-start-time\\n'\n", encoding="utf-8")
+    fake_ps.chmod(0o700)
+    fake_lsof = Path(env["PATH"].split(":", 1)[0]) / "lsof"
+    fake_lsof.write_text(
+        f"#!/bin/sh\nprintf 'n{release}/ai/macos-arm64/llama-server\\n'\n",
+        encoding="utf-8",
+    )
+    fake_lsof.chmod(0o700)
+    try:
+        result = run_bash(
+            '. "$1/launch/macos/common.sh"; stop_ai',
+            str(release),
+            env=env | {"HOME": str(home)},
+        )
+        assert result.returncode == 0, result.stderr
+        assert "stale AI PID ignored" in result.stderr
+        assert unrelated.poll() is None
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
+
+
+def test_ai_stop_rechecks_identity_before_forced_termination(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    (runtime_dir / "ai.pid").write_text("424242\nmanaged-start\n", encoding="utf-8")
+    signal_log = tmp_path / "signals.log"
+    identity_log = tmp_path / "identity-checks.log"
+    env = {
+        "HOME": str(home),
+        "WIRECLAW_TEST_SIGNAL_LOG": str(signal_log),
+        "WIRECLAW_TEST_IDENTITY_LOG": str(identity_log),
+    }
+    script = r"""
+. "$1/launch/macos/common.sh"
+match_count=0
+ai_process_matches() {
+  match_count=$((match_count + 1))
+  printf 'check\n' >> "$WIRECLAW_TEST_IDENTITY_LOG"
+  [ "$match_count" -eq 1 ]
+}
+kill() {
+  printf '%s\n' "$*" >> "$WIRECLAW_TEST_SIGNAL_LOG"
+  case "$1" in -0|-TERM) return 0 ;; esac
+  return 0
+}
+sleep() { :; }
+stop_ai
+"""
+    result = run_bash(script, str(ROOT), env=env)
+    assert result.returncode != 0
+    signals = signal_log.read_text(encoding="utf-8").splitlines()
+    assert signals[:2] == ["-0 424242", "-TERM 424242"]
+    assert "-KILL 424242" not in signals
+    assert identity_log.read_text(encoding="utf-8").splitlines() == ["check", "check"]
+
+
+def test_ai_stop_without_state_is_idempotent(tmp_path):
+    env, _ = make_fake_tools(tmp_path)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; stop_ai && stop_ai',
+        str(ROOT),
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_symlinked_ai_secret_state_is_not_overwritten(tmp_path):
     home = tmp_path / "User Home"
     runtime_dir = home / "Library/Application Support/Wireclaw/run"

@@ -8,7 +8,11 @@ import pytest
 from pydantic import ValidationError
 from wireclaw_api.config import Policy, ProviderMode
 from wireclaw_api.providers.models import ProviderResult, ReasoningRequest
-from wireclaw_api.providers.openai_compatible import OpenAICompatibleProvider
+from wireclaw_api.providers.openai_compatible import (
+    EMBEDDED_STATUS_TIMEOUT_SECONDS,
+    OpenAICompatibleProvider,
+    embedded_runtime_available,
+)
 from wireclaw_api.reasoning import loop
 from wireclaw_api.reasoning.capabilities import validate_request
 from wireclaw_api.reasoning.context import SYSTEM_INSTRUCTION, build_context
@@ -43,6 +47,56 @@ def test_embedded_provider_configuration_uses_authenticated_fixed_local_endpoint
     provider = loop.make_provider(policy)
     assert provider.mode == "embedded_local"
     assert provider.base_url == "http://host.docker.internal:8767/v1"
+
+
+def test_embedded_runtime_probe_requires_auth_expected_model_and_bounded_http():
+    token = "STATUS_PROBE_TOKEN_SENTINEL_" + "x" * 32
+    model = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model=model,
+        provider_api_key=token,
+    )
+    real_client = httpx.AsyncClient
+    requests = []
+    client_options = []
+
+    async def handler(request):
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(200, json={"data": [{"id": model}]})
+        if len(requests) == 2:
+            return httpx.Response(200, json={"data": [{"id": "other-model"}]})
+        if len(requests) == 3:
+            return httpx.Response(302, headers={"location": "http://attacker.invalid/models"})
+        if len(requests) == 4:
+            return httpx.Response(200, content=b"x" * 16_385)
+        raise httpx.ConnectError(f"untrusted error with token={token}", request=request)
+
+    transport = httpx.MockTransport(handler)
+
+    def client_factory(*args, **kwargs):
+        client_options.append(kwargs)
+        return real_client(*args, transport=transport, **kwargs)
+
+    from wireclaw_api.providers import openai_compatible
+
+    openai_compatible.httpx.AsyncClient = client_factory
+    try:
+        assert embedded_runtime_available(policy) is True
+        assert embedded_runtime_available(policy) is False
+        assert embedded_runtime_available(policy) is False
+        assert embedded_runtime_available(policy) is False
+        assert embedded_runtime_available(policy) is False
+    finally:
+        openai_compatible.httpx.AsyncClient = real_client
+
+    assert all(request.url.path == "/v1/models" for request in requests)
+    assert all(request.headers["authorization"] == f"Bearer {token}" for request in requests)
+    assert all(options["follow_redirects"] is False for options in client_options)
+    assert all(options["trust_env"] is False for options in client_options)
+    assert all(options["timeout"] == EMBEDDED_STATUS_TIMEOUT_SECONDS for options in client_options)
 
 
 @pytest.mark.parametrize(
@@ -605,6 +659,13 @@ def test_validated_proposal_ranks_existing_finding_and_uses_fixed_next_evidence(
     )
     monkeypatch.setattr(loop, "make_provider", lambda policy: provider)
     service = _StubService()
+    service.report["remaining_hypotheses"] = [
+        {
+            "fault_domains": ["server_application"],
+            "evidence_ids": [],
+            "next_evidence": ["Compare application logs for the same transaction."],
+        }
+    ]
     result, ranking, next_codes = loop.run_loop(service, "case1", service.report)
     assert result["mode"] == "model_assisted"
     assert ranking == ["tcp.rtt"]

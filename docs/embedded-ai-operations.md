@@ -21,7 +21,7 @@ Stop with:
 launch/macos/stop.sh
 ```
 
-Stop preserves case data, original captures, evidence captures, reports, and model assets. It signals only a verified Wireclaw-owned AI process. To uninstall only the native host bridge, run `launch/macos/uninstall-host-bridge.sh`.
+Stop preserves case data, original captures, evidence captures, reports, and model assets. Before signaling, the launcher checks the recorded process start time and executable path, and repeats that check before forced termination. macOS shell signaling still targets a numeric PID, so an extremely narrow exit-and-PID-reuse race remains between the final check and signal delivery; the launcher does not provide atomic process-identity signaling. To uninstall only the native host bridge, run `launch/macos/uninstall-host-bridge.sh`.
 
 ## Status and fallback
 
@@ -40,7 +40,7 @@ The measured reference-host benchmark used 7,422,312,448 bytes peak AI RSS, 1.25
 ## Troubleshooting
 
 - **AI unavailable:** continue with deterministic analysis; inspect the safe failure code from `/api/health`. Verify the release model/runtime files against the packaged manifests. Do not replace the executable or add arbitrary runtime flags.
-- **Port conflict:** stop the process that owns the configured loopback port, then run the Wireclaw start command again. Wireclaw will not kill an unrelated process.
+- **Port conflict:** stop the process that owns the configured loopback port, then run the Wireclaw start command again. Wireclaw checks the recorded PID's start time and executable identity before signaling and ignores stale or mismatched state. Numeric-PID signaling has the narrow race described above.
 - **Docker cannot reach AI:** verify Docker Desktop is running and the AI service is bound only to `127.0.0.1:8767`. The approved route is `host.docker.internal`; do not bind to LAN interfaces or publish the AI port in Compose.
 - **Cases or captures:** stop/start does not delete case data. Back up the configured Wireclaw data directory using normal filesystem tools before manual maintenance.
 

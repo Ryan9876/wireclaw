@@ -4,6 +4,7 @@ from .config import EMBEDDED_MODEL_ID, effective_ai_status
 from .gate4_service import Service as Gate4Service
 from .gate6_service import Service as Gate6Service
 from .investigation import build_investigation_result
+from .providers.openai_compatible import embedded_runtime_available
 from .reasoning import persistence
 from .reasoning.loop import NEXT_EVIDENCE, run_loop
 
@@ -14,6 +15,15 @@ class Service(Gate6Service):
         super().__init__(root, policy)
 
     def ai_status(self):
+        launcher_status = effective_ai_status(self.policy)
+        if (
+            self.policy.provider_mode.value == "embedded_local"
+            and launcher_status["embedded_availability"] == "ready"
+        ):
+            if not embedded_runtime_available(self.policy):
+                return effective_ai_status(self.policy, runtime_failure_code="runtime-unhealthy")
+            if self._embedded_runtime_failure_code == "runtime-unhealthy":
+                self._embedded_runtime_failure_code = None
         return effective_ai_status(
             self.policy,
             runtime_failure_code=self._embedded_runtime_failure_code,

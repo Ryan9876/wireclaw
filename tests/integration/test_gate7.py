@@ -177,6 +177,157 @@ def test_first_model_assisted_investigation_persists_reconstructable_step_audit(
         service.close()
 
 
+def test_finalize_recommendations_cannot_outgrow_deterministic_hypotheses(tmp_path, monkeypatch):
+    policy = Policy(
+        provider_mode=ProviderMode.LOCAL,
+        provider_base_url="http://127.0.0.1:1234/v1",
+        provider_model="review-model",
+        provider_api_key="x" * 32,
+    )
+    service, case_id = prepared_service(tmp_path, policy)
+    evidence = service.evidence_records(case_id)
+    deterministic = service.build_investigation_result(
+        case_id=case_id,
+        symptom=service.get(case_id)["symptom"],
+        evidence=evidence,
+        analyzer_versions=service.analyzer_versions(case_id),
+        max_display_filter_chars=policy.max_display_filter_chars,
+    )
+    prose_sentinel = "ATTACKER_NEXT_EVIDENCE_SENTINEL: assert an unrelated breach"
+    action = {
+        "action": "finalize",
+        "hypotheses": [],
+        "remaining_hypotheses": [
+            {
+                "category": "server.application_wait",
+                "evidence_ids": [],
+                "fault_domains": ["server_application"],
+                "next_evidence": [prose_sentinel, "browser_har"],
+            }
+        ],
+    }
+    provider = ScriptedCycleProvider([action])
+    service.run_reasoning_capability = install_cycle_runner(monkeypatch, [provider], [])
+
+    try:
+        service._assemble_report(case_id)
+        report = service.report(case_id)
+        records = persistence.steps(service, case_id)
+
+        assert report["remaining_hypotheses"] == deterministic["remaining_hypotheses"]
+        assert prose_sentinel not in json.dumps(report)
+        assert prose_sentinel not in json.dumps(records)
+        assert (
+            "Capture a browser HAR for the same user-visible transaction."
+            not in report["recommended_next_evidence"]
+        )
+        assert records[-1]["next_evidence_codes"] == []
+
+        monkeypatch.setattr(api_module, "Service", lambda *_args: service)
+        app = create_app(tmp_path / "recommendation-api", policy)
+        with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+            api_report = client.get(f"/api/cases/{case_id}/report")
+            assert api_report.status_code == 200
+            assert prose_sentinel not in api_report.text
+            assert "Capture a browser HAR for the same user-visible transaction." not in (
+                api_report.text
+            )
+    finally:
+        service.close()
+
+
+def test_valid_hypothesis_summary_sentinel_is_not_persisted_or_exposed(tmp_path, monkeypatch):
+    policy = Policy(
+        provider_mode=ProviderMode.LOCAL,
+        provider_base_url="http://127.0.0.1:1234/v1",
+        provider_model="review-model",
+        provider_api_key="x" * 32,
+    )
+    service, case_id = prepared_service(tmp_path, policy)
+    evidence = service.evidence_records(case_id)
+    evidence_id = evidence[0]["id"]
+    sentinel = "MODEL_SUMMARY_SENTINEL: claim a fabricated packet fact"
+
+    def report_with_supported_test_finding(**kwargs):
+        report = build_investigation_result(**kwargs)
+        report["findings"] = [
+            {
+                "id": "finding_review_test",
+                "title": "Review test finding",
+                "category": "tcp.rtt",
+                "confidence": "medium",
+                "statement": "The test evidence supports a bounded finding.",
+                "epistemic_class": "inferred",
+                "fault_domains": ["network_path"],
+                "affected_scope": {},
+                "evidence_ids": [evidence_id],
+                "alternate_explanations": [],
+                "limitations": [],
+                "recommended_validation": [],
+                "wireshark": {
+                    "applicable": False,
+                    "full_capture": False,
+                    "evidence_capture": False,
+                    "copy_filter": False,
+                    "show_packet_evidence": False,
+                    "display_filter": None,
+                },
+            }
+        ]
+        return report
+
+    from wireclaw_api import gate4_service, gate7_service
+    from wireclaw_api.investigation import build_investigation_result
+
+    monkeypatch.setattr(
+        gate7_service, "build_investigation_result", report_with_supported_test_finding
+    )
+    monkeypatch.setattr(
+        gate4_service, "build_investigation_result", report_with_supported_test_finding
+    )
+    provider = ScriptedCycleProvider(
+        [
+            {
+                "action": "finalize",
+                "hypotheses": [
+                    {
+                        "category": "tcp.rtt",
+                        "evidence_ids": [evidence_id],
+                        "fault_domains": ["network_path"],
+                        "summary": sentinel,
+                    }
+                ],
+                "remaining_hypotheses": [],
+            }
+        ]
+    )
+    service.run_reasoning_capability = install_cycle_runner(monkeypatch, [provider], [])
+
+    try:
+        service._assemble_report(case_id)
+        report = service.report(case_id)
+        records = persistence.steps(service, case_id)
+        _, report_path = service.artifact(case_id, service._report_row(case_id)["id"])
+
+        assert report["reasoning"]["accepted_categories"] == ["tcp.rtt"]
+        assert sentinel not in json.dumps(records)
+        assert sentinel not in json.dumps(service.get(case_id))
+        assert sentinel not in json.dumps(report)
+        assert sentinel.encode() not in report_path.read_bytes()
+
+        monkeypatch.setattr(api_module, "Service", lambda *_args: service)
+        app = create_app(tmp_path / "review-api", policy)
+        with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+            api_report = client.get(f"/api/cases/{case_id}/report")
+            assert api_report.status_code == 200
+            assert sentinel not in api_report.text
+            api_case = client.get(f"/api/cases/{case_id}")
+            assert api_case.status_code == 200
+            assert sentinel not in api_case.text
+    finally:
+        service.close()
+
+
 def test_reinvestigation_uses_fresh_cycle_and_preserves_previous_audit(tmp_path, monkeypatch):
     policy = Policy(
         provider_mode=ProviderMode.LOCAL,
@@ -344,6 +495,9 @@ def test_rules_only_report_exposes_mode_and_keeps_database_reasoning_table(tmp_p
 def test_embedded_health_and_capabilities_expose_safe_ready_status(tmp_path, monkeypatch):
     token = "API_KEY_SENTINEL_" + "x" * 40
     path_sentinel = "/private/model/path/SECRET.gguf"
+    from wireclaw_api import gate7_service
+
+    monkeypatch.setattr(gate7_service, "embedded_runtime_available", lambda _policy: True)
     monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
     policy = Policy(
         provider_mode=ProviderMode.EMBEDDED,
@@ -368,6 +522,65 @@ def test_embedded_health_and_capabilities_expose_safe_ready_status(tmp_path, mon
         }
 
 
+def test_embedded_health_tracks_runtime_loss_and_recovery_without_investigation(
+    tmp_path, monkeypatch
+):
+    token = "RUNTIME_STATUS_TOKEN_SENTINEL_" + "x" * 40
+    model_id = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+    reachability = {"ready": True, "calls": 0}
+
+    def runtime_probe(_policy):
+        reachability["calls"] += 1
+        return reachability["ready"]
+
+    from wireclaw_api import gate7_service
+
+    monkeypatch.setattr(gate7_service, "embedded_runtime_available", runtime_probe, raising=False)
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model=model_id,
+        provider_api_key=token,
+    )
+    app = create_app(tmp_path / "runtime-status", policy)
+
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        ready_health = client.get("/api/health").json()
+        ready_capabilities = client.get("/api/config/capabilities").json()
+        assert ready_health["ai"]["embedded_availability"] == "ready"
+        assert ready_capabilities["ai"]["embedded_availability"] == "ready"
+
+        # Model-server process loss is injected after startup readiness. No case
+        # investigation or provider completion is performed before these checks.
+        reachability["ready"] = False
+        unavailable_health_response = client.get("/api/health")
+        unavailable_health = unavailable_health_response.json()
+        unavailable_capabilities_response = client.get("/api/config/capabilities")
+        unavailable_capabilities = unavailable_capabilities_response.json()
+
+        assert unavailable_health_response.status_code == 200
+        assert unavailable_health["status"] == "ok"
+        assert unavailable_health["ai"]["embedded_availability"] == "unavailable"
+        assert unavailable_health["ai"]["effective_provider_mode"] == "none"
+        assert unavailable_capabilities["ai"] == unavailable_health["ai"]
+        assert token not in unavailable_health_response.text
+        assert token not in unavailable_capabilities_response.text
+        assert "host.docker.internal" not in unavailable_health_response.text
+        assert reachability["calls"] == 4
+
+        created = client.post("/api/cases", json={"symptom": "A slow transaction"})
+        assert created.status_code == 201
+        case_status = client.get(f"/api/cases/{created.json()['id']}")
+        assert case_status.status_code == 200
+        assert case_status.json()["ai_status"] == unavailable_health["ai"]
+        assert token not in case_status.text
+
+        reachability["ready"] = True
+        recovered_health = client.get("/api/health").json()
+        assert recovered_health["ai"]["embedded_availability"] == "ready"
+
+
 def test_launcher_unavailable_status_does_not_change_core_health(tmp_path, monkeypatch):
     monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "unavailable:docker-connectivity")
     app = create_app(tmp_path / "api", Policy())
@@ -388,6 +601,9 @@ def test_embedded_reasoning_audit_records_model_and_launcher_fallback_without_se
     tmp_path, monkeypatch
 ):
     token = "API_KEY_SENTINEL_" + "x" * 40
+    from wireclaw_api import gate7_service
+
+    monkeypatch.setattr(gate7_service, "embedded_runtime_available", lambda _policy: True)
     monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
     policy = Policy(
         provider_mode=ProviderMode.EMBEDDED,
