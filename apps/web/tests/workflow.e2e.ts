@@ -55,7 +55,7 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   const errors: string[] = [];
   const remoteRequests: string[] = [];
   const bridgeHealthRequests: string[] = [];
-  const apiOrigin = 'http://127.0.0.1:8765';
+  const apiOrigin = `http://127.0.0.1:${process.env.WIRECLAW_E2E_PORT ?? 8765}`;
   const bridgeOrigin = 'http://127.0.0.1:8766';
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('request', (request) => {

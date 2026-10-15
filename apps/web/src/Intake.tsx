@@ -174,7 +174,10 @@ export function Intake({
           </div>
         )}
         <div className="intake-footer">
-          <p>Capture stays in the local Wireclaw API. No model provider is used.</p>
+          <p>
+            Capture stays local. Optional reasoning receives normalized evidence, not raw capture
+            data.
+          </p>
           <button
             className="primary"
             type="submit"

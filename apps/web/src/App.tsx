@@ -1,5 +1,13 @@
-import { useState } from 'react';
-import { ApiError, errorMessage, isRunning, revision } from './api';
+import { useEffect, useState } from 'react';
+import {
+  aiStatusLabel,
+  ApiError,
+  api,
+  errorMessage,
+  isRunning,
+  revision,
+  type AIStatus,
+} from './api';
 import { Dialog } from './Dialog';
 import { EvidenceDrawer } from './EvidenceDrawer';
 import { Intake } from './Intake';
@@ -15,6 +23,20 @@ export function App() {
     null,
   );
   const [recoveryId, setRecoveryId] = useState('');
+  const [runtimeAIStatus, setRuntimeAIStatus] = useState<AIStatus>();
+  useEffect(() => {
+    const controller = new AbortController();
+    api.aiStatus(controller.signal).then(
+      (status) => {
+        if (!controller.signal.aborted) setRuntimeAIStatus(status);
+      },
+      () => {
+        if (!controller.signal.aborted) setRuntimeAIStatus(undefined);
+      },
+    );
+    return () => controller.abort();
+  }, []);
+  const currentAIStatus = record?.ai_status ?? runtimeAIStatus;
   const locked =
     busy ||
     (!!record &&
@@ -45,7 +67,7 @@ export function App() {
         </div>
         <div className="local-status">
           <span aria-hidden="true">◉</span> Local capture analysis{' '}
-          <span className="separator">/</span> Rules-only
+          <span className="separator">/</span> {aiStatusLabel(currentAIStatus)}
         </div>
       </header>
       <main id="main" tabIndex={-1}>
@@ -249,7 +271,7 @@ export function App() {
         )}
       </main>
       <footer className="app-footer">
-        Local-first · No model provider · Evidence remains authoritative
+        Local-first · Deterministic packet evidence remains authoritative
       </footer>
     </>
   );
