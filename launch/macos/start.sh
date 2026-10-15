@@ -50,10 +50,9 @@ for port in "$APP_PORT" "$BRIDGE_PORT"; do
     fail "port $port is already in use. Stop the conflicting app or choose another port in .env."
   fi
 done
-if [ -L "$wireclaw_support_root" ] || [ -L "$wireclaw_runtime_dir" ]; then
-  fail "Wireclaw runtime directory cannot be a symlink"
-fi
+validate_runtime_path || fail "Wireclaw runtime path contains an unsafe symlink or directory"
 mkdir -p "$wireclaw_runtime_dir"
+validate_runtime_path || fail "Wireclaw runtime path contains an unsafe symlink or directory"
 chmod 700 "$wireclaw_support_root" "$wireclaw_runtime_dir"
 start_ai "$RELEASE_DIR" "$APP_PORT" "$BRIDGE_PORT" "$PROVIDER_MODE" "$AI_PORT_CONFIG"
 export WIRECLAW_DATA_ROOT="$DATA_ROOT"

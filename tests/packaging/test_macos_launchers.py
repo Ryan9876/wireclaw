@@ -183,6 +183,43 @@ def test_ai_manifest_hash_is_verified_before_runtime_use_and_symlink_escape_reje
     assert result.returncode != 0
 
 
+def test_runtime_state_path_rejects_symlinked_ancestor(tmp_path):
+    home = tmp_path / "User Home"
+    library = home / "Library"
+    library.mkdir(parents=True)
+    outside = tmp_path / "outside-runtime"
+    outside.mkdir()
+    (library / "Application Support").symlink_to(outside, target_is_directory=True)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; validate_runtime_path',
+        str(ROOT),
+        env={"HOME": str(home)},
+    )
+    assert result.returncode != 0
+
+
+def test_ai_listener_ownership_is_checked_before_health_probe():
+    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    assert "ai_listener_matches()" in source
+    assert "probe_ai_health \"$AI_PID\"" in source
+    assert source.index('ai_listener_matches "$AI_PID"') < source.index('probe_ai_health "$AI_PID"')
+
+
+def test_ai_listener_match_requires_the_owned_loopback_socket():
+    script = '''
+. "$1/launch/macos/common.sh"
+lsof() { printf '%s\\n' "$WIRECLAW_TEST_SOCKET"; }
+ai_listener_matches 1234 8767
+'''
+    for socket_name, expected in (("n127.0.0.1:8767", 0), ("n0.0.0.0:8767", 1)):
+        result = run_bash(
+            script,
+            str(ROOT),
+            env={"WIRECLAW_TEST_SOCKET": socket_name},
+        )
+        assert result.returncode == expected
+
+
 def test_ai_port_conflict_sets_unavailable_without_starting_runtime(tmp_path):
     release = make_release(tmp_path, "")
     make_ai_assets(release)

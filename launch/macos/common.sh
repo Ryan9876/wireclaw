@@ -89,6 +89,38 @@ ai_process_matches() {
   [ "$(lsof -a -p "$ai_pid" -d txt -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)" = "$ai_bin" ]
 }
 
+ai_listener_matches() {
+  ai_pid="$1"
+  ai_port="$2"
+  command -v lsof >/dev/null 2>&1 || return 1
+  lsof -nP -a -p "$ai_pid" -iTCP:"$ai_port" -sTCP:LISTEN -Fn 2>/dev/null \
+    | grep -Fx "n127.0.0.1:$ai_port" >/dev/null
+}
+
+validate_runtime_path() {
+  /usr/bin/python3 - "$wireclaw_support_root" "$wireclaw_runtime_dir" <<'PY'
+import os, pathlib, stat, sys
+
+for value in sys.argv[1:]:
+    path = pathlib.Path(value)
+    if not path.is_absolute():
+        raise SystemExit("Wireclaw: runtime path must be absolute")
+    if str(path) != os.path.normpath(value):
+        raise SystemExit("Wireclaw: runtime path is not normalized")
+    current = pathlib.Path(path.anchor)
+    for part in path.parts[1:]:
+        current = current / part
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise SystemExit("Wireclaw: runtime path contains an unsafe component")
+        if current == pathlib.Path(value) and info.st_uid != os.getuid():
+            raise SystemExit("Wireclaw: runtime directory is not owned by the current user")
+PY
+}
+
 stop_ai() {
   [ ! -L "$wireclaw_ai_pid_file" ] || { printf 'Wireclaw: unsafe AI PID state ignored.\n' >&2; return 1; }
   [ -f "$wireclaw_ai_pid_file" ] || { rm -f "$wireclaw_ai_key_file" "$wireclaw_ai_fifo"; return 0; }
@@ -114,17 +146,41 @@ stop_ai() {
 }
 
 probe_ai_health() {
-  /usr/bin/python3 - "$wireclaw_ai_key_file" "$wireclaw_ai_model_id" <<'PY'
-import json, sys, time, urllib.request
-key = open(sys.argv[1], encoding="ascii").read().strip()
-opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+  /usr/bin/python3 - "$wireclaw_ai_key_file" "$wireclaw_ai_model_id" "$1" <<'PY'
+import json, socket, struct, subprocess, sys, time
+
+key_path, model_id, pid = sys.argv[1:]
+key = open(key_path, encoding="ascii").read().strip()
 for _ in range(60):
     try:
-        request = urllib.request.Request("http://127.0.0.1:8767/v1/models", headers={"Authorization": "Bearer " + key})
-        with opener.open(request, timeout=1) as response:
-            body = json.load(response)
-        if any(item.get("id") == sys.argv[2] for item in body.get("data", [])): raise SystemExit(0)
-    except Exception: pass
+        listener = subprocess.run(
+            ["/usr/sbin/lsof", "-nP", "-a", "-p", pid, "-iTCP:8767", "-sTCP:LISTEN", "-Fn"],
+            capture_output=True, text=True, check=False,
+        )
+        if listener.returncode or "n127.0.0.1:8767" not in listener.stdout.splitlines():
+            raise RuntimeError("listener_not_owned")
+        with socket.create_connection(("127.0.0.1", 8767), timeout=1) as connection:
+            peer_pid = struct.unpack("i", connection.getsockopt(0, 2, 4))[0]
+            if peer_pid != int(pid):
+                raise RuntimeError("listener_peer_mismatch")
+            connection.sendall((
+                "GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                "Authorization: Bearer " + key + "\r\nConnection: close\r\n\r\n"
+            ).encode("ascii"))
+            response = b""
+            while len(response) <= 1048576:
+                chunk = connection.recv(65536)
+                if not chunk:
+                    break
+                response += chunk
+        headers, payload = response.split(b"\r\n\r\n", 1)
+        if b" 200 " not in headers.split(b"\r\n", 1)[0]:
+            raise RuntimeError("health_status_invalid")
+        body = json.loads(payload)
+        if any(item.get("id") == model_id for item in body.get("data", [])):
+            raise SystemExit(0)
+    except Exception:
+        pass
     time.sleep(1)
 raise SystemExit(1)
 PY
@@ -215,7 +271,11 @@ PY
     ai_unavailable "state-write-failed"
     return 0
   fi
-  if ! probe_ai_health || ! ai_process_matches "$AI_PID" "$AI_START" "$ai_bin"; then
+  if ! ai_process_matches "$AI_PID" "$AI_START" "$ai_bin" \
+    || ! ai_listener_matches "$AI_PID" "$wireclaw_ai_port" \
+    || ! probe_ai_health "$AI_PID" \
+    || ! ai_process_matches "$AI_PID" "$AI_START" "$ai_bin" \
+    || ! ai_listener_matches "$AI_PID" "$wireclaw_ai_port"; then
     stop_ai || true
     ai_unavailable "runtime-unhealthy"
     return 0
