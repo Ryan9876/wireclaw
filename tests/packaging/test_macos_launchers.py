@@ -1,4 +1,6 @@
 import os
+import hashlib
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -27,6 +29,38 @@ def make_release(root: Path, env_text: str):
     (release / "core-image-id").write_text("sha256:" + "a" * 64 + "\n", encoding="utf-8")
     (release / "core-image.tar").write_bytes(b"packaged image archive")
     return release
+
+
+def make_ai_assets(release: Path):
+    model = release / "ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf"
+    runtime = release / "ai/macos-arm64/llama-server"
+    model.parent.mkdir(parents=True)
+    runtime.parent.mkdir(parents=True)
+    model.write_bytes(b"test model")
+    runtime.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    runtime.chmod(0o700)
+    (release / "ai/licenses").mkdir()
+    (release / "ai/licenses/Qwen-Apache-2.0.txt").write_text("Apache License", encoding="utf-8")
+    (release / "ai/licenses/llama.cpp-MIT.txt").write_text("MIT License", encoding="utf-8")
+    (release / "ai/model-manifest.json").write_text(json.dumps({
+        "model_id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+        "license": "Apache-2.0", "quantization": "Q4_K_M", "architecture": "qwen3",
+        "license_path": "licenses/Qwen-Apache-2.0.txt",
+        "artifact": {"path": "models/qwen3-4b-instruct-2507-q4_k_m.gguf",
+                     "sha256": hashlib.sha256(model.read_bytes()).hexdigest(), "size_bytes": model.stat().st_size},
+    }), encoding="utf-8")
+    (release / "ai/runtime-manifest.json").write_text(json.dumps({
+        "repository": "ggml-org/llama.cpp",
+        "revision": "8345f333951c661d166b00e6f9362e553768f292",
+        "platform": "macos", "architecture": "arm64", "entrypoint": "macos-arm64/llama-server",
+        "build_settings": {"metal": True, "server": True},
+        "files": [{"path": "macos-arm64/llama-server", "sha256": hashlib.sha256(runtime.read_bytes()).hexdigest(), "size_bytes": runtime.stat().st_size}],
+        "license_paths": ["licenses/llama.cpp-MIT.txt"],
+        "policy": {"platform": "macos", "architecture": "arm64", "listen_host": "127.0.0.1", "context_size": 16384, "max_tokens": 2048, "parallel": 1,
+                   "port": 8767, "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+                   "authentication_required": True, "agent_tools": False, "web_ui": False, "network_downloads": False},
+    }), encoding="utf-8")
 
 
 def make_fake_tools(root: Path, *, daemon=True, compose=True, busy_port=""):
@@ -130,6 +164,81 @@ def test_release_loads_the_exact_packaged_image_and_skips_an_existing_match(tmp_
 def test_bridge_health_probe_uses_the_approved_application_origin():
     assert 'curl --silent --fail --header "Origin: http://127.0.0.1:$APP_PORT"' in START_SOURCE
     assert '"http://127.0.0.1:$BRIDGE_PORT/v1/health"' in START_SOURCE
+
+
+def test_ai_manifest_hash_is_verified_before_runtime_use_and_symlink_escape_rejected(tmp_path):
+    release = make_release(tmp_path, "")
+    make_ai_assets(release)
+    result = run_bash('. "$1/launch/macos/common.sh"; verify_ai_bundle "$1"', str(release))
+    assert result.returncode == 0, result.stderr
+    model = release / "ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf"
+    model.write_bytes(b"tampered")
+    result = run_bash('. "$1/launch/macos/common.sh"; verify_ai_bundle "$1"', str(release))
+    assert result.returncode != 0
+    outside = tmp_path / "outside.gguf"
+    outside.write_bytes(b"test model")
+    model.unlink()
+    model.symlink_to(outside)
+    result = run_bash('. "$1/launch/macos/common.sh"; verify_ai_bundle "$1"', str(release))
+    assert result.returncode != 0
+
+
+def test_ai_port_conflict_sets_unavailable_without_starting_runtime(tmp_path):
+    release = make_release(tmp_path, "")
+    make_ai_assets(release)
+    fake_env, _ = make_fake_tools(tmp_path, busy_port="8767")
+    runtime_dir = Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
+        str(ROOT), str(release), env=fake_env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:port-in-use"
+    assert not (runtime_dir / "ai.pid").exists()
+    assert not (runtime_dir / "ai-key").exists()
+
+
+def test_stale_or_reused_ai_pid_never_signals_an_unrelated_process(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    unrelated = subprocess.Popen(["/bin/sleep", "60"])
+    (runtime_dir / "ai.pid").write_text(f"{unrelated.pid}\nnot-the-process-start-time\n", encoding="utf-8")
+    try:
+        result = run_bash('. "$1/launch/macos/common.sh"; stop_ai', str(ROOT), env={"HOME": str(home)})
+        assert result.returncode == 0, result.stderr
+        assert "stale AI PID ignored" in result.stderr
+        assert unrelated.poll() is None
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
+
+
+def test_symlinked_ai_secret_state_is_not_overwritten(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    sentinel = tmp_path / "outside-secret-target"
+    sentinel.write_text("preserve", encoding="utf-8")
+    (runtime_dir / "ai-key").symlink_to(sentinel)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
+        str(ROOT), str(ROOT), env={"HOME": str(home)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "(unsafe-state)" in result.stdout
+    assert not (runtime_dir / "ai-status").exists()
+    assert sentinel.read_text() == "preserve"
+
+
+def test_runtime_policy_is_fixed_loopback_only_and_no_user_values_become_argv():
+    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    assert '--host 127.0.0.1 --port "$wireclaw_ai_port"' in source
+    assert '--ctx-size 16384 --n-predict 2048 --parallel 1' in source
+    assert '--api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui' in source
+    assert 'env -i HOME="$wireclaw_runtime_dir"' in source
+    assert "pkill" not in source
 
 
 def test_start_loads_and_uses_the_packaged_image_without_rebuilding():

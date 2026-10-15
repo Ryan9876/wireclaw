@@ -23,8 +23,8 @@ validate_port WIRECLAW_PORT "$APP_PORT"
 validate_port WIRECLAW_BRIDGE_PORT "$BRIDGE_PORT"
 [ "$APP_PORT" != "$BRIDGE_PORT" ] || fail "application and bridge ports must differ"
 case "$PROVIDER_MODE" in
-  none|openai_compatible_cloud|openai_compatible_local) ;;
-  *) fail "WIRECLAW_PROVIDER_MODE must be none, openai_compatible_cloud, or openai_compatible_local" ;;
+  none|openai_compatible_cloud|openai_compatible_local|embedded_local) ;;
+  *) fail "WIRECLAW_PROVIDER_MODE must be none, openai_compatible_cloud, openai_compatible_local, or embedded_local" ;;
 esac
 DATA_ROOT="$(resolve_data_root "$DATA_CONFIG")"
 [ -x "$wireclaw_bridge_bin" ] || fail "Wireclaw host bridge is not installed. Run launch/macos/install-host-bridge.sh."
@@ -45,8 +45,12 @@ for port in "$APP_PORT" "$BRIDGE_PORT"; do
     fail "port $port is already in use. Stop the conflicting app or choose another port in .env."
   fi
 done
+if [ -L "$wireclaw_support_root" ] || [ -L "$wireclaw_runtime_dir" ]; then
+  fail "Wireclaw runtime directory cannot be a symlink"
+fi
 mkdir -p "$wireclaw_runtime_dir"
 chmod 700 "$wireclaw_support_root" "$wireclaw_runtime_dir"
+start_ai "$RELEASE_DIR" "$APP_PORT" "$BRIDGE_PORT" "$PROVIDER_MODE"
 export WIRECLAW_DATA_ROOT="$DATA_ROOT"
 export WIRECLAW_UID="$(id -u)"
 export WIRECLAW_GID="$(id -g)"
@@ -102,4 +106,7 @@ if [ "$bridge_ready" -ne 1 ]; then
   docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
   fail "Wireclaw host bridge did not become ready. Check Wireshark configuration; case data was preserved."
 fi
-printf 'Wireclaw core and host bridge are ready.\nOpen http://127.0.0.1:%s\n' "$APP_PORT"
+if [ "$PROVIDER_MODE" = embedded_local ] && [ "$(cat "$wireclaw_ai_status_file" 2>/dev/null || true)" = ready ]; then
+  printf 'Wireclaw core, host bridge, and local embedded AI are ready.\n'
+fi
+printf 'Open http://127.0.0.1:%s\n' "$APP_PORT"
