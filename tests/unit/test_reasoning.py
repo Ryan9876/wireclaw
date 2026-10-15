@@ -521,7 +521,11 @@ def test_unsafe_or_malformed_provider_actions_never_reach_capability(content, co
 
 def test_embedded_provider_invalid_capability_never_reaches_analyzer(monkeypatch):
     provider = _ScriptedProvider(
-        [ProviderResult(content='{"action":"request_capability","capability":"exec","parameters":{}}')]
+        [
+            ProviderResult(
+                content='{"action":"request_capability","capability":"exec","parameters":{}}'
+            )
+        ]
     )
     monkeypatch.setattr(loop, "make_provider", lambda policy: provider)
     service = _StubService(mode=ProviderMode.EMBEDDED)
@@ -533,6 +537,32 @@ def test_embedded_provider_invalid_capability_never_reaches_analyzer(monkeypatch
     assert step["provider_mode"] == ProviderMode.EMBEDDED.value
     assert step["endpoint_class"] == "local"
     assert step["model"] == "fake-model"
+
+
+def test_embedded_provider_cannot_rank_a_cross_case_evidence_id(monkeypatch):
+    provider = _ScriptedProvider(
+        [
+            {
+                "action": "finalize",
+                "hypotheses": [
+                    {
+                        "category": "tcp.rtt",
+                        "evidence_ids": ["ev_" + "9" * 64 + "_analyze_rtt_stream0"],
+                        "fault_domains": ["network_path"],
+                        "summary": "cross-case evidence is untrusted",
+                    }
+                ],
+                "remaining_hypotheses": [],
+            }
+        ]
+    )
+    monkeypatch.setattr(loop, "make_provider", lambda policy: provider)
+    service = _StubService(mode=ProviderMode.EMBEDDED)
+    result, ranking, _ = loop.run_loop(service, "case1", service.report)
+    assert result["mode"] == "model_assisted"
+    assert result["rejected_proposals"] == 1
+    assert ranking == []
+    assert service.calls == 0
 
 
 def test_oversized_provider_response_stops_with_fallback(monkeypatch):

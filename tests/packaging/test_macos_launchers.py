@@ -241,6 +241,29 @@ def test_runtime_policy_is_fixed_loopback_only_and_no_user_values_become_argv():
     assert "pkill" not in source
 
 
+def test_untrusted_provider_values_cannot_override_embedded_runtime_identity(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    (runtime_dir / "ai-status").write_text("ready\n", encoding="utf-8")
+    (runtime_dir / "ai-key").write_text("private-key-do-not-print\n", encoding="utf-8")
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; configure_provider_environment embedded_local '
+        "https://attacker.invalid/v1 attacker-model attacker-token; "
+        'printf "%s|%s|%s|%s" "$WIRECLAW_PROVIDER_MODE" "$WIRECLAW_PROVIDER_BASE_URL" '
+        '"$WIRECLAW_PROVIDER_MODEL" "$WIRECLAW_EMBEDDED_AI_STATUS"',
+        str(ROOT),
+        env={"HOME": str(home)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == (
+        "embedded_local|http://host.docker.internal:8767/v1|"
+        "wireclaw-qwen3-4b-instruct-2507-q4_k_m|ready"
+    )
+    assert "attacker" not in result.stdout
+    assert "private-key-do-not-print" not in result.stdout
+
+
 def test_start_loads_and_uses_the_packaged_image_without_rebuilding():
     assert 'load_release_image "$RELEASE_DIR"' in START_SOURCE
     assert 'compose.yaml" up -d;' in START_SOURCE
