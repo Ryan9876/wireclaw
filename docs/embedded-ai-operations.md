@@ -31,7 +31,7 @@ To explicitly use rules-only mode, set `WIRECLAW_PROVIDER_MODE=none` in the rele
 
 ## Model, privacy, and resource policy
 
-The release pins Qwen3-4B-Instruct-2507 at `cdbee75f17c01a7cc42f958dc650907174af0554`, Q4_K_M, and llama.cpp `8345f333951c661d166b00e6f9362e553768f292`. The packaged runtime uses a 16,384-token context, 2,048-token generation cap, batch 128, micro-batch 32, one inference slot, loopback-only listening, and a high-entropy ephemeral per-launch API secret.
+The release pins Qwen3-4B-Instruct-2507 at `cdbee75f17c01a7cc42f958dc650907174af0554`, Q4_K_M, and llama.cpp `8345f333951c661d166b00e6f9362e553768f292`. The packaged runtime uses a 16,384-token context, 2,048-token generation cap, batch 128, micro-batch 32, one inference slot, a zero MiB server prompt-cache limit, loopback-only listening, and a high-entropy ephemeral per-launch API secret. This cache limit is fixed release policy and is recorded in the runtime manifest.
 
 Only Gate 7’s canonical normalized reasoning context is sent to the model. Captures, payloads, absolute paths, provider secrets, and host-bridge tokens are excluded. The model can request only validated named capabilities and cite existing same-case evidence. Deterministic analyzers remain the packet-fact authority; uncertainty and Wireshark actions remain available.
 

@@ -89,6 +89,7 @@ def fixture_ai(tmp_path):
                     "micro_batch_size": 32,
                     "max_tokens": 2048,
                     "parallel": 1,
+                    "prompt_cache_ram_mib": 0,
                     "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
                     "authentication_required": True,
                     "agent_tools": False,
@@ -124,6 +125,8 @@ def test_package_stages_verified_ai_assets_and_release_identities(tmp_path):
     assert all(len(item["sha256"]) == 64 for item in metadata["licenses"])
     assert len(metadata["model_manifest_sha256"]) == 64
     assert len(metadata["runtime_manifest_sha256"]) == 64
+    assert metadata["runtime_argv_template"][-2:] == ["--cache-ram", "0"]
+    assert metadata["runtime_argv_template"][-4:-2] == ["--no-agent", "--no-webui"]
     assert metadata["policy"] == {
         "default_provider_mode": "embedded_local",
         "port": 8767,
@@ -132,6 +135,7 @@ def test_package_stages_verified_ai_assets_and_release_identities(tmp_path):
         "micro_batch_size": 32,
         "max_tokens": 2048,
         "parallel": 1,
+        "prompt_cache_ram_mib": 0,
         "platform": "macos",
         "architecture": "arm64",
     }

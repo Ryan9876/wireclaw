@@ -79,6 +79,7 @@ def load_lock(path: Path) -> dict:
             "micro_batch_size": 32,
             "max_tokens": 2048,
             "parallel": 1,
+            "prompt_cache_ram_mib": 0,
             "port": 8767,
             "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
             "authentication_required": True,
@@ -101,6 +102,12 @@ def load_lock(path: Path) -> dict:
             lock[section].get(key) != value for key, value in values.items()
         ):
             _fail("source_lock_identity_mismatch")
+    if (
+        type(lock["policy"].get("prompt_cache_ram_mib")) is not int
+        or lock["policy"].get("prompt_cache_ram_mib") != 0
+        or lock["policy"] != expected["policy"]
+    ):
+        _fail("source_lock_identity_mismatch")
     if lock["model"].get("max_size_bytes") != MAX_MODEL_SIZE:
         _fail("source_lock_model_size_limit_invalid")
     return lock
@@ -268,8 +275,11 @@ def validate_staged_ai(ai_root: Path, lock: dict) -> dict:
         if not license_path.is_file() or license_path.stat().st_size == 0:
             _fail("license_missing")
     policy = runtime.get("policy")
-    if not isinstance(policy, dict) or any(
-        policy.get(name) != value for name, value in lock["policy"].items()
+    if (
+        not isinstance(policy, dict)
+        or type(policy.get("prompt_cache_ram_mib")) is not int
+        or policy.get("prompt_cache_ram_mib") != 0
+        or policy != lock["policy"]
     ):
         _fail("runtime_policy_mismatch")
     return {"model": model, "runtime": runtime}
@@ -745,6 +755,8 @@ def smoke_test(ai_root: Path, lock: dict):
             str(key_file),
             "--no-agent",
             "--no-webui",
+            "--cache-ram",
+            str(policy["prompt_cache_ram_mib"]),
         ]
         env = os.environ | {"HF_HUB_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
         with open(os.devnull, "wb") as sink:

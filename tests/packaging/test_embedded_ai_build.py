@@ -89,6 +89,7 @@ def fixture_ai(tmp_path):
             "micro_batch_size": 32,
             "max_tokens": 2048,
             "parallel": 1,
+            "prompt_cache_ram_mib": 0,
             "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
             "authentication_required": True,
             "agent_tools": False,
@@ -124,6 +125,7 @@ def test_embedded_ai_lock_pins_exact_model_runtime_and_policy():
     assert lock["policy"]["micro_batch_size"] == 32
     assert lock["policy"]["max_tokens"] == 2048
     assert lock["policy"]["parallel"] == 1
+    assert lock["policy"]["prompt_cache_ram_mib"] == 0
     assert lock["policy"]["port"] == 8767
 
 
@@ -145,6 +147,97 @@ def test_staged_manifests_verify_model_runtime_and_license_artifacts(tmp_path):
     validated = module.validate_staged_ai(ai_root, lock)
     assert validated["model"]["model_id"] == lock["model"]["id"]
     assert validated["runtime"]["revision"] == lock["runtime"]["revision"]
+    assert validated["runtime"]["policy"]["prompt_cache_ram_mib"] == 0
+
+
+def test_runtime_smoke_argv_pins_prompt_cache_policy(monkeypatch, tmp_path):
+    module = builder()
+    lock = module.load_lock(ROOT / "ai/embedded-ai.lock.json")
+    ai_root, _, _ = fixture_ai(tmp_path)
+    observed = {}
+
+    class Process:
+        def terminate(self):
+            observed["terminated"] = True
+
+        def wait(self, timeout=None):
+            return 0
+
+    def popen(argv, **_kwargs):
+        observed["argv"] = argv
+        return Process()
+
+    class Response:
+        status = 200
+
+        def __init__(self, value):
+            self.value = value
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(self.value).encode()
+
+    def urlopen(request, **_kwargs):
+        if request.full_url.endswith("/models") and not request.headers.get("Authorization"):
+            raise module.urllib.error.HTTPError(request.full_url, 401, "unauthorized", {}, None)
+        if request.full_url.endswith("/models"):
+            return Response({"data": [{"id": lock["policy"]["model_alias"]}]})
+        return Response({"choices": [{"message": {"content": "ready"}}]})
+
+    monkeypatch.setattr(module.subprocess, "Popen", popen)
+    monkeypatch.setattr(module.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(module, "_wait_ready", lambda *_args: None)
+    module.smoke_test(ai_root, lock)
+    argv = observed["argv"]
+    assert argv[-2:] == ["--cache-ram", "0"]
+    assert observed["terminated"] is True
+
+
+def test_runtime_smoke_fails_closed_when_required_prompt_cache_flag_is_rejected(
+    monkeypatch, tmp_path
+):
+    module = builder()
+    lock = module.load_lock(ROOT / "ai/embedded-ai.lock.json")
+    ai_root, _, _ = fixture_ai(tmp_path)
+
+    class ExitedProcess:
+        def poll(self):
+            return 64
+
+        def terminate(self):
+            pass
+
+        def wait(self, timeout=None):
+            return 64
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_args, **_kwargs: ExitedProcess())
+    with pytest.raises(ValueError, match="runtime_smoke_process_exit"):
+        module.smoke_test(ai_root, lock)
+
+
+def test_runtime_policy_rejects_unspecified_runtime_flags(tmp_path):
+    module = builder()
+    source_lock = json.loads((ROOT / "ai/embedded-ai.lock.json").read_text(encoding="utf-8"))
+    source_lock["policy"]["extra_runtime_flag"] = "--unsafe-value"
+    path = tmp_path / "lock.json"
+    path.write_text(json.dumps(source_lock), encoding="utf-8")
+    with pytest.raises(ValueError, match="source_lock_identity_mismatch"):
+        module.load_lock(path)
+
+
+def test_runtime_cache_policy_rejects_boolean_zero(tmp_path):
+    module = builder()
+    source_lock = json.loads((ROOT / "ai/embedded-ai.lock.json").read_text(encoding="utf-8"))
+    source_lock["policy"]["prompt_cache_ram_mib"] = False
+    path = tmp_path / "lock.json"
+    path.write_text(json.dumps(source_lock), encoding="utf-8")
+    with pytest.raises(ValueError, match="source_lock_identity_mismatch"):
+        module.load_lock(path)
 
 
 @pytest.mark.parametrize(
@@ -192,6 +285,26 @@ def test_runtime_manifest_commit_or_resource_tamper_fails_closed(tmp_path):
     runtime["revision"] = "0" * 40
     (ai_root / "runtime-manifest.json").write_text(json.dumps(runtime), encoding="utf-8")
     with pytest.raises(ValueError, match="runtime_revision_mismatch"):
+        module.validate_staged_ai(ai_root, lock)
+
+
+def test_runtime_manifest_requires_exact_prompt_cache_policy(tmp_path):
+    module = builder()
+    lock = module.load_lock(ROOT / "ai/embedded-ai.lock.json")
+    ai_root, _model, runtime = fixture_ai(tmp_path)
+    runtime["policy"]["prompt_cache_ram_mib"] = 8192
+    (ai_root / "runtime-manifest.json").write_text(json.dumps(runtime), encoding="utf-8")
+    with pytest.raises(ValueError, match="runtime_policy_mismatch"):
+        module.validate_staged_ai(ai_root, lock)
+
+
+def test_runtime_manifest_rejects_boolean_prompt_cache_zero(tmp_path):
+    module = builder()
+    lock = module.load_lock(ROOT / "ai/embedded-ai.lock.json")
+    ai_root, _model, runtime = fixture_ai(tmp_path)
+    runtime["policy"]["prompt_cache_ram_mib"] = False
+    (ai_root / "runtime-manifest.json").write_text(json.dumps(runtime), encoding="utf-8")
+    with pytest.raises(ValueError, match="runtime_policy_mismatch"):
         module.validate_staged_ai(ai_root, lock)
 
 
@@ -309,13 +422,16 @@ def test_runtime_checkout_clones_clean_source_before_pinning_revision(tmp_path):
     repo = module._repo(work, lock)
 
     assert (repo / "source.txt").read_text(encoding="utf-8") == "pinned source"
-    assert subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=all"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout == ""
+    assert (
+        subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == ""
+    )
 
 
 def test_runtime_checkout_rejects_dirty_cached_source(monkeypatch, tmp_path):

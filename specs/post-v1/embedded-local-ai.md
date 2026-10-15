@@ -200,6 +200,7 @@ model alias: wireclaw-qwen3-4b-instruct-2507-q4_k_m
 context size: 16384 tokens
 maximum generated tokens per provider response: 2048
 parallel inference slots: 1 unless benchmark evidence justifies more
+prompt-cache RAM: 0 MiB (disabled; requests carry explicit Wireclaw-owned context)
 API authentication: required, ephemeral per launch
 runtime agent/tool/file execution features: disabled
 runtime browser UI: disabled when the pinned runtime supports disabling it

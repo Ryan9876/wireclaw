@@ -162,7 +162,12 @@ def test_result_validator_requires_identities_safety_counts_and_resource_metrics
         "schema_version": 1,
         "source_sha": "a" * 40,
         "model": {"id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m", "sha256": "b" * 64},
-        "runtime": {"revision": "8345f333951c661d166b00e6f9362e553768f292", "sha256": "c" * 64},
+        "runtime": {
+            "revision": "8345f333951c661d166b00e6f9362e553768f292",
+            "sha256": "c" * 64,
+            "policy": {"prompt_cache_ram_mib": 0},
+            "argv": ["llama-server", "--cache-ram", "0"],
+        },
         "scenario_results": [
             {"scenario": name, "provider_step_latencies_ms": []} for name in sorted(REQUIRED)
         ],
@@ -192,6 +197,14 @@ def test_result_validator_requires_identities_safety_counts_and_resource_metrics
         },
     }
     assert benchmark.validate_result(result) is None
+    result["runtime"]["policy"]["prompt_cache_ram_mib"] = 8192
+    with pytest.raises(ValueError, match="benchmark_runtime_policy_missing"):
+        benchmark.validate_result(result)
+    result["runtime"]["policy"]["prompt_cache_ram_mib"] = 0
+    result["runtime"]["policy"]["prompt_cache_ram_mib"] = False
+    with pytest.raises(ValueError, match="benchmark_runtime_policy_missing"):
+        benchmark.validate_result(result)
+    result["runtime"]["policy"]["prompt_cache_ram_mib"] = 0
     for counter in ("provider_failures_without_safe_fallback", "uncertainty_failures"):
         result[counter] = 1
         with pytest.raises(ValueError, match="benchmark_safety_gate_failed"):

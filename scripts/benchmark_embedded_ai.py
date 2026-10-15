@@ -237,6 +237,15 @@ def validate_result(value: dict) -> None:
         or len(value.get("runtime", {}).get("sha256", "")) != 64
     ):
         raise ValueError("benchmark_result_identity_missing")
+    runtime = value["runtime"]
+    if (
+        not isinstance(runtime.get("policy"), dict)
+        or type(runtime["policy"].get("prompt_cache_ram_mib")) is not int
+        or runtime["policy"].get("prompt_cache_ram_mib") != 0
+        or not isinstance(runtime.get("argv"), list)
+        or runtime["argv"][-2:] != ["--cache-ram", "0"]
+    ):
+        raise ValueError("benchmark_runtime_policy_missing")
     if {item.get("scenario") for item in value.get("scenario_results", [])} != REQUIRED_SCENARIOS:
         raise ValueError("benchmark_result_scenario_coverage_invalid")
     metrics = value.get("metrics", {})
@@ -470,6 +479,7 @@ class NativeRuntime:
         self.started_at = 0.0
         self.ready_seconds = 0.0
         self.peak_rss = 0
+        self.argv = []
         self._sampler_stop = threading.Event()
         self._sampler = None
 
@@ -524,7 +534,10 @@ class NativeRuntime:
             str(key_file),
             "--no-agent",
             "--no-webui",
+            "--cache-ram",
+            str(policy["prompt_cache_ram_mib"]),
         ]
+        self.argv = args[:]
         key_file.write_text(self.key + "\n", encoding="ascii")
         key_file.chmod(0o600)
         env = {
@@ -991,6 +1004,14 @@ def run_benchmark(ai_root: Path, output_dir: Path) -> dict:
                     "manifest_sha256": sha256_file(ai_root / "runtime-manifest.json"),
                     "platform": "macos",
                     "architecture": "arm64",
+                    "policy": validated["runtime"]["policy"],
+                    "argv": [
+                        "<packaged-runtime>/llama-server",
+                        *runtime.argv[1 : runtime.argv.index("--api-key-file")],
+                        "--api-key-file",
+                        "<ephemeral-per-launch-key-file>",
+                        *runtime.argv[runtime.argv.index("--no-agent") :],
+                    ],
                 },
                 "scenario_results": sorted(scenario_records, key=lambda item: item["scenario"]),
                 "accepted_model_proposals": total_accepted,
@@ -1082,6 +1103,8 @@ Source: `{result["source_sha"]}`
 Model: `{result["model"]["id"]}` ({result["model"]["sha256"]})
 
 Runtime: `llama.cpp` {result["runtime"]["revision"]} ({result["runtime"]["sha256"]})
+
+Prompt-cache RAM: {result["runtime"]["policy"]["prompt_cache_ram_mib"]} MiB
 
 ## Safety and performance
 

@@ -34,6 +34,7 @@
     "context_size": 16384,
     "max_tokens": 2048,
     "parallel": 1,
+    "prompt_cache_ram_mib": 0,
     "port": 8767,
     "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
     "authentication_required": true,

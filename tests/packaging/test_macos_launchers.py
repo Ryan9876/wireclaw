@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -86,6 +87,7 @@ def make_ai_assets(release: Path):
                     "micro_batch_size": 32,
                     "max_tokens": 2048,
                     "parallel": 1,
+                    "prompt_cache_ram_mib": 0,
                     "port": 8767,
                     "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
                     "authentication_required": True,
@@ -379,9 +381,43 @@ def test_runtime_policy_is_fixed_loopback_only_and_no_user_values_become_argv():
     assert (
         "--ctx-size 16384 --batch-size 128 --ubatch-size 32 --n-predict 2048 --parallel 1" in source
     )
-    assert '--api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui' in source
+    assert '--api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui --cache-ram 0' in source
     assert 'env -i HOME="$wireclaw_runtime_dir"' in source
     assert "pkill" not in source
+
+
+def test_unsupported_required_prompt_cache_flag_leaves_embedded_ai_unavailable(tmp_path):
+    release = make_release(tmp_path, "")
+    make_ai_assets(release)
+    runtime = release / "ai/macos-arm64/llama-server"
+    runtime.write_text(
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > "
+        + shlex.quote(str(tmp_path / "runtime-argv.txt"))
+        + "\nexit 64\n",
+        encoding="utf-8",
+    )
+    runtime.chmod(0o700)
+    manifest_path = release / "ai/runtime-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["files"][0]["sha256"] = hashlib.sha256(runtime.read_bytes()).hexdigest()
+    manifest["files"][0]["size_bytes"] = runtime.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    fake_env, _ = make_fake_tools(tmp_path)
+    argv_log = tmp_path / "runtime-argv.txt"
+    fake_env["WIRECLAW_TEST_RUNTIME_ARGV"] = str(argv_log)
+    runtime_dir = Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
+        str(ROOT),
+        str(release),
+        env=fake_env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "unavailable" in result.stdout
+    assert (runtime_dir / "ai-status").read_text().strip().startswith("unavailable:")
+    assert "ready" not in (runtime_dir / "ai-status").read_text()
+    assert "--cache-ram\n0" in argv_log.read_text(encoding="utf-8")
 
 
 def test_untrusted_provider_values_cannot_override_embedded_runtime_identity(tmp_path):
