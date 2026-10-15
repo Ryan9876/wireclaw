@@ -23,7 +23,11 @@ def builder():
 def artifact(path: Path, value: bytes):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(value)
-    return {"path": path.name, "sha256": hashlib.sha256(value).hexdigest(), "size_bytes": len(value)}
+    return {
+        "path": path.name,
+        "sha256": hashlib.sha256(value).hexdigest(),
+        "size_bytes": len(value),
+    }
 
 
 def fixture_ai(tmp_path):
@@ -59,6 +63,7 @@ def fixture_ai(tmp_path):
         "schema_version": 1,
         "repository": "ggml-org/llama.cpp",
         "tag": "v0.6.0",
+        "tag_commit": "d81235049384534c167caea52b85a694f6103d14",
         "revision": "8345f333951c661d166b00e6f9362e553768f292",
         "platform": "macos",
         "architecture": "arm64",
@@ -213,6 +218,175 @@ def test_source_lock_rejects_runtime_commit_drift(tmp_path):
         module.load_lock(path)
 
 
+def test_runtime_checkout_reuses_verified_pinned_cache_without_network(monkeypatch, tmp_path):
+    module = builder()
+    work = tmp_path / "work"
+    repo = work / "llama.cpp"
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "wireclaw@example.invalid"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Wireclaw Test"], cwd=repo, check=True)
+    (repo / "source.txt").write_text("pinned source", encoding="utf-8")
+    subprocess.run(["git", "add", "source.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "pinned source"], cwd=repo, check=True)
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    subprocess.run(["git", "tag", "v0.6.0", revision], cwd=repo, check=True)
+    source = tmp_path / "upstream.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(repo), str(source)], check=True, capture_output=True
+    )
+    subprocess.run(["git", "remote", "add", "origin", str(source)], cwd=repo, check=True)
+    lock = {
+        "runtime": {
+            "url": str(source),
+            "revision": revision,
+            "tag": "v0.6.0",
+            "tag_revision": revision,
+        }
+    }
+    real_run = module._run
+    commands = []
+
+    def offline_run(argv, *, cwd=None, env=None):
+        commands.append(argv)
+        if argv[:2] == ["git", "fetch"]:
+            raise AssertionError("pinned cached checkout should not fetch")
+        return real_run(argv, cwd=cwd, env=env)
+
+    monkeypatch.setattr(module, "_run", offline_run)
+    assert module._repo(work, lock) == repo
+    assert not any(argv[:2] == ["git", "fetch"] for argv in commands)
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+        == revision
+    )
+
+
+def test_runtime_checkout_rejects_dirty_cached_source(monkeypatch, tmp_path):
+    module = builder()
+    work = tmp_path / "work"
+    repo = work / "llama.cpp"
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "wireclaw@example.invalid"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Wireclaw Test"], cwd=repo, check=True)
+    (repo / "source.txt").write_text("pinned source", encoding="utf-8")
+    subprocess.run(["git", "add", "source.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "pinned source"], cwd=repo, check=True)
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    subprocess.run(["git", "tag", "v0.6.0", revision], cwd=repo, check=True)
+    source = tmp_path / "upstream.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(repo), str(source)], check=True, capture_output=True
+    )
+    subprocess.run(["git", "remote", "add", "origin", str(source)], cwd=repo, check=True)
+    (repo / "source.txt").write_text("modified source", encoding="utf-8")
+    lock = {
+        "runtime": {
+            "url": str(source),
+            "revision": revision,
+            "tag": "v0.6.0",
+            "tag_revision": revision,
+        }
+    }
+
+    with pytest.raises(ValueError, match="runtime_source_cache_dirty"):
+        module._repo(work, lock)
+
+
+def test_runtime_checkout_rejects_tag_that_does_not_match_locked_tag_commit(tmp_path):
+    module = builder()
+    work = tmp_path / "work"
+    repo = work / "llama.cpp"
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "wireclaw@example.invalid"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "Wireclaw Test"], cwd=repo, check=True)
+    (repo / "source.txt").write_text("tag source", encoding="utf-8")
+    subprocess.run(["git", "add", "source.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "tag source"], cwd=repo, check=True)
+    tag_revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    subprocess.run(["git", "tag", "v0.6.0", tag_revision], cwd=repo, check=True)
+    (repo / "source.txt").write_text("later pinned source", encoding="utf-8")
+    subprocess.run(["git", "commit", "-qam", "pinned source"], cwd=repo, check=True)
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    source = tmp_path / "upstream.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(repo), str(source)], check=True, capture_output=True
+    )
+    subprocess.run(["git", "remote", "add", "origin", str(source)], cwd=repo, check=True)
+    lock = {
+        "runtime": {
+            "url": str(source),
+            "revision": revision,
+            "tag": "v0.6.0",
+            "tag_revision": revision,
+        }
+    }
+
+    with pytest.raises(ValueError, match="runtime_tag_revision_mismatch"):
+        module._repo(work, lock)
+
+
+@pytest.mark.parametrize(
+    "dependency",
+    ["@rpath/../../../outside/libggml-metal.dylib", "@loader_path/../../outside.dylib"],
+)
+def test_runtime_relocation_rejects_dependency_path_escape(monkeypatch, tmp_path, dependency):
+    module = builder()
+    runtime = tmp_path / "ai/macos-arm64"
+    runtime.mkdir(parents=True)
+    (runtime / "llama-server").write_bytes(b"server")
+    (runtime / "libggml-metal.dylib").write_bytes(b"bundled file with colliding basename")
+
+    def fake_run(argv, *, cwd=None, env=None):
+        if argv[0] == "otool" and argv[1] == "-l":
+            return "Load command 1\n cmd LC_RPATH\n path @loader_path (offset 12)\n"
+        if argv[0] == "otool" and argv[1] == "-L":
+            return f"{argv[2]}:\n\t{dependency} (compatibility version 1.0.0)\n"
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    with pytest.raises(ValueError, match="runtime_dependency_path_invalid"):
+        module.relocate_macos_runtime(runtime, tmp_path / "llama-build/bin")
+
+
+def test_runtime_relocation_rejects_traversal_rpath(monkeypatch, tmp_path):
+    module = builder()
+    runtime = tmp_path / "ai/macos-arm64"
+    runtime.mkdir(parents=True)
+    (runtime / "llama-server").write_bytes(b"server")
+
+    def fake_run(argv, *, cwd=None, env=None):
+        if argv[0] == "otool" and argv[1] == "-l":
+            return (
+                "Load command 1\n cmd LC_RPATH\n path @loader_path/../../../outside (offset 12)\n"
+            )
+        if argv[0] == "otool" and argv[1] == "-L":
+            return f"{argv[2]}:\\n"
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    with pytest.raises(ValueError, match="runtime_external_rpath"):
+        module.relocate_macos_runtime(runtime, tmp_path / "llama-build/bin")
+
+
 def test_converter_dependency_lock_uses_uv_environment_freeze(monkeypatch, tmp_path):
     module = builder()
     calls = []
@@ -233,3 +407,92 @@ def test_gguf_architecture_must_match_the_pinned_qwen_architecture():
     assert module.require_gguf_architecture("qwen3", "qwen3") == "qwen3"
     with pytest.raises(ValueError, match="model_architecture_mismatch"):
         module.require_gguf_architecture("llama", "qwen3")
+
+
+def test_runtime_relocation_removes_build_tree_rpaths_and_uses_packaged_libraries(
+    monkeypatch, tmp_path
+):
+    module = builder()
+    runtime = tmp_path / "ai/macos-arm64"
+    runtime.mkdir(parents=True)
+    (runtime / "llama-server").write_bytes(b"server")
+    (runtime / "libllama.0.dylib").write_bytes(b"library")
+    build_bin = str(tmp_path / "llama-build/bin")
+    commands = []
+    removed = set()
+    added = set()
+
+    def fake_run(argv, *, cwd=None, env=None):
+        commands.append(argv)
+        if argv[0] == "otool" and argv[1] == "-l":
+            path = argv[2]
+            if path in added:
+                return "Load command 1\n cmd LC_RPATH\n path @loader_path (offset 12)\n"
+            if path in removed:
+                return ""
+            return (
+                "Load command 1\n          cmd LC_RPATH\n      cmdsize 48\n"
+                f"         path {build_bin} (offset 12)\n"
+            )
+        if argv[0] == "install_name_tool" and argv[1] == "-delete_rpath":
+            removed.add(argv[3])
+        if argv[0] == "install_name_tool" and argv[1] == "-add_rpath":
+            added.add(argv[3])
+        if argv[0] == "otool" and argv[1] == "-L":
+            return (
+                f"{argv[2]}:\n"
+                "\t@rpath/libllama.0.dylib (compatibility version 0.0.0, current version 0.0.0)\n"
+                "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1359.0.0)\n"
+            )
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    module.relocate_macos_runtime(runtime, Path(build_bin))
+    assert [
+        "install_name_tool",
+        "-delete_rpath",
+        build_bin,
+        str(runtime / "llama-server"),
+    ] in commands
+    assert [
+        "install_name_tool",
+        "-add_rpath",
+        "@loader_path",
+        str(runtime / "llama-server"),
+    ] in commands
+
+
+def test_runtime_relocation_rejects_unbundled_absolute_dependencies(monkeypatch, tmp_path):
+    module = builder()
+    runtime = tmp_path / "ai/macos-arm64"
+    runtime.mkdir(parents=True)
+    (runtime / "llama-server").write_bytes(b"server")
+
+    def fake_run(argv, *, cwd=None, env=None):
+        if argv[0] == "otool" and argv[1] == "-l":
+            return "Load command 1\n cmd LC_RPATH\n path @loader_path (offset 12)\n"
+        if argv[0] == "otool" and argv[1] == "-L":
+            return f"{argv[2]}:\n\t/private/tmp/llama-build/libfoo.dylib (compatibility version 1.0.0)\n"
+        return ""
+
+    monkeypatch.setattr(module, "_run", fake_run)
+    with pytest.raises(ValueError, match="runtime_external_dependency"):
+        module.relocate_macos_runtime(runtime, tmp_path / "llama-build/bin")
+
+
+def test_runtime_aliases_are_copied_as_regular_packaged_libraries(tmp_path):
+    module = builder()
+    build_bin = tmp_path / "llama-build/bin"
+    runtime = tmp_path / "ai/macos-arm64"
+    build_bin.mkdir(parents=True)
+    runtime.mkdir(parents=True)
+    actual = build_bin / "libllama.0.6.0.dylib"
+    actual.write_bytes(b"versioned-library")
+    (build_bin / "libllama.0.dylib").symlink_to(actual.name)
+
+    module._copy_macos_dylib_aliases(build_bin, runtime)
+
+    alias = runtime / "libllama.0.dylib"
+    assert alias.is_file()
+    assert not alias.is_symlink()
+    assert alias.read_bytes() == actual.read_bytes()

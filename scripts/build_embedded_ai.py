@@ -63,6 +63,7 @@ def load_lock(path: Path) -> dict:
             "repository": "ggml-org/llama.cpp",
             "url": "https://github.com/ggml-org/llama.cpp.git",
             "tag": "v0.6.0",
+            "tag_revision": "d81235049384534c167caea52b85a694f6103d14",
             "revision": "8345f333951c661d166b00e6f9362e553768f292",
             "required_resources": [
                 "macos-arm64/llama-server",
@@ -195,8 +196,7 @@ def validate_staged_ai(ai_root: Path, lock: dict) -> dict:
     if (
         not isinstance(architecture_validation, dict)
         or architecture_validation.get("metadata_field") != "general.architecture"
-        or architecture_validation.get("reader")
-        != "gguf-py from pinned llama.cpp source"
+        or architecture_validation.get("reader") != "gguf-py from pinned llama.cpp source"
     ):
         _fail("model_architecture_provenance_missing")
     artifact = model.get("artifact")
@@ -232,6 +232,7 @@ def validate_staged_ai(ai_root: Path, lock: dict) -> dict:
     if (
         runtime.get("repository") != expected_runtime["repository"]
         or runtime.get("tag") != expected_runtime["tag"]
+        or runtime.get("tag_commit") != expected_runtime["tag_revision"]
         or runtime.get("revision") != expected_runtime["revision"]
         or runtime.get("platform") != "macos"
         or runtime.get("architecture") != "arm64"
@@ -248,9 +249,7 @@ def validate_staged_ai(ai_root: Path, lock: dict) -> dict:
     runtime_files = runtime.get("files")
     if not isinstance(runtime_files, list):
         _fail("runtime_resource_missing")
-    runtime_by_path = {
-        item.get("path"): item for item in runtime_files if isinstance(item, dict)
-    }
+    runtime_by_path = {item.get("path"): item for item in runtime_files if isinstance(item, dict)}
     for required in expected_runtime["required_resources"]:
         if required not in runtime_by_path:
             _fail("runtime_resource_missing")
@@ -282,14 +281,119 @@ def _repo(work: Path, lock: dict) -> Path:
         _run(["git", "clone", "--no-checkout", lock["runtime"]["url"], str(repo)])
     if repo.is_symlink() or not repo.is_dir():
         _fail("runtime_source_path_invalid")
-    _run(["git", "fetch", "origin", "--tags", lock["runtime"]["revision"]], cwd=repo)
-    _run(["git", "checkout", "--detach", lock["runtime"]["revision"]], cwd=repo)
+    if _run(["git", "remote", "get-url", "origin"], cwd=repo) != lock["runtime"]["url"]:
+        _fail("runtime_source_remote_mismatch")
+    status = _run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=repo)
+    if status:
+        _fail("runtime_source_cache_dirty")
+    revision = lock["runtime"]["revision"]
+    tag = lock["runtime"]["tag"]
+    revision_available = (
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{revision}^{{commit}}"], cwd=repo, check=False
+        ).returncode
+        == 0
+    )
+    tag_available = (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", f"{tag}^{{}}"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+    if not revision_available or not tag_available:
+        _run(["git", "fetch", "origin", "--tags", revision], cwd=repo)
+    _run(["git", "checkout", "--detach", revision], cwd=repo)
     head = _run(["git", "rev-parse", "HEAD"], cwd=repo)
-    if head != lock["runtime"]["revision"]:
+    if head != revision:
         _fail("runtime_revision_mismatch")
-    tag_commit = _run(["git", "rev-parse", f"{lock['runtime']['tag']}^{{}}"], cwd=repo)
+    tag_commit = _run(["git", "rev-parse", f"{tag}^{{}}"], cwd=repo)
+    if tag_commit != lock["runtime"]["tag_revision"]:
+        _fail("runtime_tag_revision_mismatch")
     _run(["git", "merge-base", "--is-ancestor", tag_commit, head], cwd=repo)
     return repo
+
+
+def _macho_rpaths(path: Path) -> list[str]:
+    output = _run(["otool", "-l", str(path)])
+    rpaths = []
+    in_rpath = False
+    for line in output.splitlines():
+        if line.strip() == "cmd LC_RPATH":
+            in_rpath = True
+            continue
+        if in_rpath:
+            match = re.match(r"\s*path (.+) \(offset [0-9]+\)$", line)
+            if match:
+                rpaths.append(match.group(1))
+                in_rpath = False
+    return rpaths
+
+
+def _validate_macho_dependencies(runtime_root: Path, path: Path) -> None:
+    files = {
+        item.name for item in runtime_root.iterdir() if item.is_file() and not item.is_symlink()
+    }
+    lines = _run(["otool", "-L", str(path)]).splitlines()[1:]
+    for line in lines:
+        dependency = line.strip().split(" (compatibility version", 1)[0]
+        if dependency.startswith(("@rpath/", "@loader_path/")):
+            prefix, name = dependency.split("/", 1)
+            if (
+                not name
+                or "/" in name
+                or name in {".", ".."}
+                or name not in files
+                or prefix not in {"@rpath", "@loader_path"}
+            ):
+                _fail("runtime_dependency_path_invalid")
+            if Path(runtime_root / name).is_symlink():
+                _fail("runtime_dependency_missing")
+        elif dependency.startswith("/") and not dependency.startswith(
+            ("/System/Library/", "/usr/lib/")
+        ):
+            _fail("runtime_external_dependency")
+        elif dependency.startswith("@"):
+            _fail("runtime_dependency_path_invalid")
+
+
+def relocate_macos_runtime(runtime_root: Path, build_bin: Path) -> None:
+    """Make every Mach-O in the release resolve dependencies from its bundle."""
+    build_root = build_bin.resolve()
+    binaries = sorted(path for path in runtime_root.iterdir() if path.is_file())
+    if not binaries:
+        _fail("runtime_build_output_missing")
+    for path in binaries:
+        for rpath in _macho_rpaths(path):
+            if rpath.startswith("/"):
+                resolved_rpath = Path(rpath).resolve()
+                if resolved_rpath == build_root or build_root in resolved_rpath.parents:
+                    _run(["install_name_tool", "-delete_rpath", rpath, str(path)])
+                elif not rpath.startswith(("/System/Library/", "/usr/lib/")):
+                    _fail("runtime_external_rpath")
+            elif rpath != "@loader_path":
+                _fail("runtime_external_rpath")
+        if "@loader_path" not in _macho_rpaths(path):
+            _run(["install_name_tool", "-add_rpath", "@loader_path", str(path)])
+        final_rpaths = _macho_rpaths(path)
+        if "@loader_path" not in final_rpaths or any(
+            rpath.startswith("/") and not rpath.startswith(("/System/Library/", "/usr/lib/"))
+            for rpath in final_rpaths
+        ):
+            _fail("runtime_relocation_failed")
+        _validate_macho_dependencies(runtime_root, path)
+
+
+def _copy_macos_dylib_aliases(build_bin: Path, runtime_root: Path) -> None:
+    build_root = build_bin.resolve()
+    for alias in sorted(build_bin.glob("*.dylib")):
+        if not alias.is_symlink():
+            continue
+        target = alias.resolve(strict=True)
+        if target.is_file() and target.parent == build_root:
+            shutil.copy2(target, runtime_root / alias.name)
 
 
 def build_runtime(lock: dict, work: Path, output: Path) -> dict:
@@ -317,7 +421,20 @@ def build_runtime(lock: dict, work: Path, output: Path) -> dict:
             "-DGGML_NATIVE=OFF",
         ]
     )
-    _run(["cmake", "--build", str(build), "--config", "Release", "--parallel", "4", "--target", "llama-server", "llama-quantize"])
+    _run(
+        [
+            "cmake",
+            "--build",
+            str(build),
+            "--config",
+            "Release",
+            "--parallel",
+            "4",
+            "--target",
+            "llama-server",
+            "llama-quantize",
+        ]
+    )
     binary = build / "bin/llama-server"
     quantize = build / "bin/llama-quantize"
     if not binary.is_file() or not quantize.is_file():
@@ -346,10 +463,12 @@ def build_runtime(lock: dict, work: Path, output: Path) -> dict:
     if not metal_link.is_file():
         _fail("runtime_build_resource_missing")
     shutil.copy2(metal_link.resolve(strict=True), runtime_root / metal_link.name)
+    _copy_macos_dylib_aliases(build / "bin", runtime_root)
     for library in runtime_root.glob("*.dylib"):
         archs = _run(["lipo", "-archs", str(library)]).split()
         if archs != ["arm64"]:
             _fail("runtime_architecture_mismatch")
+    relocate_macos_runtime(runtime_root, build / "bin")
     resources = lock["runtime"]["required_resources"]
     if not all((ai_root / relative).is_file() for relative in resources):
         _fail("runtime_build_resource_missing")
@@ -358,9 +477,7 @@ def build_runtime(lock: dict, work: Path, output: Path) -> dict:
         "repository": lock["runtime"]["repository"],
         "tag": lock["runtime"]["tag"],
         "revision": lock["runtime"]["revision"],
-        "tag_commit": _run(
-            ["git", "rev-parse", f"{lock['runtime']['tag']}^{{}}"], cwd=repo
-        ),
+        "tag_commit": _run(["git", "rev-parse", f"{lock['runtime']['tag']}^{{}}"], cwd=repo),
         "platform": "macos",
         "architecture": "arm64",
         "build_settings": {
@@ -389,9 +506,7 @@ def build_runtime(lock: dict, work: Path, output: Path) -> dict:
         for path in sorted(runtime_root.iterdir())
         if path.is_file() and not path.is_symlink()
     ]
-    (ai_root / RUNTIME_MANIFEST).write_text(
-        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-    )
+    (ai_root / RUNTIME_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return {"repository": repo, "build": build, "quantizer": quantize, "manifest": manifest}
 
 
@@ -572,9 +687,7 @@ def build_model(lock: dict, work: Path, output: Path) -> dict:
             "conversion_dependency_lock_sha256": sha256(CONVERSION_REQUIREMENTS_LOCK),
         },
     }
-    (ai_root / MODEL_MANIFEST).write_text(
-        json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-    )
+    (ai_root / MODEL_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return manifest
 
 
@@ -646,7 +759,9 @@ def smoke_test(ai_root: Path, lock: dict):
             )
             with urllib.request.urlopen(models_request, timeout=5) as response:
                 model_list = json.loads(response.read())
-            if not any(item.get("id") == policy["model_alias"] for item in model_list.get("data", [])):
+            if not any(
+                item.get("id") == policy["model_alias"] for item in model_list.get("data", [])
+            ):
                 _fail("runtime_smoke_model_identity_mismatch")
             body = json.dumps(
                 {

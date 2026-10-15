@@ -14,6 +14,7 @@
     "repository": "ggml-org/llama.cpp",
     "url": "https://github.com/ggml-org/llama.cpp.git",
     "tag": "v0.6.0",
+    "tag_revision": "d81235049384534c167caea52b85a694f6103d14",
     "revision": "8345f333951c661d166b00e6f9362e553768f292",
     "required_resources": [
       "macos-arm64/llama-server",

@@ -68,6 +68,7 @@ def fixture_ai(tmp_path):
                 "schema_version": 1,
                 "repository": "ggml-org/llama.cpp",
                 "tag": "v0.6.0",
+                "tag_commit": "d81235049384534c167caea52b85a694f6103d14",
                 "revision": "8345f333951c661d166b00e6f9362e553768f292",
                 "platform": "macos",
                 "architecture": "arm64",
