@@ -180,8 +180,18 @@ def test_result_validator_requires_identities_safety_counts_and_resource_metrics
         "unauthorized_capabilities": 0,
         "privacy_leaks": 0,
         "verdict": "PASS",
+        "targets": {
+            "model_size_bytes": {"target": 3_758_096_384, "pass": True},
+            "peak_ai_rss_bytes": {"target": 8 * 1024**3, "pass": True},
+            "cold_readiness_seconds": {"target": 30, "pass": True},
+            "median_provider_step_ms": {"target": 20_000, "pass": True},
+        },
     }
     assert benchmark.validate_result(result) is None
+    result["metrics"]["peak_ai_rss_bytes"] = 9 * 1024**3
+    result["targets"]["peak_ai_rss_bytes"]["pass"] = False
+    with pytest.raises(ValueError, match="benchmark_release_target_missed"):
+        benchmark.validate_result(result)
     del result["runtime"]
     with pytest.raises(ValueError, match="benchmark_result_identity_missing"):
         benchmark.validate_result(result)

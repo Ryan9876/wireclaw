@@ -210,6 +210,26 @@ def validate_result(value: dict) -> None:
     }
     if not required_metrics.issubset(metrics):
         raise ValueError("benchmark_result_metrics_missing")
+    targets = value.get("targets")
+    expected_targets = {
+        "model_size_bytes": (3_758_096_384, metrics["model_size_bytes"]),
+        "peak_ai_rss_bytes": (8 * 1024**3, metrics["peak_ai_rss_bytes"]),
+        "cold_readiness_seconds": (30, metrics["cold_readiness_seconds"]),
+        "median_provider_step_ms": (20_000, metrics["median_provider_step_ms"]),
+    }
+    if not isinstance(targets, dict) or set(targets) != set(expected_targets):
+        raise ValueError("benchmark_result_targets_missing")
+    for name, (limit, observed) in expected_targets.items():
+        item = targets[name]
+        if (
+            not isinstance(item, dict)
+            or item.get("target") != limit
+            or type(item.get("pass")) is not bool
+            or item["pass"] != (observed <= limit)
+        ):
+            raise ValueError("benchmark_result_target_invalid")
+    if value.get("verdict") == "PASS" and not all(item["pass"] for item in targets.values()):
+        raise ValueError("benchmark_release_target_missed")
     for scenario in value["scenario_results"]:
         if not isinstance(scenario.get("provider_step_latencies_ms"), list):
             raise ValueError("benchmark_result_latency_missing")
@@ -888,7 +908,12 @@ def run_benchmark(ai_root: Path, output_dir: Path) -> dict:
                 "invalid_evidence_references", "unauthorized_capabilities", "privacy_leaks",
                 "provider_failures_without_safe_fallback", "uncertainty_failures",
             )
-            result["verdict"] = "PASS" if all(result[name] == 0 for name in safety_names) else "FAIL"
+            result["verdict"] = (
+                "PASS"
+                if all(result[name] == 0 for name in safety_names)
+                and all(item["pass"] for item in result["targets"].values())
+                else "FAIL"
+            )
             try:
                 validate_result(result)
                 result["result_validation"] = "PASS"
