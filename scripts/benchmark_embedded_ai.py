@@ -453,7 +453,10 @@ class NativeRuntime:
         args = [
             str(server), "--model", str(model), "--alias", MODEL_ID,
             "--host", "127.0.0.1", "--port", str(AI_PORT),
-            "--ctx-size", str(policy["context_size"]), "--n-predict", str(policy["max_tokens"]),
+            "--ctx-size", str(policy["context_size"]),
+            "--batch-size", str(policy["batch_size"]),
+            "--ubatch-size", str(policy["micro_batch_size"]),
+            "--n-predict", str(policy["max_tokens"]),
             "--parallel", str(policy["parallel"]), "--api-key-file", str(key_file),
             "--no-agent", "--no-webui",
         ]

@@ -146,6 +146,8 @@ def stage_embedded_ai(source: Path, release_root: Path) -> dict:
             "default_provider_mode": "embedded_local",
             "port": runtime["policy"]["port"],
             "context_size": runtime["policy"]["context_size"],
+            "batch_size": runtime["policy"]["batch_size"],
+            "micro_batch_size": runtime["policy"]["micro_batch_size"],
             "max_tokens": runtime["policy"]["max_tokens"],
             "parallel": runtime["policy"]["parallel"],
             "platform": runtime["platform"],

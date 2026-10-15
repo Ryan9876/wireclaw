@@ -61,7 +61,7 @@ if model_path.stat().st_size != model_entry.get("size_bytes") or model_path.stat
 if runtime.get("repository") != "ggml-org/llama.cpp" or runtime.get("revision") != "8345f333951c661d166b00e6f9362e553768f292" or runtime.get("platform") != "macos" or runtime.get("architecture") != "arm64" or runtime.get("entrypoint") != "macos-arm64/llama-server": fail()
 if runtime.get("build_settings", {}).get("metal") is not True or runtime.get("build_settings", {}).get("server") is not True: fail()
 policy = runtime.get("policy") or {}
-if policy != {"platform": "macos", "architecture": "arm64", "listen_host": "127.0.0.1", "context_size": 16384, "max_tokens": 2048, "parallel": 1, "port": 8767, "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m", "authentication_required": True, "agent_tools": False, "web_ui": False, "network_downloads": False}: fail()
+if policy != {"platform": "macos", "architecture": "arm64", "listen_host": "127.0.0.1", "context_size": 16384, "batch_size": 512, "micro_batch_size": 128, "max_tokens": 2048, "parallel": 1, "port": 8767, "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m", "authentication_required": True, "agent_tools": False, "web_ui": False, "network_downloads": False}: fail()
 files = runtime.get("files")
 if not isinstance(files, list) or not any(item.get("path") == "macos-arm64/llama-server" for item in files if isinstance(item, dict)): fail()
 for item in files:
@@ -241,7 +241,7 @@ PY
   log_pid=$!
   ( exec /usr/bin/env -i HOME="$wireclaw_runtime_dir" TMPDIR="$wireclaw_runtime_dir" PATH=/usr/bin:/bin "$ai_bin" \
       --model "$release_dir/ai/models/$wireclaw_ai_model_file" --alias "$wireclaw_ai_model_id" \
-      --host 127.0.0.1 --port "$wireclaw_ai_port" --ctx-size 16384 --n-predict 2048 --parallel 1 \
+      --host 127.0.0.1 --port "$wireclaw_ai_port" --ctx-size 16384 --batch-size 512 --ubatch-size 128 --n-predict 2048 --parallel 1 \
       --api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui ) > "$wireclaw_ai_fifo" 2>&1 &
   AI_PID=$!
   rm -f "$wireclaw_ai_fifo"

@@ -22,7 +22,9 @@
   },
   "conversion": {
     "huggingface_hub_version": "0.34.4",
-    "source_snapshot_excludes": [".cache/**"]
+    "source_snapshot_excludes": [
+      ".cache/**"
+    ]
   },
   "policy": {
     "platform": "macos",
@@ -36,6 +38,8 @@
     "authentication_required": true,
     "agent_tools": false,
     "web_ui": false,
-    "network_downloads": false
+    "network_downloads": false,
+    "batch_size": 512,
+    "micro_batch_size": 128
   }
 }
