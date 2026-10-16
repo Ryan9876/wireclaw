@@ -54,6 +54,34 @@ def test_assembles_deterministic_bundle_layout(tmp_path: Path) -> None:
     assert not (app / "Contents/Resources/ai/model.gguf").stat().st_mode & 0o222
 
 
+@pytest.mark.parametrize(
+    "missing",
+    ("model.gguf", "runtime-manifest.json", "model-manifest.json"),
+)
+def test_rejects_bundle_when_required_ai_resource_is_missing(
+    tmp_path: Path, missing: str
+) -> None:
+    inputs = tmp_path / "inputs"
+    (inputs / "runtime").mkdir(parents=True)
+    (inputs / "resources" / "ai").mkdir(parents=True)
+    (inputs / "WireclawAI").write_text("wrapper")
+    (inputs / "runtime" / "llama-server").write_text("helper")
+    for name in ("model.gguf", "runtime-manifest.json", "model-manifest.json"):
+        if name != missing:
+            (inputs / "resources" / "ai" / name).write_text(name)
+
+    app = tmp_path / "stage" / "WireclawAI.app"
+    with pytest.raises(ValueError, match="required AI resource"):
+        assemble_bundle(
+            app,
+            wrapper=inputs / "WireclawAI",
+            helper=inputs / "runtime" / "llama-server",
+            runtime_dir=inputs / "runtime",
+            resources_dir=inputs / "resources",
+        )
+    assert not app.exists()
+
+
 def test_entitlement_templates_are_exact() -> None:
     parent = plistlib.loads((ROOT / "ai/macos/parent.entitlements.plist").read_bytes())
     helper = plistlib.loads((ROOT / "ai/macos/helper.entitlements.plist").read_bytes())

@@ -25,3 +25,15 @@ The builder emits an unsigned staging bundle; it does not sign code or inspect s
 ## Commit
 
 `build: define sandboxed WireclawAI app bundle`
+
+## Review fix: require model and manifests
+
+Added pre-assembly checks for `Resources/ai/model.gguf`, `Resources/ai/runtime-manifest.json`, and `Resources/ai/model-manifest.json`. Missing or symlinked inputs now raise `ValueError` before the staging bundle is created or replaced. Added one parameterized regression case for each required file and asserted no bundle is left behind.
+
+RED command: `.venv/bin/pytest tests/packaging/test_macos_ai_bundle.py -q` — 3 failed (the assembler did not raise for each absent model/manifest); 10 passed.
+
+Passing validation:
+
+- `.venv/bin/pytest tests/packaging/test_macos_ai_bundle.py -q` — 13 passed in 0.05s.
+- `plutil -lint ai/macos/Info.plist ai/macos/parent.entitlements.plist ai/macos/helper.entitlements.plist` — all three `OK`.
+- `git diff --check` — clean.

@@ -15,6 +15,11 @@ HELPER_ENTITLEMENTS = {
     "com.apple.security.app-sandbox": True,
     "com.apple.security.inherit": True,
 }
+REQUIRED_AI_RESOURCES = (
+    "ai/model.gguf",
+    "ai/runtime-manifest.json",
+    "ai/model-manifest.json",
+)
 
 
 def validate_entitlements(role: str, entitlements: dict) -> None:
@@ -60,6 +65,10 @@ def assemble_bundle(
     """
     if app.name != "WireclawAI.app" or app.is_symlink():
         raise ValueError("bundle destination must be a non-symlink WireclawAI.app")
+    for relative in REQUIRED_AI_RESOURCES:
+        source = resources_dir / relative
+        if not source.is_file() or source.is_symlink():
+            raise ValueError(f"required AI resource is missing or unsafe: {relative}")
     if app.exists():
         for existing in app.rglob("*"):
             if existing.is_dir() and not existing.is_symlink():
