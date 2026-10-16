@@ -18,6 +18,18 @@ Complete. Implemented and committed the app bundle layout and exact entitlement 
 - `plutil -lint` on all three plist templates — all OK.
 - `git diff --check` — clean.
 
+## Review fix: preflight resource symlinks
+
+Added a resource-tree preflight before any existing staging bundle is removed. It rejects a symlinked resources root, any symlink anywhere under the resource tree (including `resources_dir/ai` itself), and missing required AI files. Added a regression test using a symlinked `ai` directory and an existing bundle sentinel; the test verifies the old destination survives.
+
+RED command: `.venv/bin/pytest tests/packaging/test_macos_ai_bundle.py -q` — the new symlink test failed because the assembler removed the existing bundle before detecting the symlink; 13 passed.
+
+Passing validation:
+
+- `.venv/bin/pytest tests/packaging/test_macos_ai_bundle.py -q` — 14 passed in 0.10s.
+- `plutil -lint ai/macos/Info.plist ai/macos/parent.entitlements.plist ai/macos/helper.entitlements.plist` — all three `OK`.
+- `git diff --check` — clean.
+
 ## Self-review and limits
 
 The builder emits an unsigned staging bundle; it does not sign code or inspect signed entitlements. Those actions are assigned to later signing and native qualification tasks. The bundle identifier is fixed here as `com.wireclaw.WireclawAI`, since the approved design and plan require a fixed identifier but do not spell out its string value.

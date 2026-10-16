@@ -82,6 +82,34 @@ def test_rejects_bundle_when_required_ai_resource_is_missing(
     assert not app.exists()
 
 
+def test_rejects_symlinked_ai_resource_directory_before_bundle_replacement(
+    tmp_path: Path,
+) -> None:
+    inputs = tmp_path / "inputs"
+    (inputs / "runtime").mkdir(parents=True)
+    (inputs / "resources").mkdir()
+    (inputs / "outside-ai").mkdir()
+    (inputs / "WireclawAI").write_text("wrapper")
+    (inputs / "runtime" / "llama-server").write_text("helper")
+    for name in ("model.gguf", "runtime-manifest.json", "model-manifest.json"):
+        (inputs / "outside-ai" / name).write_text(name)
+    (inputs / "resources" / "ai").symlink_to(inputs / "outside-ai", target_is_directory=True)
+
+    app = tmp_path / "stage" / "WireclawAI.app"
+    app.mkdir(parents=True)
+    marker = app / "preserve-me"
+    marker.write_text("existing bundle")
+    with pytest.raises(ValueError, match="resource input contains a symlink"):
+        assemble_bundle(
+            app,
+            wrapper=inputs / "WireclawAI",
+            helper=inputs / "runtime" / "llama-server",
+            runtime_dir=inputs / "runtime",
+            resources_dir=inputs / "resources",
+        )
+    assert marker.read_text() == "existing bundle"
+
+
 def test_entitlement_templates_are_exact() -> None:
     parent = plistlib.loads((ROOT / "ai/macos/parent.entitlements.plist").read_bytes())
     helper = plistlib.loads((ROOT / "ai/macos/helper.entitlements.plist").read_bytes())

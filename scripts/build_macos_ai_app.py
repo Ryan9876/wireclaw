@@ -49,6 +49,18 @@ def _copy_runtime_tree(runtime_dir: Path, frameworks: Path, helper: Path) -> Non
         _copy_file(source, frameworks / relative, executable=bool(source.stat().st_mode & 0o111))
 
 
+def _validate_resources(resources_dir: Path) -> None:
+    if resources_dir.is_symlink() or not resources_dir.is_dir():
+        raise ValueError("resource input directory is missing or unsafe")
+    for source in resources_dir.rglob("*"):
+        if source.is_symlink():
+            raise ValueError("resource input contains a symlink")
+    for relative in REQUIRED_AI_RESOURCES:
+        source = resources_dir / relative
+        if not source.is_file():
+            raise ValueError(f"required AI resource is missing or unsafe: {relative}")
+
+
 def assemble_bundle(
     app: Path,
     *,
@@ -65,10 +77,7 @@ def assemble_bundle(
     """
     if app.name != "WireclawAI.app" or app.is_symlink():
         raise ValueError("bundle destination must be a non-symlink WireclawAI.app")
-    for relative in REQUIRED_AI_RESOURCES:
-        source = resources_dir / relative
-        if not source.is_file() or source.is_symlink():
-            raise ValueError(f"required AI resource is missing or unsafe: {relative}")
+    _validate_resources(resources_dir)
     if app.exists():
         for existing in app.rglob("*"):
             if existing.is_dir() and not existing.is_symlink():
