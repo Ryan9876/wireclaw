@@ -226,7 +226,7 @@ def sign_bundle(
     identity: str | None = None,
     runner=subprocess.run,
 ) -> None:
-    """Sign nested runtime code first, then parent code and bundle, with HR."""
+    """Sign nested code first; Hardened Runtime is reserved for Developer ID."""
     if mode not in {"adhoc", "developer-id"}:
         raise ValueError("unsupported signing mode")
     if mode == "developer-id" and not identity:
@@ -248,7 +248,7 @@ def sign_bundle(
         raise ValueError("application bundle is incomplete")
     _prepare_signing_permissions(app)
     _ensure_helper_framework_runpath(helper, runner=runner)
-    signing_options = ["--options", "runtime"]
+    signing_options = ["--options", "runtime"] if mode == "developer-id" else []
     if mode == "developer-id":
         signing_options.append("--timestamp")
     for target in runtime_files:
@@ -297,12 +297,14 @@ def sign_bundle(
             ],
             runner,
         )
-    verify_signed_bundle(app, runner=runner)
+    verify_signed_bundle(app, mode=mode, runner=runner)
     _restore_read_only_modes(app)
 
 
-def verify_signed_bundle(app: Path, *, runner=subprocess.run) -> None:
-    """Strictly verify the app and exact signed parent/helper entitlements."""
+def verify_signed_bundle(app: Path, *, mode: str, runner=subprocess.run) -> None:
+    """Verify mode-specific runtime flags, signer identity, and exact entitlements."""
+    if mode not in {"adhoc", "developer-id"}:
+        raise ValueError("unsupported signing mode")
     result = runner(
         ["/usr/bin/codesign", "--verify", "--strict", "--deep", "--verbose=4", str(app)],
         capture_output=True,
@@ -311,21 +313,44 @@ def verify_signed_bundle(app: Path, *, runner=subprocess.run) -> None:
     )
     if result.returncode:
         raise ValueError("signature verification failed")
-    for target, expected in (
+    expected_team = None
+    targets = [
         (app, PARENT_ENTITLEMENTS),
         (app / "Contents/MacOS/WireclawAI", PARENT_ENTITLEMENTS),
         (app / "Contents/MacOS/llama-server", HELPER_ENTITLEMENTS),
-    ):
+    ]
+    frameworks = app / "Contents/Frameworks"
+    targets.extend(
+        (path, None)
+        for path in sorted(frameworks.rglob("*"))
+        if path.is_file()
+        and not path.is_symlink()
+        and (path.suffix == ".dylib" or os.access(path, os.X_OK))
+    )
+    for target, expected in targets:
         details = runner(
             ["/usr/bin/codesign", "-dv", "--verbose=4", str(target)],
             capture_output=True,
             text=True,
             check=False,
         )
-        if details.returncode or not re.search(
-            r"flags=.*\bruntime\b", details.stdout + details.stderr
-        ):
-            raise ValueError("Hardened Runtime signature missing")
+        detail_text = details.stdout + details.stderr
+        has_runtime = bool(re.search(r"flags=.*\bruntime\b", detail_text))
+        if details.returncode or has_runtime != (mode == "developer-id"):
+            raise ValueError("signature Hardened Runtime mode mismatch")
+        if mode == "developer-id":
+            authority = re.search(r"^Authority=(.+)$", detail_text, flags=re.MULTILINE)
+            if not authority or not authority.group(1).startswith("Developer ID Application:"):
+                raise ValueError("Developer ID Application certificate missing")
+            team = re.search(r"^TeamIdentifier=(.+)$", detail_text, flags=re.MULTILINE)
+            if not team or team.group(1) in {"not set", "-"}:
+                raise ValueError("Developer ID Team ID missing")
+            if expected_team is None:
+                expected_team = team.group(1)
+            elif team.group(1) != expected_team:
+                raise ValueError("nested Developer ID Team IDs do not match")
+        if expected is None:
+            continue
         dumped = runner(
             ["/usr/bin/codesign", "-d", "--entitlements", ":-", str(target)],
             capture_output=True,

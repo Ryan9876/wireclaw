@@ -81,14 +81,21 @@ Linux embedded-AI implementation and qualification are outside this stage.
 The release packager builds `ai/WireclawAI.app` from the verified staged model
 and runtime assets, then signs nested runtime code before the helper and parent
 app. The default `--signing-mode adhoc` is for local development qualification
-only. It enables Hardened Runtime and verifies the exact parent/helper
-entitlement sets, but is not Developer ID or notarization acceptance.
+only. It ad-hoc signs the app and nested executable code without Hardened
+Runtime, while verifying the exact parent/helper entitlement sets. This keeps
+local inference qualification compatible with bundled non-platform llama.cpp
+libraries; ad-hoc mode is not production signing acceptance. Developer ID,
+Hardened Runtime, notarization, and stapling are recorded as `NOT_RUN` in this
+mode.
 
 For a protected production release environment, use
 `--signing-mode developer-id` with `WIRECLAW_DEVELOPER_IDENTITY` set to the
 Developer ID Application identity and `WIRECLAW_NOTARY_PROFILE` set to a
 preconfigured `notarytool` Keychain profile. The package submits, staples, and
 validates the app. It records signing mode and notarization status in
-`release-metadata.json`; credentials are never written into the bundle or
-metadata. Without those protected credentials, production signing remains
-`NOT_RUN`.
+`release-metadata.json`; all nested code uses that same Developer ID Team ID,
+Hardened Runtime remains enabled with library validation, and credentials are
+never written into the bundle or metadata. Missing Developer ID credentials
+stop production packaging with `NOT_RUN`; a missing notary profile leaves
+notarization, stapling, and overall production qualification `NOT_RUN`. The
+package never falls back to ad-hoc signing.

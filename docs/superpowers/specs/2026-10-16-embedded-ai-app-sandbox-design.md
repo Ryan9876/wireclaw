@@ -196,7 +196,7 @@ Retain the numeric-PID time-of-check/time-of-use residual between final identity
 
 ## 11. Signing, Hardened Runtime, and notarization
 
-Ad-hoc signing is permitted only for local development and POC tests. It does not qualify the release package.
+Ad-hoc signing is permitted only for local development, sandbox/inference testing, and development qualification. Because ad-hoc signatures cannot provide the matching Team ID required by Hardened Runtime library validation for bundled non-platform llama.cpp dylibs, development signing must omit Hardened Runtime. It preserves the exact App Sandbox entitlements and does not disable library validation. It does not qualify production signing.
 
 Production packaging requires:
 
@@ -204,6 +204,8 @@ Production packaging requires:
 - Hardened Runtime for the app and command-line helper targets;
 - correct nested-code signing order and verification of final signatures/entitlements;
 - notarization of the final production deliverable.
+
+Production signing must never silently fall back to ad-hoc. When Developer ID or notarization credentials are unavailable, production qualification is `NOT_RUN`. Development qualification may use the exact ad-hoc-signed App Sandbox bundle with Hardened Runtime off; it must report Developer ID, Hardened Runtime production validation, notarization, and stapling as `NOT_RUN`.
 
 Test the actual Developer-ID-signed, hardened, notarized bundle during native release qualification; an ad-hoc sandbox POC is insufficient. CI without Developer ID/notarization credentials may run source, packaging-contract, entitlement, and local signing tests, but must report that limitation and cannot claim production signing/notarization acceptance. Native qualification with release credentials verifies the final distributed bundle.
 

@@ -119,7 +119,13 @@ def test_entitlement_templates_are_exact() -> None:
     validate_entitlements("helper", helper)
 
 
-def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("mode", "identity", "runtime"),
+    [("adhoc", "-", False), ("developer-id", "Developer ID: TEST", True)],
+)
+def test_signing_modes_preserve_order_and_set_runtime_by_mode(
+    tmp_path: Path, mode: str, identity: str, runtime: bool
+) -> None:
     app = tmp_path / "WireclawAI.app"
     macos = app / "Contents/MacOS"
     frameworks = app / "Contents/Frameworks"
@@ -155,7 +161,12 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
                 stream.write(b"signed")
             output = ""
         elif "-dv" in argv:
-            output = "flags=0x10000(runtime)"
+            output = (
+                "Authority=Developer ID Application: Wireclaw (TESTTEAM)\n"
+                "TeamIdentifier=TESTTEAM\nflags=0x10000(runtime)"
+                if runtime
+                else "flags=0x0"
+            )
         elif "--entitlements" in argv:
             role = "helper" if argv[-1].endswith("llama-server") else "parent"
             entitlements = HELPER_ENTITLEMENTS if role == "helper" else PARENT_ENTITLEMENTS
@@ -164,7 +175,7 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
             output = ""
         return type("Result", (), {"returncode": 0, "stdout": output, "stderr": ""})()
 
-    sign_bundle(app, mode="adhoc", runner=runner)
+    sign_bundle(app, mode=mode, identity=identity, runner=runner)
 
     signed_targets = [call[-1] for call in calls if "--sign" in call]
     assert signed_targets == [
@@ -175,7 +186,11 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
     ]
     for call in calls:
         if "--sign" in call:
-            assert "--options" in call and call[call.index("--options") + 1] == "runtime"
+            assert ("--options" in call) is runtime
+            if runtime:
+                assert call[call.index("--options") + 1] == "runtime"
+                assert "--timestamp" in call
+            assert call[call.index("--sign") + 1] == identity
     helper_call = next(
         call for call in calls if "--sign" in call and call[-1] == str(macos / "llama-server")
     )
@@ -188,6 +203,7 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
     assert library_call[library_call.index("--identifier") + 1] == "libggml-metal.dylib"
     assert "--entitlements" in helper_call
     assert "--identifier" in helper_call
+    assert not any("disable-library-validation" in str(call) for call in calls)
     assert helper_call[helper_call.index("--identifier") + 1] == "llama-server"
     assert "--entitlements" in parent_call
     assert wrapper_call[wrapper_call.index("--identifier") + 1] == BUNDLE_IDENTIFIER
@@ -238,7 +254,7 @@ def test_signing_adds_and_verifies_helper_framework_runpath(tmp_path: Path) -> N
         elif "--verify" in argv:
             output = ""
         elif "-dv" in argv:
-            output = "flags=0x10000(runtime)"
+            output = "flags=0x0"
         elif "--entitlements" in argv:
             role = "helper" if argv[-1].endswith("llama-server") else "parent"
             entitlements = HELPER_ENTITLEMENTS if role == "helper" else PARENT_ENTITLEMENTS
@@ -276,7 +292,83 @@ def test_signing_rejects_missing_developer_id_and_invalid_signature(tmp_path: Pa
         return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     with pytest.raises(ValueError, match="signature verification failed"):
-        verify_signed_bundle(app, runner=failed_verify)
+        verify_signed_bundle(app, mode="adhoc", runner=failed_verify)
+
+
+def test_production_verifier_rejects_nested_team_id_mismatch(tmp_path: Path) -> None:
+    app = tmp_path / "WireclawAI.app"
+    frameworks = app / "Contents/Frameworks"
+    frameworks.mkdir(parents=True)
+    (frameworks / "runtime.dylib").write_bytes(b"fixture")
+
+    def runner(argv, **kwargs):
+        if "--verify" in argv:
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        if "-dv" in argv:
+            team = "OTHERTEAM" if argv[-1].endswith("runtime.dylib") else "TESTTEAM"
+            return type(
+                "Result",
+                (),
+                {
+                    "returncode": 0,
+                    "stdout": f"Authority=Developer ID Application: Wireclaw ({team})\nTeamIdentifier={team}\nflags=0x10000(runtime)",
+                    "stderr": "",
+                },
+            )()
+        if "--entitlements" in argv:
+            role = "helper" if argv[-1].endswith("llama-server") else "parent"
+            entitlements = HELPER_ENTITLEMENTS if role == "helper" else PARENT_ENTITLEMENTS
+            return type(
+                "Result",
+                (),
+                {
+                    "returncode": 0,
+                    "stdout": plistlib.dumps(entitlements, fmt=plistlib.FMT_XML).decode(),
+                    "stderr": "",
+                },
+            )()
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with pytest.raises(ValueError, match="Team IDs do not match"):
+        verify_signed_bundle(app, mode="developer-id", runner=runner)
+
+
+def test_production_verifier_rejects_non_developer_id_certificate(tmp_path: Path) -> None:
+    app = tmp_path / "WireclawAI.app"
+    (app / "Contents/MacOS").mkdir(parents=True)
+    (app / "Contents/MacOS/WireclawAI").write_bytes(b"wrapper")
+    (app / "Contents/MacOS/llama-server").write_bytes(b"helper")
+    (app / "Contents/Info.plist").write_bytes(
+        plistlib.dumps({"CFBundleIdentifier": BUNDLE_IDENTIFIER})
+    )
+
+    def runner(argv, **kwargs):
+        if "--verify" in argv:
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        if "-dv" in argv:
+            identifier = "llama-server" if argv[-1].endswith("llama-server") else BUNDLE_IDENTIFIER
+            return type(
+                "Result",
+                (),
+                {
+                    "returncode": 0,
+                    "stdout": f"Identifier={identifier}\nAuthority=Apple Development: Dev (TESTTEAM)\nTeamIdentifier=TESTTEAM\nflags=0x10000(runtime)",
+                    "stderr": "",
+                },
+            )()
+        expected = HELPER_ENTITLEMENTS if argv[-1].endswith("llama-server") else PARENT_ENTITLEMENTS
+        return type(
+            "Result",
+            (),
+            {
+                "returncode": 0,
+                "stdout": plistlib.dumps(expected, fmt=plistlib.FMT_XML).decode(),
+                "stderr": "",
+            },
+        )()
+
+    with pytest.raises(ValueError, match="Developer ID Application certificate missing"):
+        verify_signed_bundle(app, mode="developer-id", runner=runner)
 
 
 def test_wrapper_private_key_state_uses_fixed_app_container() -> None:

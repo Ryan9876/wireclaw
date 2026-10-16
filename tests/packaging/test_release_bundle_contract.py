@@ -243,8 +243,20 @@ def test_release_signing_pipeline_distinguishes_adhoc_from_production_acceptance
     assert "WIRECLAW_DEVELOPER_IDENTITY" in PACKAGER
     assert "WIRECLAW_NOTARY_PROFILE" in PACKAGER
     assert "notarytool" in PACKAGER and "stapler" in PACKAGER
-    assert 'signing_options = ["--options", "runtime"]' in app_builder
-    assert "Hardened Runtime signature missing" in app_builder
+    assert (
+        'signing_options = ["--options", "runtime"] if mode == "developer-id" else []'
+        in app_builder
+    )
+    assert 'has_runtime != (mode == "developer-id")' in app_builder
+    assert "nested Developer ID Team IDs do not match" in app_builder
+    assert '"hardened_runtime": signing_mode == "developer-id"' in PACKAGER
+    assert '"developer_id_validation": "NOT_RUN" if signing_mode == "adhoc" else "PASS"' in PACKAGER
+    assert '"production_qualification": "NOT_RUN"' in PACKAGER
+    assert 'result["production_qualification"] = "PASS"' in PACKAGER
+    assert '"stapling": "NOT_RUN"' in PACKAGER
+    assert (
+        "production signing qualification: NOT_RUN (Developer ID identity unavailable)" in PACKAGER
+    )
     assert "Developer ID and notarization release qualification: NOT_RUN" in workflow
     assert "--signing-mode developer-id" not in workflow
 
@@ -295,13 +307,47 @@ def test_native_qualification_rejects_unsigned_or_incorrect_app_metadata(tmp_pat
             return SimpleNamespace(returncode=0, stdout=b"", stderr="")
         if "-dv" in argv:
             identifier = "com.wireclaw.WireclawAI" if path == wrapper else "llama-server"
-            return SimpleNamespace(returncode=0, stdout=b"", stderr=f"Identifier={identifier}")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="",
+                stderr=f"Identifier={identifier}\nSignature=adhoc\nTeamIdentifier=not set",
+            )
         entitlements = parent_entitlements if path == wrapper else helper_entitlements
         return SimpleNamespace(
             returncode=0, stdout=__import__("plistlib").dumps(entitlements), stderr=b""
         )
 
     qualifier.verify_signed_app_bundle(app, codesign=signed_codesign)
+
+    def hardened_codesign(argv, **_kwargs):
+        from types import SimpleNamespace
+
+        if "-dv" in argv:
+            identifier = "com.wireclaw.WireclawAI" if Path(argv[-1]) == wrapper else "llama-server"
+            return SimpleNamespace(
+                returncode=0,
+                stdout="",
+                stderr=f"Identifier={identifier}\nflags=0x10000(runtime)",
+            )
+        return signed_codesign(argv, **_kwargs)
+
+    with pytest.raises(ValueError, match="development_signature_enables_hardened_runtime"):
+        qualifier.verify_signed_app_bundle(app, codesign=hardened_codesign)
+
+    def non_adhoc_codesign(argv, **_kwargs):
+        from types import SimpleNamespace
+
+        if "-dv" in argv:
+            identifier = "com.wireclaw.WireclawAI" if Path(argv[-1]) == wrapper else "llama-server"
+            return SimpleNamespace(
+                returncode=0,
+                stdout="",
+                stderr=f"Identifier={identifier}\nAuthority=Apple Development: Dev (TEAM)",
+            )
+        return signed_codesign(argv, **_kwargs)
+
+    with pytest.raises(ValueError, match="development_signature_not_adhoc"):
+        qualifier.verify_signed_app_bundle(app, codesign=non_adhoc_codesign)
 
     def unsigned_codesign(argv, **_kwargs):
         from types import SimpleNamespace
@@ -330,7 +376,11 @@ def test_native_qualification_rejects_unsigned_or_incorrect_app_metadata(tmp_pat
             return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
         if "-dv" in argv:
             identifier = "com.wireclaw.WireclawAI" if Path(argv[-1]) == wrapper else "llama-server"
-            return SimpleNamespace(returncode=0, stdout=b"", stderr=f"Identifier={identifier}")
+            return SimpleNamespace(
+                returncode=0,
+                stdout="",
+                stderr=f"Identifier={identifier}\nSignature=adhoc\nTeamIdentifier=not set",
+            )
         entitlements = dict(parent_entitlements)
         entitlements["com.apple.security.network.client"] = True
         return SimpleNamespace(

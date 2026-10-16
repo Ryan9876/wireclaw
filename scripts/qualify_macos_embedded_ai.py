@@ -611,6 +611,11 @@ def run_task10_integration(root: Path) -> int:
         print(f"Task 10 packaged inference/Core integration: FAIL ({failure})", file=sys.stderr)
         return 1
     print("Task 10 packaged inference/Core integration: PASS")
+    print("DEVELOPMENT_SIGNING=PASS (ad-hoc App Sandbox; Hardened Runtime disabled)")
+    print("PRODUCTION_HARDENED_RUNTIME_VALIDATION=NOT_RUN")
+    print("DEVELOPER_ID_VALIDATION=NOT_RUN")
+    print("NOTARIZATION=NOT_RUN")
+    print("STAPLING=NOT_RUN")
     return 0
 
 
@@ -638,10 +643,15 @@ def verify_signed_app_bundle(app: Path, *, codesign=subprocess.run) -> None:
     frameworks = app / "Contents/Frameworks"
     if frameworks.is_symlink() or not frameworks.is_dir():
         raise ValueError("ai_bundle_layout_invalid")
-    nested_libraries = sorted(frameworks.rglob("*.dylib"))
-    if any(path.is_symlink() or not path.is_file() for path in nested_libraries):
+    nested_code = sorted(
+        path
+        for path in frameworks.rglob("*")
+        if path.is_file() and (path.suffix == ".dylib" or os.access(path, os.X_OK))
+    )
+    if any(path.is_symlink() or not path.is_file() for path in nested_code):
         raise ValueError("ai_bundle_layout_invalid")
-    for path in (app, wrapper, helper, *nested_libraries):
+    signed_code = (app, wrapper, helper, *nested_code)
+    for path in signed_code:
         verified = codesign(
             [
                 "/usr/bin/codesign",
@@ -657,6 +667,19 @@ def verify_signed_app_bundle(app: Path, *, codesign=subprocess.run) -> None:
         )
         if verified.returncode:
             raise ValueError("ai_bundle_signature_invalid")
+        details = codesign(
+            ["/usr/bin/codesign", "-dv", "--verbose=4", str(path)],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if details.returncode:
+            raise ValueError("ai_bundle_signature_invalid")
+        signature_details = details.stdout + details.stderr
+        if re.search(r"flags=.*\bruntime\b", signature_details):
+            raise ValueError("ai_bundle_development_signature_enables_hardened_runtime")
+        if not re.search(r"^Signature=adhoc$", signature_details, flags=re.MULTILINE):
+            raise ValueError("ai_bundle_development_signature_not_adhoc")
 
     for path, expected, identifier in (
         (wrapper, PARENT_ENTITLEMENTS, "com.wireclaw.WireclawAI"),
@@ -684,7 +707,7 @@ def verify_signed_app_bundle(app: Path, *, codesign=subprocess.run) -> None:
             raise ValueError("ai_bundle_entitlements_invalid") from None
         if actual != expected:
             raise ValueError("ai_bundle_entitlements_invalid")
-    for path in nested_libraries:
+    for path in nested_code:
         details = codesign(
             ["/usr/bin/codesign", "-dv", "--verbose=4", str(path)],
             capture_output=True,
