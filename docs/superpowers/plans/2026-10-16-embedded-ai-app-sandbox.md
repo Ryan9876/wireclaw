@@ -285,12 +285,12 @@ Compose resolves the transient key in memory to create Core. The launcher invoke
 
 **Interfaces:** Candidate freeze records source, signed-app bundle/tree/archive identity, nested code/signature/entitlement identities, image/model/runtime/manifests, and fixed runtime policy. Native runner executes all 16 EAI.14 checks plus sandbox isolation against one immutable candidate and stores each result/evidence separately. Benchmark remains the unchanged 22-scenario harness.
 
-- [ ] Add failing tests requiring exactly the 16 named EAI.14 checks, one candidate identity across native evidence, and required sandbox tests; reject missing/duplicate checks or mixed candidate hashes.
-- [ ] Add tooling tests for immutable bundle/archive verification before/after qualification and fixture isolation for destructive tamper/port-conflict checks.
-- [ ] Run tests and confirm the current repository's lack of a checked-in native EAI.14 runner is exposed.
-- [ ] Implement repeatable native EAI.14 + sandbox runner, evidence schema, candidate hash rechecks, and truthful signing-credential status. Preserve original benchmark corpus/scenarios and no averaging across three runs.
-- [ ] Run tooling tests; do not run final three benchmarks or complete EAI.14 until exact-head CI and a new frozen candidate exist.
-- [ ] Commit `test: add repeatable sandboxed AI qualification tooling`.
+- [x] Add failing tests requiring exactly the 16 named EAI.14 checks, one candidate identity across native evidence, and required sandbox tests; reject missing/duplicate checks or mixed candidate hashes.
+- [x] Add tooling tests for immutable bundle/archive verification before/after qualification and fixture isolation for destructive tamper/port-conflict checks.
+- [x] Run tests and confirm the current repository's lack of a checked-in native EAI.14 runner is exposed.
+- [x] Implement repeatable native EAI.14 + sandbox runner, evidence schema, candidate hash rechecks, and truthful signing-credential status. Preserve original benchmark corpus/scenarios and no averaging across three runs.
+- [x] Run tooling tests; do not run final three benchmarks or complete EAI.14 until exact-head CI and a new frozen candidate exist.
+- [x] Commit `test: add repeatable sandboxed AI qualification tooling` (`1f7622d`).
 
 ## Implementation Verification and Qualification Gate
 
