@@ -245,8 +245,255 @@ def test_container_acceptance_reuses_frozen_image_for_mounted_tls_privacy_test()
     assert '"candidate_default_ca_bundle_unavailable"' in CONTAINER_VALIDATOR
     assert "target: {json.dumps(candidate_bundle_path)}\\n" in CONTAINER_VALIDATOR
     assert '"        read_only: true\\n"' in CONTAINER_VALIDATOR
-    assert '"docker",\n                    "build"' not in CONTAINER_VALIDATOR
+    assert '"docker",\\n                    "build"' not in CONTAINER_VALIDATOR
     assert 'builder.smoke_test(stage / "ai"' in PACKAGER
+
+
+def test_native_qualification_rejects_unsigned_or_incorrect_app_metadata(tmp_path):
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_qualifier")
+    app = tmp_path / "WireclawAI.app"
+    info = app / "Contents/Info.plist"
+    info.parent.mkdir(parents=True)
+    info.write_bytes(
+        __import__("plistlib").dumps({"CFBundleIdentifier": "com.wireclaw.WireclawAI"})
+    )
+    wrapper = app / "Contents/MacOS/WireclawAI"
+    helper = app / "Contents/MacOS/llama-server"
+    wrapper.parent.mkdir(parents=True)
+    (app / "Contents/Frameworks").mkdir()
+    wrapper.write_bytes(b"fixture wrapper")
+    helper.write_bytes(b"fixture helper")
+
+    parent_entitlements = {
+        "com.apple.security.app-sandbox": True,
+        "com.apple.security.network.server": True,
+    }
+    helper_entitlements = {
+        "com.apple.security.app-sandbox": True,
+        "com.apple.security.inherit": True,
+    }
+
+    def signed_codesign(argv, **_kwargs):
+        from types import SimpleNamespace
+
+        path = Path(argv[-1])
+        if "--verify" in argv:
+            return SimpleNamespace(returncode=0, stdout=b"", stderr="")
+        if "-dv" in argv:
+            identifier = "com.wireclaw.WireclawAI" if path == wrapper else "llama-server"
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=f"Identifier={identifier}")
+        entitlements = parent_entitlements if path == wrapper else helper_entitlements
+        return SimpleNamespace(
+            returncode=0, stdout=__import__("plistlib").dumps(entitlements), stderr=b""
+        )
+
+    qualifier.verify_signed_app_bundle(app, codesign=signed_codesign)
+
+    def unsigned_codesign(argv, **_kwargs):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(returncode=1, stdout=b"", stderr=b"code object is not signed")
+
+    with pytest.raises(ValueError, match="signature"):
+        qualifier.verify_signed_app_bundle(app, codesign=unsigned_codesign)
+
+    info.write_bytes(__import__("plistlib").dumps({"CFBundleIdentifier": "com.example.wrong"}))
+    with pytest.raises(ValueError, match="bundle"):
+        qualifier.verify_signed_app_bundle(app, codesign=signed_codesign)
+
+    info.write_bytes(__import__("plistlib").dumps(["not", "a", "dictionary"]))
+    with pytest.raises(ValueError, match="metadata"):
+        qualifier.verify_signed_app_bundle(app, codesign=signed_codesign)
+
+    info.write_bytes(
+        __import__("plistlib").dumps({"CFBundleIdentifier": "com.wireclaw.WireclawAI"})
+    )
+
+    def overbroad_codesign(argv, **_kwargs):
+        from types import SimpleNamespace
+
+        if "--verify" in argv:
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+        if "-dv" in argv:
+            identifier = "com.wireclaw.WireclawAI" if Path(argv[-1]) == wrapper else "llama-server"
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=f"Identifier={identifier}")
+        entitlements = dict(parent_entitlements)
+        entitlements["com.apple.security.network.client"] = True
+        return SimpleNamespace(
+            returncode=0, stdout=__import__("plistlib").dumps(entitlements), stderr=b""
+        )
+
+    with pytest.raises(ValueError, match="entitlements"):
+        qualifier.verify_signed_app_bundle(app, codesign=overbroad_codesign)
+
+
+def test_native_qualification_normalizes_malformed_runtime_manifest_shapes(tmp_path):
+    import json
+
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_runtime_shape_checks")
+    app = tmp_path / "WireclawAI.app"
+    resources = app / "Contents/Resources/ai"
+    resources.mkdir(parents=True)
+    (resources / "model-manifest.json").write_text(
+        json.dumps(
+            {
+                "bundle_identifier": "com.wireclaw.WireclawAI",
+                "model_id": qualifier.MODEL_ID,
+                "repository": "Qwen/Qwen3-4B-Instruct-2507",
+                "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+                "quantization": "Q4_K_M",
+                "architecture": "qwen3",
+                "artifact": {
+                    "size_bytes": 1,
+                    "sha256": __import__("hashlib").sha256(b"x").hexdigest(),
+                },
+            }
+        )
+    )
+    (resources / "model.gguf").write_bytes(b"x")
+    manifest = {
+        "bundle_identifier": "com.wireclaw.WireclawAI",
+        "build_settings": {"metal": True},
+        "policy": {
+            "model_alias": qualifier.MODEL_ID,
+            "listen_host": "127.0.0.1",
+            "port": 8767,
+            "context_size": 16384,
+            "max_tokens": 2048,
+            "parallel": 1,
+            "prompt_cache_ram_mib": 0,
+        },
+        "files": [
+            {"path": "macos-arm64/llama-server"},
+            {"path": "macos-arm64/libggml-metal.dylib"},
+        ],
+    }
+    runtime_path = resources / "runtime-manifest.json"
+    manifest["build_settings"] = []
+    runtime_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="runtime_manifest"):
+        qualifier.verify_packaged_model_identity(app)
+
+    manifest["build_settings"] = {"metal": True}
+    manifest["files"] = [{"path": []}]
+    runtime_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="runtime_manifest"):
+        qualifier.verify_packaged_model_identity(app)
+
+
+def test_native_qualification_fixture_contracts_reject_bad_provider_integration(monkeypatch):
+    from urllib.request import Request
+
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_qualifier_checks")
+    model = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+    qualifier.validate_auth_rejection(401)
+    with pytest.raises(ValueError, match="authentication"):
+        qualifier.validate_auth_rejection(200)
+    qualifier.validate_model_response(200, {"data": [{"id": model}]})
+    sentinel = "f" * 64
+    with pytest.raises(ValueError, match="identity") as mismatch:
+        qualifier.validate_model_response(200, {"data": [{"id": sentinel}]})
+    assert sentinel not in str(mismatch.value)
+    with pytest.raises(ValueError, match="request"):
+        qualifier.validate_model_response(401, {"data": [{"id": model}]})
+    chat_ok = {
+        "model": model,
+        "choices": [{"message": {"content": "WIRECLAW_TASK10_INFERENCE_OK"}}],
+        "usage": {"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12},
+    }
+    qualifier.validate_chat_response(200, chat_ok)
+    with pytest.raises(ValueError, match="chat"):
+        qualifier.validate_chat_response(200, {"choices": []})
+    for invalid_chat in (
+        {**chat_ok, "model": "wrong-model"},
+        {**chat_ok, "choices": [{"message": {"content": "unrelated output"}}]},
+        {**chat_ok, "usage": {"prompt_tokens": 1}},
+    ):
+        with pytest.raises(ValueError, match="chat"):
+            qualifier.validate_chat_response(200, invalid_chat)
+    qualifier.validate_core_response_body(b'{"data": []}')
+    with pytest.raises(ValueError, match="response"):
+        qualifier.validate_core_response_body(b"x" * (qualifier.MAX_CORE_RESPONSE_BYTES + 1))
+    assert "response.read(MAX_CORE_RESPONSE_BYTES + 1)" in qualifier.CORE_INTEGRATION_PROBE
+    compile(qualifier.CORE_INTEGRATION_PROBE, "<task10-core-probe>", "exec")
+
+    proxy_handler, redirect_handler = qualifier.direct_request_handlers()
+    assert proxy_handler.proxies == {}
+    assert isinstance(redirect_handler, qualifier.NoRedirectHandler)
+    request = Request("http://127.0.0.1:8767/v1/models")
+    assert (
+        redirect_handler.redirect_request(request, None, 302, "Found", {}, "http://elsewhere/")
+        is None
+    )
+    with pytest.raises(ValueError, match="endpoint"):
+        qualifier.validate_provider_endpoint("http://127.0.0.1:8767/v1")
+    qualifier.validate_provider_endpoint("http://host.docker.internal:8767/v1")
+
+    qualifier.validate_numeric_listener(["127.0.0.1:8767"])
+    with pytest.raises(ValueError, match="listener"):
+        qualifier.validate_numeric_listener(["127.0.0.1:8767", "0.0.0.0:8767"])
+    with pytest.raises(ValueError, match="listener"):
+        qualifier.validate_numeric_listener(["*:8767"])
+    qualifier.validate_metal_log("ggml_metal_init: found device: Apple M3 GPU")
+    with pytest.raises(ValueError, match="metal"):
+        qualifier.validate_metal_log("ggml_metal_init: no usable device found")
+    qualifier.validate_core_reachability(0)
+    with pytest.raises(ValueError, match="reachability"):
+        qualifier.validate_core_reachability(1)
+    observed = {}
+
+    def fake_run(_argv, **kwargs):
+        observed.update(kwargs)
+        from types import SimpleNamespace
+
+        return SimpleNamespace(returncode=1, stdout=sentinel * 1000, stderr=sentinel * 1000)
+
+    monkeypatch.setenv("WIRECLAW_PROVIDER_API_KEY", sentinel)
+    monkeypatch.setattr(qualifier.subprocess, "run", fake_run)
+    result = qualifier._run_hidden(["fixed-command"])
+    assert result.stdout == "" and result.stderr == ""
+    assert observed["stdout"] == qualifier.subprocess.DEVNULL
+    assert observed["stderr"] == qualifier.subprocess.DEVNULL
+
+    marker = "CORE_AUTH_MODELS_CHAT_WRONG_ENDPOINT=PASS"
+    captured = qualifier._run_hidden(
+        [
+            qualifier.sys.executable,
+            "-c",
+            "import sys; print('" + marker + "'); print('" + sentinel + "', file=sys.stderr)",
+        ],
+        capture_stdout=True,
+        max_output_bytes=128,
+    )
+    assert captured.returncode == 0
+    assert captured.stdout.strip() == marker
+    assert captured.stderr == ""
+    assert sentinel not in captured.stdout
+    oversized = qualifier._run_hidden(
+        [qualifier.sys.executable, "-c", "print('x' * 10000)"],
+        capture_stdout=True,
+        max_output_bytes=128,
+    )
+    assert oversized.stdout_truncated is True
+    assert len(oversized.stdout.encode()) == 128
+    assert "WIRECLAW_PROVIDER_API_KEY" not in observed["env"]
+    assert sentinel not in result.stdout and sentinel not in result.stderr
+
+
+def test_task10_reports_missing_release_model_as_not_run_and_core_probe_is_secret_free(tmp_path):
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_qualifier_preflight")
+    assert qualifier.task10_release_prerequisite(tmp_path, environ={}) == "release_app_missing"
+    app = tmp_path / "ai/WireclawAI.app"
+    (app / "Contents/MacOS").mkdir(parents=True)
+    (app / "Contents/Frameworks").mkdir()
+    (app / "Contents/Resources/ai").mkdir(parents=True)
+    (app / "Contents/MacOS/llama-server").write_bytes(b"fixture")
+    (app / "Contents/Frameworks/libggml-metal.dylib").write_bytes(b"fixture")
+    assert qualifier.task10_release_prerequisite(tmp_path, environ={}) == "release_model_missing"
+    sentinel = "a" * 64
+    assert sentinel not in qualifier.CORE_INTEGRATION_PROBE
+    assert "WIRECLAW_PROVIDER_API_KEY" in qualifier.CORE_INTEGRATION_PROBE
+    assert "host.docker.internal:8768" in qualifier.CORE_INTEGRATION_PROBE
 
 
 def test_linux_ci_host_gateway_alias_is_opt_in_and_test_only():
