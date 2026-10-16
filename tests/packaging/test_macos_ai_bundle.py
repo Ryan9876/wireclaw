@@ -171,6 +171,8 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
     wrapper_call = next(call for call in calls if call[-1] == str(macos / "WireclawAI"))
     parent_call = next(call for call in calls if call[-1] == str(app))
     assert "--entitlements" in helper_call
+    assert "--identifier" in helper_call
+    assert helper_call[helper_call.index("--identifier") + 1] == "llama-server"
     assert "--entitlements" in parent_call
     assert wrapper_call[wrapper_call.index("--identifier") + 1] == BUNDLE_IDENTIFIER
     manifest = __import__("json").loads((resource_dir / "runtime-manifest.json").read_text())

@@ -226,6 +226,8 @@ def sign_bundle(
             "/usr/bin/codesign",
             "--force",
             *signing_options,
+            "--identifier",
+            "llama-server",
             "--entitlements",
             str(HELPER_ENTITLEMENTS_PATH),
             "--sign",
