@@ -46,6 +46,7 @@ The wrapper is trusted lifecycle and verification code. The inference server is 
 - the Wireclaw data root, case data, SQLite, or runtime state;
 - host-bridge state, grant manifests, or host-bridge token;
 - the Wireclaw Core API or host bridge over the network;
+- the per-launch AI key from host state or Docker Engine metadata;
 - arbitrary user home-directory contents.
 
 The runtime receives only the packaged runtime libraries and model, its private AI API key, private bounded runtime/temp state, and the incoming server connection needed to serve inference. The sandbox is the OS-enforced boundary; environment scrubbing, secret naming, model instructions, and file permissions alone are not substitutes.
@@ -126,30 +127,63 @@ Do not add filesystem exceptions for convenience. Tests prove required bundle re
 
 ## 8. AI API key
 
-The high-entropy embedded-AI API key is held in sandbox-private state. It is generated per launch or lifecycle as already required, has the most restrictive applicable permissions, is readable only by the trusted lifecycle path and runtime that need it, and is removed or rotated at shutdown/restart.
+The trusted outer Wireclaw launcher generates the high-entropy embedded-AI API key for each launch. Preserve the current representation: 32 cryptographically random bytes encoded as 64 lowercase hexadecimal characters followed by one newline. The launcher passes the key to `WireclawAI start` only through a dedicated inherited anonymous pipe on file descriptor 3. The key is never passed in argv, stdout, stderr, a persisted `.env`, a generated Compose file, or a general IPC socket.
 
-The trusted launch boundary supplies the same key to Docker core only for the embedded provider's authenticated requests. The handoff must be ephemeral and restricted to the Core process environment; it must not persist the key in `.env`, Compose configuration, SQLite, reports, artifacts, logs, browser responses, or public health/status. Do not expose other sandbox state to Docker core as part of key delivery.
+`WireclawAI start` reads exactly one bounded record from fd 3, validates the representation and length, rejects missing, malformed, or extra input, writes the key into sandbox-private container state with restrictive permissions, and closes fd 3 before launching the helper. `llama-server` receives only the sandbox-private key-file path through its fixed arguments. It does not receive the key in argv or environment. At shutdown or before restart, remove the private key file; every new launch uses a newly generated key.
+
+The outer launcher keeps the key out of its exported environment while invoking `WireclawAI start`, using a minimal allowlisted wrapper environment that omits the key. The wrapper's environment must not contain the key. The launcher supplies the same key to Docker core only through the existing trusted startup boundary and the Core process environment, as a per-command environment value for the Compose operation. It must not put the value in argv or print it, and must not persist it in `.env`, Compose configuration/source, SQLite, Wireclaw host state, reports, artifacts, logs, browser responses, prompts/model context, or public health/status. Do not expose other sandbox state to Docker core as part of key delivery.
+
+Docker necessarily receives the value as part of the container process environment. Docker Engine may retain that environment in its container configuration/inspection metadata for the lifetime of the container, where a Docker Engine client authorized to use the control API can inspect it. This is Docker-managed runtime metadata, not a Wireclaw `.env` or case/state record. The embedded runtime's sandbox denies access to the Docker Engine/control API, so a compromised `llama-server` cannot inspect that metadata. The trusted launcher must cause the Core container to be recreated whenever the per-launch key changes and removed on shutdown, so obsolete key metadata is not retained in a stopped container.
 
 The key must never enter prompts or model context. Tests use secret sentinels to verify all prohibited sinks remain clear.
 
 ## 9. Trusted wrapper responsibilities
 
-Keep `WireclawAI` intentionally small. It is responsible for:
+Keep `WireclawAI` intentionally small. Its complete public command interface is:
+
+```text
+WireclawAI start
+WireclawAI status
+WireclawAI stop
+```
+
+The command accepts no other subcommands or arguments. `start` requires the key only on fd 3. The executable path, model path, and llama.cpp arguments are fixed by the signed bundle and verified manifests. There is no arbitrary command execution, general IPC socket, XPC/general RPC interface, or long-lived privileged daemon.
+
+`start`:
+
+- consumes and closes the bounded key record from fd 3;
+- verifies the signed bundle, runtime/model manifests, artifact hashes, fixed executable identity, and manifest-declared model identity before execution;
+- writes the key into private container state;
+- constructs the fixed `llama-server` arguments and starts the sandbox-inheriting helper;
+- records the child PID, process start identity, and executable identity in private state;
+- reports bounded launch success/failure without exposing the key.
+
+`status` reads only private lifecycle state, verifies the current child PID/start/executable identity, and returns a small bounded machine-readable process state, such as `{"state":"running"}` or `{"state":"unavailable","reason":"process_missing"}`. It exposes no secret, PID, or path data beyond what current public status permits. It does not probe the HTTP endpoint because the sandbox has no `network.client` entitlement. After `start`, the trusted outer launcher performs the authenticated `/models` identity check against the manifest-declared model and verifies Docker-core reachability, then publishes the existing public ready/unavailable state.
+
+`stop` reads private lifecycle state, verifies process identity before sending `TERM`, re-verifies immediately before any `KILL`, removes stale state without signaling a mismatched process, and removes the private key state. Its output is bounded and contains no secret.
+
+The wrapper is responsible for:
 
 - verifying runtime and model manifests and artifact hashes before execution;
-- verifying the fixed runtime executable and expected model identity;
+- verifying the fixed runtime executable and manifest-declared model identity;
 - constructing fixed `llama-server` arguments;
-- creating private sandbox state and the AI key;
-- launching and supervising the embedded helper;
+- accepting the key only on fd 3 and creating its private sandbox copy;
+- launching the embedded helper and verifying its initial process identity;
 - recording child PID and start/executable identity;
-- reporting readiness/failure through the approved launcher boundary;
+- reporting bounded launch success/failure through the approved launcher boundary;
 - orderly shutdown and safe process-loss recovery.
+
+The helper's stdout/stderr must not carry the key. Redirect runtime diagnostics to bounded private logging within the sandbox container; the trusted launcher reports only normalized readiness/failure states. The authenticated `/models` identity is checked by the trusted outer launcher after `start`, not by the sandboxed wrapper.
 
 It is not a general command runner, file broker, arbitrary argument pass-through, Docker client, host-bridge client, or broad filesystem broker. No user, capture, or model input controls executable paths, model paths, or llama.cpp arguments.
 
 ## 10. Process ownership and shutdown
 
-Preserve verify-before-signal safety. Process state identifies the trusted `WireclawAI` lifecycle owner and the child `llama-server` by PID, process start identity, and signed bundle executable identity/path. The implementation must define which private state records these identities and how the normal launcher invokes start, status, and stop without creating a general IPC or process-control service.
+Use the **child-persists-after-start** lifecycle model. `WireclawAI start` is a short-lived operation: it verifies and launches the helper, records its identity in sandbox-private state, reports launch success/failure, then exits. The `llama-server` child remains running in its inherited App Sandbox after the start process exits. Later `WireclawAI status` and `WireclawAI stop` invocations use the same signed bundle identity and private container state to inspect and control that child. This avoids a resident supervisor or separate control channel. The inherited sandbox remains attached to the child independently of the creator's lifetime.
+
+An Apple-Silicon macOS disposable feasibility probe using an ad-hoc signed App Sandbox wrapper/helper verified the required mechanics: fd 3 carried one bounded key record into `start` without printing it; the sandboxed wrapper wrote the key in its private container; the inherited-sandbox helper opened that key file using its fixed `--api-key-file` argument and remained alive after `start` exited; a later `status` invocation verified PID/start/executable identity; and a later `stop` invocation terminated the child and removed private state. The probe used a test helper, not production `llama-server`, and ad-hoc signatures; production signing and runtime behavior remain subject to the qualification requirements below.
+
+Preserve verify-before-signal safety. Private process state identifies the child `llama-server` by PID, process start identity, and signed bundle executable identity/path. The `start` invocation is identified by its running process while it executes but is not persisted as a lifecycle owner after it exits. The normal launcher invokes only the three fixed operations; no general IPC or process-control service is introduced.
 
 Shutdown sends `TERM` only after verifying the recorded child identity. If the bounded graceful period expires, re-check identity immediately before any `KILL`. A stale or mismatched PID is discarded without signaling the process it currently names. Retain the documented PID-reuse residual; do not claim atomic PID identity protection.
 
@@ -191,6 +225,9 @@ The implementation and native qualification must provide evidence for:
 
 - exact parent and helper entitlements, including helper sandbox inheritance;
 - absence of `network.client` and broad filesystem entitlements;
+- inherited fd 3 key bootstrap, bounded input validation, no key in argv/stdout/stderr, same key in the Core process environment, and removal/rotation across stop/restart;
+- identical per-launch key delivery to the Core process environment, no key in Wireclaw persistence/output sinks, and accurate inspection of Docker-managed container environment metadata;
+- fixed `start`/`status`/`stop` interface, rejection of extra commands/arguments, helper survival after `start` exits, and later-invocation status/stop behavior;
 - manifest, hash, model-identity, and executable verification before launch;
 - fixed executable and argument construction;
 - denial of discovered Docker Engine sockets and Wireclaw data/state/host-bridge state;
