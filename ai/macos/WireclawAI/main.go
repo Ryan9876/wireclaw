@@ -33,10 +33,7 @@ func (lifecycleOps) start() commandResult {
 		}
 		return commandResult{"unavailable", "state_unavailable"}
 	}
-	return startVerified(fd, dir, verifyBundle, func(VerifiedBundle, string) commandResult {
-		// Task 5 supplies the fixed helper launch; no unverified path is accepted.
-		return commandResult{"unavailable", "not_implemented"}
-	})
+	return startVerified(fd, dir, verifyBundle, launchHelper)
 }
 
 // Read and close fd 3, verify every asset, then persist the private key and

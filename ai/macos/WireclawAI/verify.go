@@ -38,6 +38,7 @@ type VerifiedBundle struct {
 	helperPath string
 	modelPath  string
 	modelID    string
+	helperHash string
 }
 
 type fileRecord struct {
@@ -175,6 +176,7 @@ func verifyBundleAt(root, self string, signature func(string, string) error) (Ve
 	}
 	codeFiles := map[string]bool{"MacOS/WireclawAI": true}
 	seen := map[string]bool{}
+	helperHash := ""
 	for _, record := range runtime.Files {
 		relative, role := runtimeLocation(record.Path)
 		if relative == "" || seen[record.Path] {
@@ -186,6 +188,9 @@ func verifyBundleAt(root, self string, signature func(string, string) error) (Ve
 		path := filepath.Join(contents, relative)
 		if signature(path, role) != nil || verifyRecord(path, record, maxRuntimeBytes) != nil {
 			return bad()
+		}
+		if record.Path == "macos-arm64/llama-server" {
+			helperHash = record.SHA256
 		}
 	}
 	if !seen["macos-arm64/llama-server"] || !seen["macos-arm64/libggml-metal.dylib"] {
@@ -227,7 +232,7 @@ func verifyBundleAt(root, self string, signature func(string, string) error) (Ve
 			return bad()
 		}
 	}
-	return VerifiedBundle{root: root, helperPath: helper, modelPath: modelPath, modelID: modelIdentity}, nil
+	return VerifiedBundle{root: root, helperPath: helper, modelPath: modelPath, modelID: modelIdentity, helperHash: helperHash}, nil
 }
 
 func runtimeLocation(path string) (string, string) {
