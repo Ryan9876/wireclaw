@@ -196,12 +196,12 @@ Ruling: Keep sandbox-private status/cleanup in `WireclawAI` and host signaling i
 
 Native evidence driving this task boundary: a separate signed status invocation verified process identity; a separate signed stop invocation received `EPERM` at `kill(pid, SIGTERM)`. Thus fresh-sandbox signaling is unsupported; no entitlement relaxation was attempted, and unified sandbox-denial log access was unavailable. The enclosing-command-sandbox pre-start `SIGABRT` is a distinct harness limitation and is not this evidence.
 
-- [ ] Add failing launcher tests proving only the three fixed wrapper operations are called, fd 3 carries the key without key in argv/stdout/stderr/wrapper environment, host receipt is mode 0600/non-secret/sandbox-inaccessible, readiness uses authenticated expected-model identity, host TERM/KILL require independent identity checks, and no direct `llama-server` launch remains in Bash.
-- [ ] Add fallback tests for missing app, signature/verification failure, helper startup failure, lost readiness, and process loss.
-- [ ] Run `pytest tests/packaging/test_macos_launchers.py -q`; verify expected failure.
-- [ ] Replace direct runtime launch/key handling with the wrapper boundary while retaining trusted host receipt and verified signaling in the outer launcher; preserve bridge behavior, normalized diagnostics, and authenticated bounded no-proxy/no-redirect readiness checks.
-- [ ] Run focused tests plus `bash -n launch/macos/*.sh`; confirm PASS.
-- [ ] Commit `feat: integrate sandboxed AI lifecycle with macOS launcher`.
+- [x] Add failing launcher tests proving only the three fixed wrapper operations are called, fd 3 carries the key without key in argv/stdout/stderr/wrapper environment, host receipt is mode 0600/non-secret/sandbox-inaccessible, readiness uses authenticated expected-model identity, host TERM/KILL require independent identity checks, and no direct `llama-server` launch remains in Bash.
+- [x] Add fallback tests for missing app, signature/verification failure, helper startup failure, lost readiness, and process loss.
+- [x] Run `pytest tests/packaging/test_macos_launchers.py -q`; verify expected failure.
+- [x] Replace direct runtime launch/key handling with the wrapper boundary while retaining trusted host receipt and verified signaling in the outer launcher; preserve bridge behavior, normalized diagnostics, and authenticated bounded no-proxy/no-redirect readiness checks.
+- [x] Run focused tests plus `bash -n launch/macos/*.sh`; confirm PASS (`32 passed`; native Task 6 lifecycle probe PASSed outside the enclosing command sandbox).
+- [x] Commit `feat: integrate sandboxed AI lifecycle with macOS launcher`.
 
 ### Task 8: Core key handoff, rotation, recreation, and removal
 

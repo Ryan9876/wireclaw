@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import shlex
@@ -10,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[2]
 LAUNCH = ROOT / "launch/macos"
 START_SOURCE = (LAUNCH / "start.sh").read_text(encoding="utf-8")
 
-
 def run_bash(script: str, *args: str, env: dict[str, str] | None = None):
     return subprocess.run(
         ["bash", "-c", script, "wireclaw-test", *args],
@@ -19,7 +17,6 @@ def run_bash(script: str, *args: str, env: dict[str, str] | None = None):
         capture_output=True,
         text=True,
     )
-
 
 def make_release(root: Path, env_text: str):
     release = root / "release"
@@ -30,76 +27,6 @@ def make_release(root: Path, env_text: str):
     (release / "core-image-id").write_text("sha256:" + "a" * 64 + "\n", encoding="utf-8")
     (release / "core-image.tar").write_bytes(b"packaged image archive")
     return release
-
-
-def make_ai_assets(release: Path):
-    model = release / "ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf"
-    runtime = release / "ai/macos-arm64/llama-server"
-    model.parent.mkdir(parents=True)
-    runtime.parent.mkdir(parents=True)
-    model.write_bytes(b"test model")
-    runtime.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    runtime.chmod(0o700)
-    (release / "ai/licenses").mkdir()
-    (release / "ai/licenses/Qwen-Apache-2.0.txt").write_text("Apache License", encoding="utf-8")
-    (release / "ai/licenses/llama.cpp-MIT.txt").write_text("MIT License", encoding="utf-8")
-    (release / "ai/model-manifest.json").write_text(
-        json.dumps(
-            {
-                "model_id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
-                "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
-                "license": "Apache-2.0",
-                "quantization": "Q4_K_M",
-                "architecture": "qwen3",
-                "license_path": "licenses/Qwen-Apache-2.0.txt",
-                "artifact": {
-                    "path": "models/qwen3-4b-instruct-2507-q4_k_m.gguf",
-                    "sha256": hashlib.sha256(model.read_bytes()).hexdigest(),
-                    "size_bytes": model.stat().st_size,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    (release / "ai/runtime-manifest.json").write_text(
-        json.dumps(
-            {
-                "repository": "ggml-org/llama.cpp",
-                "revision": "8345f333951c661d166b00e6f9362e553768f292",
-                "platform": "macos",
-                "architecture": "arm64",
-                "entrypoint": "macos-arm64/llama-server",
-                "build_settings": {"metal": True, "server": True},
-                "files": [
-                    {
-                        "path": "macos-arm64/llama-server",
-                        "sha256": hashlib.sha256(runtime.read_bytes()).hexdigest(),
-                        "size_bytes": runtime.stat().st_size,
-                    }
-                ],
-                "license_paths": ["licenses/llama.cpp-MIT.txt"],
-                "policy": {
-                    "platform": "macos",
-                    "architecture": "arm64",
-                    "listen_host": "127.0.0.1",
-                    "context_size": 16384,
-                    "batch_size": 128,
-                    "micro_batch_size": 32,
-                    "max_tokens": 2048,
-                    "parallel": 1,
-                    "prompt_cache_ram_mib": 0,
-                    "port": 8767,
-                    "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
-                    "authentication_required": True,
-                    "agent_tools": False,
-                    "web_ui": False,
-                    "network_downloads": False,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
 
 def make_fake_tools(root: Path, *, daemon=True, compose=True, busy_port=""):
     bin_dir = root / "fake-bin"
@@ -140,14 +67,12 @@ def make_fake_tools(root: Path, *, daemon=True, compose=True, busy_port=""):
     }
     return env, log
 
-
 def install_stub_bridge(home: Path):
     binary = home / "Library/Application Support/Wireclaw/bin/wireclaw-host-bridge"
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     binary.chmod(0o700)
     return binary
-
 
 def test_env_parser_handles_home_and_paths_with_spaces(tmp_path):
     env_file = tmp_path / ".env"
@@ -164,7 +89,6 @@ def test_env_parser_handles_home_and_paths_with_spaces(tmp_path):
     assert result.returncode == 0
     assert result.stdout == f"{tmp_path}/User Home/Library/Application Support/Wireclaw data"
 
-
 def test_env_parser_rejects_shell_substitution_without_executing_it(tmp_path):
     marker = tmp_path / "should-not-exist"
     env_file = tmp_path / ".env"
@@ -177,7 +101,6 @@ def test_env_parser_rejects_shell_substitution_without_executing_it(tmp_path):
     )
     assert result.returncode != 0
     assert not marker.exists()
-
 
 def test_release_loads_the_exact_packaged_image_and_skips_an_existing_match(tmp_path):
     release = make_release(tmp_path, "WIRECLAW_PORT=8765\nWIRECLAW_BRIDGE_PORT=8766\n")
@@ -198,28 +121,9 @@ def test_release_loads_the_exact_packaged_image_and_skips_an_existing_match(tmp_
     assert result.returncode == 0, result.stderr
     assert "load --input" not in Path(env["WIRECLAW_TEST_DOCKER_LOG"]).read_text(encoding="utf-8")
 
-
 def test_bridge_health_probe_uses_the_approved_application_origin():
     assert 'curl --silent --fail --header "Origin: http://127.0.0.1:$APP_PORT"' in START_SOURCE
     assert '"http://127.0.0.1:$BRIDGE_PORT/v1/health"' in START_SOURCE
-
-
-def test_ai_manifest_hash_is_verified_before_runtime_use_and_symlink_escape_rejected(tmp_path):
-    release = make_release(tmp_path, "")
-    make_ai_assets(release)
-    result = run_bash('. "$1/launch/macos/common.sh"; verify_ai_bundle "$1"', str(release))
-    assert result.returncode == 0, result.stderr
-    model = release / "ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf"
-    model.write_bytes(b"tampered")
-    result = run_bash('. "$1/launch/macos/common.sh"; verify_ai_bundle "$1"', str(release))
-    assert result.returncode != 0
-    outside = tmp_path / "outside.gguf"
-    outside.write_bytes(b"test model")
-    model.unlink()
-    model.symlink_to(outside)
-    result = run_bash('. "$1/launch/macos/common.sh"; verify_ai_bundle "$1"', str(release))
-    assert result.returncode != 0
-
 
 def test_runtime_state_path_rejects_symlinked_ancestor(tmp_path):
     home = tmp_path / "User Home"
@@ -235,24 +139,6 @@ def test_runtime_state_path_rejects_symlinked_ancestor(tmp_path):
     )
     assert result.returncode != 0
 
-
-def test_ai_listener_is_verified_during_bounded_health_probe_before_final_check():
-    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
-    assert "ai_listener_matches()" in source
-    startup_start = source.index('if ! ai_process_matches "$AI_PID"')
-    startup = source[startup_start : source.index("  printf 'ready", startup_start)]
-    assert startup.index('! ai_process_matches "$AI_PID"') < startup.index(
-        '! probe_ai_health "$AI_PID"'
-    )
-    assert startup.index('! probe_ai_health "$AI_PID"') < startup.index(
-        '! ai_listener_matches "$AI_PID"'
-    )
-    probe = source[source.index("probe_ai_health()") : source.index("start_ai()")]
-    assert '"/usr/sbin/lsof"' in probe
-    assert '"n127.0.0.1:8767"' in probe
-    assert "getsockopt(0, 2, 4)" not in source
-
-
 def test_ai_listener_match_requires_the_owned_loopback_socket():
     script = """
 . "$1/launch/macos/common.sh"
@@ -267,187 +153,6 @@ ai_listener_matches 1234 8767
         )
         assert result.returncode == expected
 
-
-def test_ai_port_conflict_sets_unavailable_without_starting_runtime(tmp_path):
-    release = make_release(tmp_path, "")
-    make_ai_assets(release)
-    fake_env, _ = make_fake_tools(tmp_path, busy_port="8767")
-    runtime_dir = Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    result = run_bash(
-        '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
-        str(ROOT),
-        str(release),
-        env=fake_env,
-    )
-    assert result.returncode == 0, result.stderr
-    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:port-in-use"
-    assert not (runtime_dir / "ai.pid").exists()
-    assert not (runtime_dir / "ai-key").exists()
-
-
-def test_ai_runtime_survives_the_startup_launcher_exiting(tmp_path):
-    release = make_release(tmp_path, "")
-    make_ai_assets(release)
-    runtime = release / "ai/macos-arm64/llama-server"
-    runtime.write_text("#!/bin/bash\nexec /bin/sleep 15\n", encoding="utf-8")
-    runtime.chmod(0o700)
-    manifest_path = release / "ai/runtime-manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["files"][0]["sha256"] = hashlib.sha256(runtime.read_bytes()).hexdigest()
-    manifest["files"][0]["size_bytes"] = runtime.stat().st_size
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    fake_env, _ = make_fake_tools(tmp_path)
-    fake_ps = Path(fake_env["PATH"].split(":", 1)[0]) / "ps"
-    fake_ps.write_text("#!/bin/sh\nprintf 'Wed Oct 14 23:00:00 2026\\n'\n", encoding="utf-8")
-    fake_ps.chmod(0o700)
-    runtime_dir = Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    script = (
-        '. "$1/launch/macos/common.sh"; '
-        "ai_process_matches() { return 0; }; "
-        "probe_ai_health() { return 0; }; "
-        "ai_listener_matches() { return 0; }; "
-        'start_ai "$2" 18765 18766 embedded_local'
-    )
-    result = subprocess.run(
-        ["bash", "-c", script, "wireclaw-test", str(ROOT), str(release)],
-        cwd=ROOT,
-        env=fake_env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=10,
-    )
-    assert result.returncode == 0, result.stderr
-    assert (runtime_dir / "ai.pid").exists(), result.stdout + result.stderr
-    pid = int((runtime_dir / "ai.pid").read_text(encoding="utf-8").splitlines()[0])
-    try:
-        assert subprocess.run(["/bin/kill", "-0", str(pid)], check=False).returncode == 0
-    finally:
-        subprocess.run(["/bin/kill", "-TERM", str(pid)], check=False)
-
-
-def test_stale_or_reused_ai_pid_never_signals_an_unrelated_process(tmp_path):
-    home = tmp_path / "User Home"
-    runtime_dir = home / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    unrelated = subprocess.Popen(["/bin/sleep", "60"])
-    (runtime_dir / "ai.pid").write_text(
-        f"{unrelated.pid}\nnot-the-process-start-time\n", encoding="utf-8"
-    )
-    try:
-        result = run_bash(
-            '. "$1/launch/macos/common.sh"; stop_ai', str(ROOT), env={"HOME": str(home)}
-        )
-        assert result.returncode == 0, result.stderr
-        assert "stale AI PID ignored" in result.stderr
-        assert unrelated.poll() is None
-    finally:
-        unrelated.terminate()
-        unrelated.wait(timeout=5)
-
-
-def test_ai_stop_ignores_pid_with_unrelated_executable(tmp_path):
-    home = tmp_path / "User Home"
-    runtime_dir = home / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    release = make_release(tmp_path, "")
-    make_ai_assets(release)
-    unrelated = subprocess.Popen(["/bin/sleep", "60"])
-    env, _ = make_fake_tools(tmp_path)
-    runtime_dir.joinpath("ai.pid").write_text(
-        f"{unrelated.pid}\nWed Oct 14 23:00:00 2026\n", encoding="utf-8"
-    )
-    fake_ps = Path(env["PATH"].split(":", 1)[0]) / "ps"
-    fake_ps.write_text("#!/bin/sh\nprintf 'Wed Oct 14 23:00:00 2026\\n'\n", encoding="utf-8")
-    fake_ps.chmod(0o700)
-    fake_lsof = Path(env["PATH"].split(":", 1)[0]) / "lsof"
-    fake_lsof.write_text("#!/bin/sh\nprintf 'n/bin/sleep\\n'\n", encoding="utf-8")
-    fake_lsof.chmod(0o700)
-    try:
-        result = run_bash(
-            '. "$1/launch/macos/common.sh"; stop_ai',
-            str(release),
-            env=env | {"HOME": str(home)},
-        )
-        assert result.returncode == 0, result.stderr
-        assert "stale AI PID ignored" in result.stderr
-        assert unrelated.poll() is None
-    finally:
-        unrelated.terminate()
-        unrelated.wait(timeout=5)
-
-
-def test_ai_stop_ignores_same_executable_with_mismatched_start_time(tmp_path):
-    home = tmp_path / "User Home"
-    runtime_dir = home / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    release = make_release(tmp_path, "")
-    make_ai_assets(release)
-    unrelated = subprocess.Popen(["/bin/sleep", "60"])
-    env, _ = make_fake_tools(tmp_path)
-    runtime_dir.joinpath("ai.pid").write_text(
-        f"{unrelated.pid}\nold-start-time\n", encoding="utf-8"
-    )
-    fake_ps = Path(env["PATH"].split(":", 1)[0]) / "ps"
-    fake_ps.write_text("#!/bin/sh\nprintf 'current-start-time\\n'\n", encoding="utf-8")
-    fake_ps.chmod(0o700)
-    fake_lsof = Path(env["PATH"].split(":", 1)[0]) / "lsof"
-    fake_lsof.write_text(
-        f"#!/bin/sh\nprintf 'n{release}/ai/macos-arm64/llama-server\\n'\n",
-        encoding="utf-8",
-    )
-    fake_lsof.chmod(0o700)
-    try:
-        result = run_bash(
-            '. "$1/launch/macos/common.sh"; stop_ai',
-            str(release),
-            env=env | {"HOME": str(home)},
-        )
-        assert result.returncode == 0, result.stderr
-        assert "stale AI PID ignored" in result.stderr
-        assert unrelated.poll() is None
-    finally:
-        unrelated.terminate()
-        unrelated.wait(timeout=5)
-
-
-def test_ai_stop_rechecks_identity_before_forced_termination(tmp_path):
-    home = tmp_path / "User Home"
-    runtime_dir = home / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    (runtime_dir / "ai.pid").write_text("424242\nmanaged-start\n", encoding="utf-8")
-    signal_log = tmp_path / "signals.log"
-    identity_log = tmp_path / "identity-checks.log"
-    env = {
-        "HOME": str(home),
-        "WIRECLAW_TEST_SIGNAL_LOG": str(signal_log),
-        "WIRECLAW_TEST_IDENTITY_LOG": str(identity_log),
-    }
-    script = r"""
-. "$1/launch/macos/common.sh"
-match_count=0
-ai_process_matches() {
-  match_count=$((match_count + 1))
-  printf 'check\n' >> "$WIRECLAW_TEST_IDENTITY_LOG"
-  [ "$match_count" -eq 1 ]
-}
-kill() {
-  printf '%s\n' "$*" >> "$WIRECLAW_TEST_SIGNAL_LOG"
-  case "$1" in -0|-TERM) return 0 ;; esac
-  return 0
-}
-sleep() { :; }
-stop_ai
-"""
-    result = run_bash(script, str(ROOT), env=env)
-    assert result.returncode != 0
-    signals = signal_log.read_text(encoding="utf-8").splitlines()
-    assert signals[:2] == ["-0 424242", "-TERM 424242"]
-    assert "-KILL 424242" not in signals
-    assert identity_log.read_text(encoding="utf-8").splitlines() == ["check", "check"]
-
-
 def test_ai_stop_without_state_is_idempotent(tmp_path):
     env, _ = make_fake_tools(tmp_path)
     result = run_bash(
@@ -457,108 +162,10 @@ def test_ai_stop_without_state_is_idempotent(tmp_path):
     )
     assert result.returncode == 0, result.stderr
 
-
-def test_symlinked_ai_secret_state_is_not_overwritten(tmp_path):
-    home = tmp_path / "User Home"
-    runtime_dir = home / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    sentinel = tmp_path / "outside-secret-target"
-    sentinel.write_text("preserve", encoding="utf-8")
-    (runtime_dir / "ai-key").symlink_to(sentinel)
-    result = run_bash(
-        '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
-        str(ROOT),
-        str(ROOT),
-        env={"HOME": str(home)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "(unsafe-state)" in result.stdout
-    assert not (runtime_dir / "ai-status").exists()
-    assert sentinel.read_text() == "preserve"
-
-
-def test_ai_log_fifo_is_not_unlinked_before_runtime_opens_it():
-    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
-    runtime_started = source.index("  AI_PID=$!")
-    runtime_ready = source.index('probe_ai_health "$AI_PID"', runtime_started)
-    startup_block = source[runtime_started:runtime_ready]
-    assert 'rm -f "$wireclaw_ai_fifo"' not in startup_block
-    assert 'rm -f "$wireclaw_ai_fifo"' in source[source.index("stop_ai()") :]
-
-
-def test_runtime_policy_is_fixed_loopback_only_and_no_user_values_become_argv():
-    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
-    assert '--host 127.0.0.1 --port "$wireclaw_ai_port"' in source
-    assert (
-        "--ctx-size 16384 --batch-size 128 --ubatch-size 32 --n-predict 2048 --parallel 1" in source
-    )
-    assert '--api-key-file "$wireclaw_ai_key_file" --no-agent --no-webui --cache-ram 0' in source
-    assert 'env -i HOME="$wireclaw_runtime_dir"' in source
-    assert "pkill" not in source
-
-
-def test_unsupported_required_prompt_cache_flag_leaves_embedded_ai_unavailable(tmp_path):
-    release = make_release(tmp_path, "")
-    make_ai_assets(release)
-    runtime = release / "ai/macos-arm64/llama-server"
-    runtime.write_text(
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > "
-        + shlex.quote(str(tmp_path / "runtime-argv.txt"))
-        + "\nexit 64\n",
-        encoding="utf-8",
-    )
-    runtime.chmod(0o700)
-    manifest_path = release / "ai/runtime-manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["files"][0]["sha256"] = hashlib.sha256(runtime.read_bytes()).hexdigest()
-    manifest["files"][0]["size_bytes"] = runtime.stat().st_size
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    fake_env, _ = make_fake_tools(tmp_path)
-    argv_log = tmp_path / "runtime-argv.txt"
-    fake_env["WIRECLAW_TEST_RUNTIME_ARGV"] = str(argv_log)
-    runtime_dir = Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    result = run_bash(
-        '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
-        str(ROOT),
-        str(release),
-        env=fake_env,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "unavailable" in result.stdout
-    assert (runtime_dir / "ai-status").read_text().strip().startswith("unavailable:")
-    assert "ready" not in (runtime_dir / "ai-status").read_text()
-    assert "--cache-ram\n0" in argv_log.read_text(encoding="utf-8")
-
-
-def test_untrusted_provider_values_cannot_override_embedded_runtime_identity(tmp_path):
-    home = tmp_path / "User Home"
-    runtime_dir = home / "Library/Application Support/Wireclaw/run"
-    runtime_dir.mkdir(parents=True)
-    (runtime_dir / "ai-status").write_text("ready\n", encoding="utf-8")
-    (runtime_dir / "ai-key").write_text("private-key-do-not-print\n", encoding="utf-8")
-    result = run_bash(
-        '. "$1/launch/macos/common.sh"; configure_provider_environment embedded_local '
-        "https://attacker.invalid/v1 attacker-model attacker-token; "
-        'printf "%s|%s|%s|%s" "$WIRECLAW_PROVIDER_MODE" "$WIRECLAW_PROVIDER_BASE_URL" '
-        '"$WIRECLAW_PROVIDER_MODEL" "$WIRECLAW_EMBEDDED_AI_STATUS"',
-        str(ROOT),
-        env={"HOME": str(home)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == (
-        "embedded_local|http://host.docker.internal:8767/v1|"
-        "wireclaw-qwen3-4b-instruct-2507-q4_k_m|ready"
-    )
-    assert "attacker" not in result.stdout
-    assert "private-key-do-not-print" not in result.stdout
-
-
 def test_start_loads_and_uses_the_packaged_image_without_rebuilding():
     assert 'load_release_image "$RELEASE_DIR"' in START_SOURCE
     assert 'compose.yaml" up -d;' in START_SOURCE
     assert "up -d --build" not in START_SOURCE
-
 
 def test_start_reports_missing_docker_cli(tmp_path):
     release = make_release(tmp_path, "WIRECLAW_PORT=8765\nWIRECLAW_BRIDGE_PORT=8766\n")
@@ -575,7 +182,6 @@ def test_start_reports_missing_docker_cli(tmp_path):
     )
     assert result.returncode != 0
     assert "Docker CLI is missing" in result.stderr
-
 
 def test_start_reports_compose_and_daemon_failures(tmp_path):
     for compose, daemon, expected in (
@@ -595,7 +201,6 @@ def test_start_reports_compose_and_daemon_failures(tmp_path):
         )
         assert result.returncode != 0
         assert expected in result.stderr
-
 
 def test_start_rejects_invalid_app_and_bridge_ports_before_mutation(tmp_path):
     for env_text, expected in (
@@ -619,7 +224,6 @@ def test_start_rejects_invalid_app_and_bridge_ports_before_mutation(tmp_path):
         assert result.returncode != 0
         assert expected in result.stderr
         assert not log.exists()
-
 
 def test_start_reports_data_root_and_missing_bridge_failures(tmp_path):
     env_text = (
@@ -656,7 +260,6 @@ def test_start_reports_data_root_and_missing_bridge_failures(tmp_path):
     )
     assert "Wireclaw host bridge is not installed" in result.stderr
 
-
 def test_start_rejects_busy_ports_and_missing_configured_wireshark(tmp_path):
     for busy_port, wireshark, expected in (
         ("18765", "/usr/bin/true", "port 18765 is already in use"),
@@ -682,7 +285,6 @@ def test_start_rejects_busy_ports_and_missing_configured_wireshark(tmp_path):
         assert result.returncode != 0
         assert expected in result.stderr
         assert not log.exists()
-
 
 def test_stop_and_uninstall_preserve_case_data_and_ignore_reused_pid(tmp_path):
     release = make_release(
@@ -744,3 +346,492 @@ def test_stop_and_uninstall_preserve_case_data_and_ignore_reused_pid(tmp_path):
     assert uninstall.returncode == 0, uninstall.stderr
     assert not bridge.exists()
     assert database.read_bytes() == b"preserve this case database"
+
+def test_embedded_start_uses_fixed_wrapper_with_key_only_on_fd3_and_allowlisted_env(tmp_path):
+    home = tmp_path / "home"
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    observed = tmp_path / "wrapper-observed.json"
+    app.write_text(
+        "#!/usr/bin/python3\n"
+        "import json, os, sys\n"
+        "key = os.read(3, 128).decode().strip() if sys.argv[1] == 'start' else ''\n"
+        f"open({str(observed)!r}, 'w').write(json.dumps({{'op':sys.argv[1], 'argv':sys.argv[1:], 'env':dict(os.environ), 'key':key}}))\n"
+        "print(json.dumps({'state':'running','pid':12345,'process_start':'1:2','executable':" + repr(str(app.parent / "llama-server")) + ",'executable_sha256':'" + "a" * 64 + "'}))\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    helper = app.parent / "llama-server"
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    fake_env, _ = make_fake_tools(tmp_path)
+    codesign = Path(fake_env["PATH"].split(":", 1)[0]) / "codesign"
+    codesign.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codesign.chmod(0o700)
+    fake_env["HOME"] = str(home)
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+ai_host_receipt_create() { cat > "$wireclaw_ai_host_receipt_file"; chmod 600 "$wireclaw_ai_host_receipt_file"; }
+probe_ai_health() { return 0; }
+ai_listener_matches() { return 0; }
+start_ai "$2" 18765 18766 embedded_local
+'''
+    result = run_bash(script, str(release), str(release), env=fake_env)
+    assert result.returncode == 0, result.stderr
+    call = json.loads(observed.read_text(encoding="utf-8"))
+    assert call["argv"] == ["start"]
+    assert call["key"] and len(call["key"]) == 64
+    assert call["key"] not in json.dumps(call["env"])
+    assert set(call["env"]) <= {
+        "HOME", "TMPDIR", "PATH", "__CF_USER_TEXT_ENCODING", "SDKROOT", "CPATH",
+        "LIBRARY_PATH", "MANPATH", "LC_CTYPE",
+    }
+    assert "WIRECLAW_PROVIDER_API_KEY" not in call["env"]
+    assert call["key"] not in result.stdout + result.stderr
+    receipt = runtime_dir / "ai-host-receipt.json"
+    assert receipt.stat().st_mode & 0o777 == 0o600
+    assert call["key"] not in receipt.read_text(encoding="utf-8")
+    assert (runtime_dir / "ai-status").read_text(encoding="utf-8").strip() == "ready"
+
+def test_stop_ai_uses_host_verified_stop_then_wrapper_cleanup_without_shell_signals(tmp_path):
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    calls = tmp_path / "calls"
+    app.write_text(
+        "#!/bin/sh\ncase \"$1\" in status) state=running ;; *) state=stopped ;; esac\n"
+        "printf 'wrapper:%s\\n' \"$1\" >> " + shlex.quote(str(calls)) + "\n"
+        "printf '{\"state\":\"%s\"}\\n' \"$state\"\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    fake_env, _ = make_fake_tools(tmp_path)
+    codesign = Path(fake_env["PATH"].split(":", 1)[0]) / "codesign"
+    codesign.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codesign.chmod(0o700)
+    home = Path(fake_env["HOME"])
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    receipt = runtime_dir / "ai-host-receipt.json"
+    receipt.write_text("{}\n", encoding="utf-8")
+    receipt.chmod(0o600)
+    fake_env["WIRECLAW_TEST_CALLS"] = str(calls)
+    fake_env["RELEASE_DIR"] = str(release)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+ai_host_stop_verified() { printf 'host:stop\n' >> "$WIRECLAW_TEST_CALLS"; }
+ai_host_receipt_remove() { printf 'host:remove\n' >> "$WIRECLAW_TEST_CALLS"; rm -f "$wireclaw_ai_host_receipt_file"; }
+stop_ai
+'''
+    result = run_bash(script, str(release), env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "wrapper:status", "host:stop", "wrapper:stop", "host:remove"
+    ]
+    ai_stop = (LAUNCH / "common.sh").read_text(encoding="utf-8").split("stop_ai() {", 1)[1].split("probe_ai_health() {", 1)[0]
+    assert "kill " not in ai_stop
+
+def test_missing_host_receipt_recovers_only_from_fresh_wrapper_status(tmp_path):
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    calls = tmp_path / "calls"
+    app.write_text(
+        "#!/usr/bin/python3\nimport json,sys\n"
+        "open(" + repr(str(calls)) + ", 'a').write('wrapper:' + sys.argv[1] + '\\n')\n"
+        "identity={'state':'running','pid':12345,'process_start':'1:2','executable':" + repr(str(app.parent / "llama-server")) + ",'executable_sha256':'" + "a" * 64 + "'}\n"
+        "print(json.dumps(identity if sys.argv[1] == 'status' else {'state':'stopped'}))\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    helper = app.parent / "llama-server"
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    home = tmp_path / "home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    fake_env["RELEASE_DIR"] = str(release)
+    fake_env["WIRECLAW_TEST_CALLS"] = str(calls)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+ai_host_receipt_recover() { cat >/dev/null; printf 'host:recover\n' >> "$WIRECLAW_TEST_CALLS"; printf '{}\n' > "$wireclaw_ai_host_receipt_file"; chmod 600 "$wireclaw_ai_host_receipt_file"; }
+ai_host_stop_verified() { printf 'host:stop\n' >> "$WIRECLAW_TEST_CALLS"; }
+ai_host_receipt_remove() { printf 'host:remove\n' >> "$WIRECLAW_TEST_CALLS"; rm -f "$wireclaw_ai_host_receipt_file"; }
+stop_ai
+'''
+    result = run_bash(script, str(release), env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "wrapper:status", "host:recover", "wrapper:status", "host:stop", "wrapper:stop", "host:remove"
+    ]
+
+def test_mismatched_fresh_status_never_recovers_or_signals(tmp_path):
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    calls = tmp_path / "calls"
+    app.write_text(
+        "#!/usr/bin/python3\nimport json,sys\n"
+        "open(" + repr(str(calls)) + ", 'a').write('wrapper:' + sys.argv[1] + '\\n')\n"
+        "print(json.dumps({'state':'running','pid':12345,'process_start':'1:2','executable':'/tmp/unrelated','executable_sha256':'" + "a" * 64 + "'}))\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    helper = app.parent / "llama-server"
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    home = tmp_path / "home"
+    (home / "Library/Application Support/Wireclaw/run").mkdir(parents=True)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    fake_env["RELEASE_DIR"] = str(release)
+    fake_env["WIRECLAW_TEST_CALLS"] = str(calls)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+ai_host_receipt_recover() { printf 'host:recover\n' >> "$WIRECLAW_TEST_CALLS"; return 1; }
+ai_host_stop_verified() { printf 'host:stop\n' >> "$WIRECLAW_TEST_CALLS"; }
+stop_ai
+'''
+    result = run_bash(script, str(release), env=fake_env)
+    assert result.returncode != 0
+    assert calls.read_text(encoding="utf-8").splitlines() == ["wrapper:status", "host:recover"]
+
+def test_signature_failure_falls_back_without_starting_wrapper(tmp_path):
+    home = tmp_path / "home"
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    app.write_text("#!/bin/sh\ntouch \"$WIRECLAW_TEST_WRAPPER_STARTED\"\n", encoding="utf-8")
+    app.chmod(0o700)
+    helper = app.parent / "llama-server"
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    fake_env["WIRECLAW_TEST_WRAPPER_STARTED"] = str(tmp_path / "started")
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; ai_codesign_verify() { return 1; }; start_ai "$2" 18765 18766 embedded_local',
+        str(release), str(release), env=fake_env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:invalid-signature"
+    assert not (tmp_path / "started").exists()
+
+def test_invalid_start_identity_falls_back_without_signaling(tmp_path):
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    helper = app.parent / "llama-server"
+    calls = tmp_path / "calls"
+    app.write_text(
+        "#!/usr/bin/python3\nimport json,sys\n"
+        "op=sys.argv[1]; open(" + repr(str(calls)) + ", 'a').write('wrapper:' + op + '\\n')\n"
+        "identity={'state':'running','pid':12345,'process_start':'1:2','executable':'/tmp/unrelated','executable_sha256':'" + "a" * 64 + "'}\n"
+        "print(json.dumps(identity if op == 'start' else {'state':'stopped'}))\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    home = tmp_path / "home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    fake_env["WIRECLAW_TEST_CALLS"] = str(calls)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; ai_codesign_verify() { return 0; }; start_ai "$2" 18765 18766 embedded_local',
+        str(release), str(release), env=fake_env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:verification-failed"
+    assert calls.read_text(encoding="utf-8").splitlines() == ["wrapper:start", "wrapper:status", "wrapper:stop"]
+    assert not (runtime_dir / "ai-host-receipt.json").exists()
+
+def test_readiness_loss_uses_verified_stop_before_cleanup_and_falls_back(tmp_path):
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    calls = tmp_path / "calls"
+    helper = app.parent / "llama-server"
+    app.write_text(
+        "#!/usr/bin/python3\nimport json,sys\n"
+        "open(" + repr(str(calls)) + ", 'a').write('wrapper:' + sys.argv[1] + '\\n')\n"
+        "identity={'state':'running','pid':12345,'process_start':'1:2','executable':" + repr(str(helper)) + ",'executable_sha256':'" + "a" * 64 + "'}\n"
+        "print(json.dumps(identity if sys.argv[1] == 'start' else {'state':'unavailable','reason':'process_missing'} if sys.argv[1] == 'status' else {'state':'stopped'}))\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    home = tmp_path / "home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    fake_env["WIRECLAW_TEST_CALLS"] = str(calls)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+ai_host_receipt_create() { cat > "$wireclaw_ai_host_receipt_file"; chmod 600 "$wireclaw_ai_host_receipt_file"; }
+ai_host_stop_verified() { printf 'host:stop\n' >> "$WIRECLAW_TEST_CALLS"; }
+ai_host_receipt_remove() { printf 'host:remove\n' >> "$WIRECLAW_TEST_CALLS"; rm -f "$wireclaw_ai_host_receipt_file"; }
+probe_ai_health() { return 1; }
+ai_listener_matches() { return 1; }
+start_ai "$2" 18765 18766 embedded_local
+'''
+    result = run_bash(script, str(release), str(release), env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:readiness-failed"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "wrapper:start", "wrapper:status", "host:stop", "wrapper:stop", "host:remove"
+    ]
+
+def test_authenticated_health_requires_owned_listener_and_expected_model(tmp_path):
+    key = "a" * 64
+    fake_net = tmp_path / "fake_net"
+    fake_net.mkdir()
+    (fake_net / "sitecustomize.py").write_text(
+        "import subprocess, socket\n"
+        "subprocess.run=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, 'n127.0.0.1:' + argv[5].split(':')[-1] + '\\n', '')\n"
+        "class Response:\n"
+        " def __init__(self): self.first=True\n"
+        " def __enter__(self): return self\n"
+        " def __exit__(self, *args): return False\n"
+        " def sendall(self, data): open(" + repr(str(tmp_path / "request")) + ", 'wb').write(data)\n"
+        " def recv(self, size):\n"
+        "  if not self.first: return b''\n"
+        "  self.first=False\n"
+        "  body=b'{\"data\":[{\"id\":\"wireclaw-qwen3-4b-instruct-2507-q4_k_m\"}]}'\n"
+        "  return b'HTTP/1.1 200 OK\\r\\nContent-Length: ' + str(len(body)).encode() + b'\\r\\n\\r\\n' + body\n"
+        "socket.create_connection=lambda *args, **kwargs: Response()\n",
+        encoding="utf-8",
+    )
+    port = 18767
+    key_file = tmp_path / "probe-key"
+    key_file.write_text(key, encoding="ascii")
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; wireclaw_ai_port="$2"; IFS= read -r key < "$3"; probe_ai_health "$4" "$key"',
+        str(ROOT), str(port), str(key_file), str(os.getpid()),
+        env={"HOME": str(tmp_path), "PYTHONPATH": str(fake_net)},
+    )
+    assert result.returncode == 0, result.stderr
+    request = (tmp_path / "request").read_bytes()
+    assert b"Authorization: Bearer " + key.encode("ascii") in request
+    assert b"/v1/models" in request
+
+def test_launcher_has_no_direct_llama_runtime_launch_or_ai_pid_signal_path():
+    common = (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    start = (LAUNCH / "start.sh").read_text(encoding="utf-8")
+    stop = (LAUNCH / "stop.sh").read_text(encoding="utf-8")
+    assert '"$ai_bin"' not in common
+    assert 'kill -TERM "$AI_PID"' not in common
+    assert 'kill -KILL "$ai_pid"' not in common
+    assert 'kill -TERM "$ai_pid"' not in common
+    assert "stop_ai" in stop
+    assert "WireclawAI.app" in common
+
+def test_ai_listener_is_verified_during_bounded_health_probe_before_final_check():
+    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    assert "ai_listener_matches()" in source
+    start = source.index("wrapper_receipt=\"$(ai_wrapper_call start")
+    assert start < source.index("ai_host_receipt_create", start)
+    assert source.index("probe_ai_health", start) < source.index('ai_listener_matches "$ai_pid"', start)
+    probe = source[source.index("probe_ai_health()") : source.index("start_ai()")]
+    assert '"/usr/sbin/lsof"' in probe
+    assert '"Authorization: Bearer " + key' in probe
+    assert "urllib" not in probe and "ProxyHandler" not in probe
+    assert "read(3, 128)" in probe
+
+def test_missing_wrapper_app_falls_back_without_a_host_receipt(tmp_path):
+    home = tmp_path / "User Home"
+    release = make_release(tmp_path, "")
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; start_ai "$2" 18765 18766 embedded_local',
+        str(release),
+        str(release),
+        env=fake_env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:invalid-app"
+    assert not (runtime_dir / "ai-host-receipt.json").exists()
+
+def test_stale_legacy_ai_pid_state_never_signals_or_authorizes_cleanup(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    unrelated = subprocess.Popen(["/bin/sleep", "60"])
+    (runtime_dir / "ai.pid").write_text(f"{unrelated.pid}\nnot-authoritative\n", encoding="utf-8")
+    try:
+        result = run_bash(
+            '. "$1/launch/macos/common.sh"; stop_ai',
+            str(ROOT),
+            env={"HOME": str(home)},
+        )
+        assert result.returncode == 0, result.stderr
+        assert unrelated.poll() is None
+        assert (runtime_dir / "ai.pid").exists()
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
+
+def test_symlinked_host_receipt_is_not_overwritten_or_removed(tmp_path):
+    home = tmp_path / "User Home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    sentinel = tmp_path / "receipt-target"
+    sentinel.write_text("preserve", encoding="utf-8")
+    (runtime_dir / "ai-host-receipt.json").symlink_to(sentinel)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; ai_unavailable unsafe-state',
+        str(ROOT),
+        env={"HOME": str(home)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert sentinel.read_text(encoding="utf-8") == "preserve"
+
+def test_launcher_does_not_launch_runtime_or_signal_ai_pid_from_shell():
+    source = (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    ai_lifecycle = source.split("stop_ai() {", 1)[1].split("configure_provider_environment() {", 1)[0]
+    assert '\"$ai_bin\"' not in source
+    assert "AI_PID=" not in source
+    assert "kill -TERM \"$ai_pid\"" not in ai_lifecycle
+    assert "kill -KILL \"$ai_pid\"" not in ai_lifecycle
+    assert "ai_host_stop_verified" in ai_lifecycle
+
+def test_wrapper_start_failure_falls_back_without_retaining_the_ephemeral_key(tmp_path):
+    home = tmp_path / "home"
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    app.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    app.chmod(0o700)
+    helper = app.parent / "llama-server"
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+start_ai "$2" 18765 18766 embedded_local
+printf 'KEY:%s' "$wireclaw_ai_start_key"
+'''
+    result = run_bash(script, str(release), str(release), env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert "unavailable:start-failed" in (runtime_dir / "ai-status").read_text()
+    assert "KEY:" in result.stdout and result.stdout.endswith("KEY:")
+    assert not (runtime_dir / "ai-host-receipt.json").exists()
+
+def test_failed_start_recovers_running_helper_before_fallback(tmp_path):
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    helper = app.parent / "llama-server"
+    calls = tmp_path / "calls"
+    app.write_text(
+        "#!/usr/bin/python3\nimport json,sys\n"
+        "op=sys.argv[1]; open(" + repr(str(calls)) + ", 'a').write('wrapper:' + op + '\\n')\n"
+        "identity={'state':'running','pid':12345,'process_start':'1:2','executable':" + repr(str(helper)) + ",'executable_sha256':'" + "a" * 64 + "'}\n"
+        "print(json.dumps(identity if op in ('start','status') else {'state':'stopped'}))\n"
+        "sys.exit(1 if op == 'start' else 0)\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    home = tmp_path / "home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    fake_env["WIRECLAW_TEST_CALLS"] = str(calls)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+ai_host_receipt_recover() { cat >/dev/null; printf 'host:recover\n' >> "$WIRECLAW_TEST_CALLS"; printf '{}\n' > "$wireclaw_ai_host_receipt_file"; chmod 600 "$wireclaw_ai_host_receipt_file"; }
+ai_host_stop_verified() { printf 'host:stop\n' >> "$WIRECLAW_TEST_CALLS"; }
+ai_host_receipt_remove() { printf 'host:remove\n' >> "$WIRECLAW_TEST_CALLS"; rm -f "$wireclaw_ai_host_receipt_file"; }
+start_ai "$2" 18765 18766 embedded_local
+'''
+    result = run_bash(script, str(release), str(release), env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:start-failed"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "wrapper:start", "wrapper:status", "host:recover", "host:stop", "wrapper:stop", "host:remove"
+    ]
+
+def test_receipt_create_failure_recovers_and_stops_launched_helper(tmp_path):
+    release = make_release(tmp_path, "")
+    app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
+    app.parent.mkdir(parents=True)
+    helper = app.parent / "llama-server"
+    calls = tmp_path / "calls"
+    app.write_text(
+        "#!/usr/bin/python3\nimport json,sys\n"
+        "op=sys.argv[1]; open(" + repr(str(calls)) + ", 'a').write('wrapper:' + op + '\\n')\n"
+        "identity={'state':'running','pid':12345,'process_start':'1:2','executable':" + repr(str(helper)) + ",'executable_sha256':'" + "a" * 64 + "'}\n"
+        "print(json.dumps(identity if op in ('start','status') else {'state':'stopped'}))\n",
+        encoding="utf-8",
+    )
+    app.chmod(0o700)
+    helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    helper.chmod(0o700)
+    home = tmp_path / "home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True)
+    fake_env, _ = make_fake_tools(tmp_path)
+    fake_env["HOME"] = str(home)
+    fake_env["WIRECLAW_TEST_CALLS"] = str(calls)
+    script = r'''
+. "$1/launch/macos/common.sh"
+ai_codesign_verify() { return 0; }
+ai_host_receipt_create() { cat >/dev/null; printf 'host:create-failed\n' >> "$WIRECLAW_TEST_CALLS"; return 1; }
+ai_host_receipt_recover() { cat >/dev/null; printf 'host:recover\n' >> "$WIRECLAW_TEST_CALLS"; printf '{}\n' > "$wireclaw_ai_host_receipt_file"; chmod 600 "$wireclaw_ai_host_receipt_file"; }
+ai_host_stop_verified() { printf 'host:stop\n' >> "$WIRECLAW_TEST_CALLS"; }
+ai_host_receipt_remove() { printf 'host:remove\n' >> "$WIRECLAW_TEST_CALLS"; rm -f "$wireclaw_ai_host_receipt_file"; }
+start_ai "$2" 18765 18766 embedded_local
+'''
+    result = run_bash(script, str(release), str(release), env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert (runtime_dir / "ai-status").read_text().strip() == "unavailable:receipt-failed"
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "wrapper:start", "host:create-failed", "wrapper:status", "host:recover", "host:stop", "wrapper:stop", "host:remove"
+    ]
+
+def test_untrusted_provider_values_cannot_override_embedded_runtime_identity(tmp_path):
+    home = tmp_path / "home"
+    runtime_dir = home / "Library/Application Support/Wireclaw/run"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    (runtime_dir / "ai-status").write_text("ready\n", encoding="utf-8")
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; wireclaw_ai_start_key=' + "a" * 64 + '; '
+        'configure_provider_environment embedded_local https://attacker.invalid/v1 attacker-model attacker-token; '
+        'printf "%s|%s|%s|%s" "$WIRECLAW_PROVIDER_MODE" "$WIRECLAW_PROVIDER_BASE_URL" '
+        '"$WIRECLAW_PROVIDER_MODEL" "$WIRECLAW_EMBEDDED_AI_STATUS"',
+        str(ROOT),
+        env={"HOME": str(home)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == (
+        "embedded_local|http://host.docker.internal:8767/v1|"
+        "wireclaw-qwen3-4b-instruct-2507-q4_k_m|ready"
+    )
+    assert "attacker" not in result.stdout
