@@ -389,6 +389,65 @@ def test_finalize_recommendations_cannot_outgrow_deterministic_hypotheses(tmp_pa
         service.close()
 
 
+def test_model_omission_cannot_remove_deterministic_finding(tmp_path, monkeypatch):
+    policy = Policy(
+        provider_mode=ProviderMode.LOCAL,
+        provider_base_url="http://127.0.0.1:1234/v1",
+        provider_model="review-model",
+        provider_api_key="x" * 32,
+    )
+    service, case_id = prepared_service(tmp_path, policy)
+    deterministic_finding = {
+        "id": "finding_deterministic_rtt",
+        "title": "Measured RTT",
+        "category": "tcp.rtt",
+        "confidence": "medium",
+        "statement": "The deterministic baseline measured elevated RTT.",
+        "epistemic_class": "inferred",
+        "fault_domains": ["network_path"],
+        "affected_scope": {},
+        "evidence_ids": [service.evidence_records(case_id)[0]["id"]],
+        "alternate_explanations": [],
+        "limitations": [],
+        "recommended_validation": [],
+        "wireshark": {
+            "applicable": False,
+            "full_capture": False,
+            "evidence_capture": False,
+            "copy_filter": False,
+            "show_packet_evidence": False,
+            "display_filter": None,
+        },
+    }
+
+    def build_with_deterministic_finding(**kwargs):
+        report = build_investigation_result(**kwargs)
+        report["findings"] = [deterministic_finding]
+        return report
+
+    from wireclaw_api import gate4_service, gate7_service
+    from wireclaw_api.investigation import build_investigation_result
+
+    monkeypatch.setattr(
+        gate7_service, "build_investigation_result", build_with_deterministic_finding
+    )
+    monkeypatch.setattr(
+        gate4_service, "build_investigation_result", build_with_deterministic_finding
+    )
+    provider = ScriptedCycleProvider([finalize_action()])
+    service.run_reasoning_capability = install_cycle_runner(monkeypatch, [provider], [])
+
+    try:
+        service._assemble_report(case_id)
+        report = service.report(case_id)
+
+        assert report["reasoning"]["mode"] == "model_assisted"
+        assert report["reasoning"]["accepted_categories"] == []
+        assert report["findings"] == [deterministic_finding]
+    finally:
+        service.close()
+
+
 def test_remaining_recommendation_rejects_evidence_from_another_finding(tmp_path, monkeypatch):
     policy = Policy(
         provider_mode=ProviderMode.LOCAL,
