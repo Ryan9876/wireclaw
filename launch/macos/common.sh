@@ -15,6 +15,26 @@ wireclaw_ai_port=8767
 wireclaw_ai_model_id=wireclaw-qwen3-4b-instruct-2507-q4_k_m
 wireclaw_ai_model_file=qwen3-4b-instruct-2507-q4_k_m.gguf
 wireclaw_ai_base_url=http://host.docker.internal:8767/v1
+wireclaw_ai_host_receipt_file="${wireclaw_runtime_dir}/ai-host-receipt.json"
+wireclaw_ai_lifecycle_tool="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/ai_lifecycle.py"
+
+# Task 6 trusted-host primitives. Task 7 wires these into start/stop order.
+# create/recover read the bounded internal wrapper receipt on stdin.
+ai_host_receipt_create() {
+  /usr/bin/python3 "$wireclaw_ai_lifecycle_tool" create "$wireclaw_ai_host_receipt_file" "$1"
+}
+
+ai_host_receipt_recover() {
+  /usr/bin/python3 "$wireclaw_ai_lifecycle_tool" recover "$wireclaw_ai_host_receipt_file" "$1"
+}
+
+ai_host_stop_verified() {
+  /usr/bin/python3 "$wireclaw_ai_lifecycle_tool" stop "$wireclaw_ai_host_receipt_file" "$1"
+}
+
+ai_host_receipt_remove() {
+  /usr/bin/python3 "$wireclaw_ai_lifecycle_tool" remove "$wireclaw_ai_host_receipt_file" "$1"
+}
 
 fail() {
   printf 'Wireclaw: %s\n' "$1" >&2

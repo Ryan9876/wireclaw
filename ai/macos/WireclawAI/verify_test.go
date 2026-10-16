@@ -173,7 +173,7 @@ func TestVerifyBundleRejectsInvalidAssets(t *testing.T) {
 				return verifyBundleAt(root, self, permitSignature)
 			}, func(VerifiedBundle, string) commandResult {
 				launched = true
-				return commandResult{"running", ""}
+				return commandResult{state:"running", reason:""}
 			})
 			if launched || result.reason != "verification_failed" {
 				t.Fatal("invalid bundle reached launch")
@@ -233,7 +233,7 @@ func TestStartVerifiesBeforePersistingKeyOrLaunching(t *testing.T) {
 		if _, err := os.Stat(keyPath); err != nil {
 			t.Fatal(err)
 		}
-		return commandResult{"unavailable", "launch_failed"}
+		return commandResult{state:"unavailable", reason:"launch_failed"}
 	}
 	result := startVerified(fd, dir, verify, launch)
 	if !launched || result.reason != "launch_failed" {

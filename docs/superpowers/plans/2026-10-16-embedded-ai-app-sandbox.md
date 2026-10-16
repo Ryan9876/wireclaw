@@ -143,12 +143,12 @@ Use **Go 1.23** for the headless `WireclawAI` executable. This is the repository
 
 **Completion record:** This fixed verified helper launch is complete and committed as `00fa8e3` (`feat: launch fixed sandboxed inference helper`). Its recorded child identity remains valid launch input for trusted host receipt creation. It does not authorize a later sandboxed `WireclawAI stop` invocation to signal the helper.
 
-- [ ] Add failing tests that capture executable/argv/environment, assert all fixed options and no user-controlled args, verify helper key is a file path rather than key value, and prove child remains alive after the start invocation exits.
-- [ ] Add invalid helper/model/bundle substitution tests that assert no process is launched.
-- [ ] Run focused tests and confirm failure before implementation.
-- [ ] Implement fixed `exec.Command` launch with a minimal allowlisted environment, bounded private logs, inherited sandbox code signature, child PID/start/executable identity recording, and immediate start exit after launch succeeds.
-- [ ] Run wrapper tests and a disposable ad-hoc signed macOS parent/helper probe; verify helper survives parent exit and signed helper carries only `app-sandbox` plus `inherit`.
-- [ ] Commit `feat: launch fixed sandbox-inheriting inference helper`.
+- [x] Add failing tests that capture executable/argv/environment, assert all fixed options and no user-controlled args, verify helper key is a file path rather than key value, and prove child remains alive after the start invocation exits.
+- [x] Add invalid helper/model/bundle substitution tests that assert no process is launched.
+- [x] Run focused tests and confirm failure before implementation.
+- [x] Implement fixed `exec.Command` launch with a minimal allowlisted environment, bounded private logs, inherited sandbox code signature, child PID/start/executable identity recording, and immediate start exit after launch succeeds.
+- [x] Run wrapper tests and a disposable ad-hoc signed macOS parent/helper probe; verify helper survives parent exit and signed helper carries only `app-sandbox` plus `inherit`.
+- [x] Commit `feat: launch fixed sandbox-inheriting inference helper` — `00fa8e3`.
 
 ### Task 6: Status, cleanup-only stop, host signaling, recovery, and PID safety
 
@@ -158,11 +158,33 @@ Use **Go 1.23** for the headless `WireclawAI` executable. This is the repository
 
 **Interfaces:** `status` verifies sandbox-private state and returns a bounded non-secret internal status/identity receipt; it never signals. `stop` is cleanup-only, never calls `kill()`, and refuses to clear key/lifecycle state while the expected helper remains alive. The trusted unsandboxed launcher owns an authoritative mode-0600 host receipt, verifies the exact fixed helper before TERM and freshly before KILL, confirms exit, invokes wrapper cleanup, then removes host state. A verified status receipt may support recovery only after independent host verification against the fixed packaged helper. Unverifiable or mismatched state fails closed. Task 5's recorded identity remains launch input for host receipt creation, not authority for a later sandboxed stop to signal.
 
-- [ ] Add failing tests for host receipt mode/contents and absence of key/token; sandbox denial of host receipt read/write; bounded status identity receipt; status never signaling; wrapper stop never signaling; cleanup refusal while helper is live; cleanup after confirmed exit; host TERM requiring PID/start/executable/hash verification; TERM mismatch preserving unrelated process; fresh KILL re-verification; identity change between TERM and KILL preventing KILL; stale host receipt fail-closed behavior; recovery from missing host receipt through verified status with independent fixed-helper checks; unverified recovery never signaling; repeated stop safe/idempotent; and documented PID-reuse residual.
-- [ ] Run the focused tests and confirm mismatched identities currently fail.
-- [ ] Implement bounded status receipt and cleanup-only wrapper stop. Implement host-side receipt creation/validation and signaling in the trusted launcher; never accept runtime/model-controlled identity as sufficient authority.
-- [ ] Run tests plus native start-exit/status/launcher-stop/cleanup sequence. Verify the launcher stops only the verified helper, wrapper status/stop cannot signal, and mismatched/reused processes survive.
-- [ ] Commit `feat: separate sandbox status from trusted host signaling`.
+**Task 6/7 boundary ruling (approved at `57136b7d1f780b4b4cba9dc9711080c00cba1bfe`):**
+
+Task 6 owns lifecycle primitives and security contracts:
+- `WireclawAI status` verifies sandbox-private state, returns a bounded internal identity/status receipt, and never signals.
+- `WireclawAI stop` performs cleanup only, never signals, refuses cleanup while its managed helper remains alive, and clears private state only after confirmed exit.
+- Trusted-host primitives own the mode-0600 non-secret receipt, receipt parsing/validation, PID/start/executable/hash identity verification, verify-before-TERM, bounded wait, fresh verify-before-KILL, fail-closed mismatch behavior, and recovery verification.
+
+Task 7 owns normal launcher orchestration:
+- `start.sh` writes the authoritative host receipt from independently verified `WireclawAI start` identity and wires start/readiness/fallback behavior.
+- `stop.sh` loads the host receipt, calls Task 6 verified TERM/KILL primitives, confirms exit, invokes `WireclawAI stop` for cleanup, and removes the host receipt.
+- Normal launcher behavior wires status-receipt recovery.
+
+Focused changes in `launch/macos/common.sh` are permitted for Task 6 primitives. Do not wire the full production `start.sh`/`stop.sh` flow until Task 7.
+
+Ruling: Keep sandbox-private status/cleanup in `WireclawAI` and host signaling in trusted-host primitives; this follows the approved amendment after native `EPERM` evidence and prevents the sandbox from acquiring cross-invocation signal authority. If this boundary is wrong, Task 7 orchestration may need rework; no entitlement or sandbox relaxation is authorized.
+
+**Read-only review of `stash@{0}` (`WIP Task 6 pre-amendment: fresh-sandbox signaling design`):**
+- `ai/macos/WireclawAI/main.go`: The removal of `not_implemented` status/stop stubs is category A in intent and will be implemented manually. The `signal` and `wait` fields are category B and will not be restored.
+- `ai/macos/WireclawAI/status_stop.go`: `stopWith`, `syscall.Kill`, TERM/KILL ordering, and wrapper signaling are category B and obsolete. Bounded state parsing and identity/hash checks are category C because the amended contract distinguishes an internal status receipt, private cleanup, and a separate authoritative host receipt; reimplement against the amendment instead of restoring this file.
+- `ai/macos/WireclawAI/status_stop_test.go`: Status privacy/identity cases are category C and will be rewritten for the bounded receipt contract. Any stop tests expecting the wrapper to signal (TERM, timeout, KILL, or signal preservation) are category B; host-signal tests belong to the trusted-host primitive boundary.
+- The stash ledger note describing sandboxed `EPERM` as an unresolved blocker is category B as a current decision; the native evidence itself remains documented by the approved amendment. The enclosing-harness pre-start `SIGABRT` limitation remains valid and is not a product failure.
+
+- [x] Add failing tests for host receipt mode/contents and absence of key/token; sandbox denial of host receipt read/write; bounded status identity receipt; status never signaling; wrapper stop never signaling; cleanup refusal while helper is live; cleanup after confirmed exit; host TERM requiring PID/start/executable/hash verification; TERM mismatch preserving unrelated process; fresh KILL re-verification; identity change between TERM and KILL preventing KILL; stale host receipt fail-closed behavior; recovery from missing host receipt through verified status with independent fixed-helper checks; unverified recovery never signaling; repeated stop safe/idempotent; and documented PID-reuse residual. Added coverage also rejects receipt and sandbox-private state substitution races and verifies cleanup retry after partial file removal.
+- [x] Run the focused tests and confirm mismatched identities currently fail.
+- [x] Implement bounded status receipt and cleanup-only wrapper stop. Implement host-side receipt creation/validation and signaling in the trusted launcher; never accept runtime/model-controlled identity as sufficient authority.
+- [x] Run tests plus native start-exit/status/launcher-stop/cleanup sequence. Verify the launcher stops only the verified helper, wrapper status/stop cannot signal, and mismatched/reused processes survive.
+- [x] Commit `feat: separate sandbox status from trusted host signaling`.
 
 ### Task 7: macOS launcher integration
 

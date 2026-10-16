@@ -10,8 +10,9 @@ import (
 // commandResult contains only public lifecycle state. Process identity, paths,
 // and the API key remain inside the later lifecycle implementation.
 type commandResult struct {
-	state  string
-	reason string
+	state    string
+	reason   string
+	identity *processRecord
 }
 
 type lifecycle interface {
@@ -31,7 +32,7 @@ func (lifecycleOps) start() commandResult {
 		if fd != nil {
 			_ = fd.Close()
 		}
-		return commandResult{"unavailable", "state_unavailable"}
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
 	}
 	return startVerified(fd, dir, verifyBundle, launchHelper)
 }
@@ -41,32 +42,56 @@ func (lifecycleOps) start() commandResult {
 func startVerified(fd io.ReadCloser, dir string, verify func() (VerifiedBundle, error), launch func(VerifiedBundle, string) commandResult) commandResult {
 	key, err := readKeyRecord(fd)
 	if err != nil {
-		return commandResult{"unavailable", "invalid_key"}
+		return commandResult{state: "unavailable", reason: "invalid_key"}
 	}
 	defer wipe(key[:])
 	bundle, err := verify()
 	if err != nil || bundle.helperPath == "" || bundle.modelPath == "" {
-		return commandResult{"unavailable", "verification_failed"}
+		return commandResult{state: "unavailable", reason: "verification_failed"}
 	}
 	path, err := storeKeyRecord(key, dir)
 	if err != nil {
-		return commandResult{"unavailable", "state_unavailable"}
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
 	}
 	result := launch(bundle, path)
 	if result.state != "running" {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return commandResult{"unavailable", "state_unavailable"}
+			return commandResult{state: "unavailable", reason: "state_unavailable"}
 		}
 	}
 	return result
 }
 
-func (lifecycleOps) status() commandResult { return commandResult{"unavailable", "not_implemented"} }
-func (lifecycleOps) stop() commandResult   { return commandResult{"unavailable", "not_implemented"} }
+func (lifecycleOps) status() commandResult {
+	dir, err := productionStateDir()
+	if err != nil {
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
+	}
+	bundle, err := verifyBundle()
+	if err != nil {
+		return commandResult{state: "unavailable", reason: "verification_failed"}
+	}
+	return statusWith(dir, bundle, processIdentityForPID)
+}
+func (lifecycleOps) stop() commandResult {
+	dir, err := productionStateDir()
+	if err != nil {
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
+	}
+	bundle, err := verifyBundle()
+	if err != nil {
+		return commandResult{state: "unavailable", reason: "verification_failed"}
+	}
+	return stopWith(dir, bundle, processIdentityForPID)
+}
 
 type publicResult struct {
-	State  string `json:"state"`
-	Reason string `json:"reason,omitempty"`
+	State            string `json:"state"`
+	Reason           string `json:"reason,omitempty"`
+	PID              int    `json:"pid,omitempty"`
+	ProcessStart     string `json:"process_start,omitempty"`
+	Executable       string `json:"executable,omitempty"`
+	ExecutableSHA256 string `json:"executable_sha256,omitempty"`
 }
 
 func allowedReason(reason string) bool {
@@ -84,7 +109,13 @@ func normalize(result commandResult) publicResult {
 	switch result.state {
 	case "running", "stopped":
 		if result.reason == "" {
-			return publicResult{State: result.state}
+			if result.state == "running" && result.identity != nil && validReceiptIdentity(*result.identity) {
+				id := result.identity
+				return publicResult{State: result.state, PID: id.PID, ProcessStart: id.ProcessStart, Executable: id.Executable, ExecutableSHA256: id.ExecutableSHA256}
+			}
+			if result.identity == nil {
+				return publicResult{State: result.state}
+			}
 		}
 	case "unavailable":
 		if allowedReason(result.reason) {

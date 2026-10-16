@@ -109,20 +109,20 @@ func productionStateDirForLaunch() (string, error) {
 
 func launchVerified(bundle VerifiedBundle, keyPath string, stateDir func() (string, error), identify func(int) (processIdentity, error), makeChild func(string, []string, []string, io.Writer, io.Writer) childProcess) commandResult {
 	if bundle.helperPath == "" || bundle.modelPath == "" || !validDigest(bundle.helperHash) || keyPath == "" || filepath.Base(keyPath) != "api-key" {
-		return commandResult{"unavailable", "launch_failed"}
+		return commandResult{state: "unavailable", reason: "launch_failed"}
 	}
 	dir, err := stateDir()
 	if err != nil || !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
-		return commandResult{"unavailable", "state_unavailable"}
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
 	}
 	logPath := filepath.Join(dir, "runtime.log")
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
-		return commandResult{"unavailable", "state_unavailable"}
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
 	}
 	if err = logFile.Chmod(0o600); err != nil {
 		_ = logFile.Close()
-		return commandResult{"unavailable", "state_unavailable"}
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
 	}
 	log := &cappedLog{file: logFile, remaining: logLimit}
 	env := []string{
@@ -135,21 +135,21 @@ func launchVerified(bundle VerifiedBundle, keyPath string, stateDir func() (stri
 	child := makeChild(bundle.helperPath, helperArguments(bundle, keyPath), env, log, log)
 	if child == nil || child.Start() != nil {
 		_ = logFile.Close()
-		return commandResult{"unavailable", "launch_failed"}
+		return commandResult{state: "unavailable", reason: "launch_failed"}
 	}
 	record := processRecord{PID: child.PID(), Executable: bundle.helperPath, Model: bundle.modelID}
 	if record.PID <= 0 {
 		_ = child.Kill()
 		_ = child.Release()
 		_ = logFile.Close()
-		return commandResult{"unavailable", "launch_failed"}
+		return commandResult{state: "unavailable", reason: "launch_failed"}
 	}
 	identity, err := waitForProcessIdentity(record.PID, bundle.helperPath, identify)
 	if err != nil {
 		_ = child.Kill()
 		_ = child.Release()
 		_ = logFile.Close()
-		return commandResult{"unavailable", "launch_failed"}
+		return commandResult{state: "unavailable", reason: "launch_failed"}
 	}
 	record.ProcessStart = identity.started
 	record.Executable = identity.executable
@@ -159,7 +159,7 @@ func launchVerified(bundle VerifiedBundle, keyPath string, stateDir func() (stri
 		_ = child.Kill()
 		_ = child.Release()
 		_ = logFile.Close()
-		return commandResult{"unavailable", "state_unavailable"}
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
 	}
 	statePath := filepath.Join(dir, "process.json")
 	tmp, err := os.CreateTemp(dir, ".process-")
@@ -189,16 +189,16 @@ func launchVerified(bundle VerifiedBundle, keyPath string, stateDir func() (stri
 		_ = child.Kill()
 		_ = child.Release()
 		_ = logFile.Close()
-		return commandResult{"unavailable", "state_unavailable"}
+		return commandResult{state: "unavailable", reason: "state_unavailable"}
 	}
 	if err = child.Release(); err != nil {
 		_ = child.Kill()
 		_ = logFile.Close()
 		_ = os.Remove(statePath)
-		return commandResult{"unavailable", "launch_failed"}
+		return commandResult{state: "unavailable", reason: "launch_failed"}
 	}
 	_ = logFile.Close()
-	return commandResult{"running", ""}
+	return commandResult{state: "running", identity: &record}
 }
 
 func waitForProcessIdentity(pid int, expectedExecutable string, identify func(int) (processIdentity, error)) (processIdentity, error) {

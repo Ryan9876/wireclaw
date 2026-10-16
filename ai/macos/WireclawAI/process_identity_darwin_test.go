@@ -3,10 +3,18 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestProcessIdentityReportsMissingPID(t *testing.T) {
+	_, err := processIdentityForPID(999999)
+	if !errors.Is(err, errProcessMissing) {
+		t.Fatalf("missing PID classified as %v", err)
+	}
+}
 
 func TestProcessIdentityForCurrentProcess(t *testing.T) {
 	identity, err := processIdentityForPID(os.Getpid())
