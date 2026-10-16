@@ -1,7 +1,11 @@
+import ast
+import errno
 import hashlib
 import importlib.util
 import json
 import tarfile
+import urllib.error
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -574,3 +578,127 @@ def test_core_probe_failure_diagnostics_are_bounded_and_allowlisted():
     )
     assert qualifier.normalize_core_probe_failure("Bearer secret-value") is None
     assert qualifier.normalize_core_probe_failure("wrong_endpoint_served_model\n" * 500) is None
+
+
+def test_core_probe_accepts_expected_closed_wrong_endpoint():
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_wrong_endpoint_probe")
+    tree = ast.parse(qualifier.CORE_INTEGRATION_PROBE)
+    helper = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "request_expected_closed_endpoint"
+    )
+    namespace = {}
+    exec(
+        compile(ast.Module(body=[helper], type_ignores=[]), "<wrong-endpoint-helper>", "exec"),
+        namespace,
+    )
+
+    for error_code in ("core_host_unreachable", "core_connection_refused"):
+
+        def unavailable(_url, token=None, code=error_code):
+            raise SystemExit(code)
+
+        namespace["request"] = unavailable
+        assert namespace["request_expected_closed_endpoint"]("fixed-url", "fixed-token") == (0, b"")
+
+    def permission_denied(_url, token=None):
+        raise SystemExit("core_network_permission_denied")
+
+    namespace["request"] = permission_denied
+    with pytest.raises(SystemExit, match="core_network_permission_denied"):
+        namespace["request_expected_closed_endpoint"]("fixed-url", "fixed-token")
+
+    def timeout(_url, token=None):
+        raise SystemExit("core_connection_timeout")
+
+    namespace["request"] = timeout
+    with pytest.raises(SystemExit, match="core_connection_timeout"):
+        namespace["request_expected_closed_endpoint"]("fixed-url", "fixed-token")
+
+
+def test_task10_metal_sample_requires_compute_and_synchronize_frames():
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_metal_sample_contract")
+    active_sample = "ggml_metal_graph_compute (in libggml-metal.0.dylib)\nggml_metal_synchronize (in libggml-metal.0.dylib)"
+    qualifier.validate_metal_runtime_evidence("", active_sample)
+    with pytest.raises(ValueError, match="metal"):
+        qualifier.validate_metal_runtime_evidence("", "libggml-metal.0.dylib loaded")
+
+
+def test_core_probe_keeps_required_endpoints_strict_and_rejects_wrong_model(monkeypatch, capsys):
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_core_probe_simulation")
+    key = "a" * 64
+    model_body = json.dumps({"data": [{"id": qualifier.MODEL_ID}]}).encode()
+    chat_body = json.dumps(
+        {
+            "model": qualifier.MODEL_ID,
+            "choices": [{"message": {"content": qualifier.TASK10_CHAT_EXPECTED}}],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12},
+        }
+    ).encode()
+
+    class Response:
+        def __init__(self, status, body):
+            self.status = status
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _limit):
+            return self.body
+
+    def run_probe(mode):
+        class FakeOpener:
+            def open(self, request, timeout):
+                parsed = urllib.parse.urlsplit(request.full_url)
+                if parsed.port == 8768:
+                    if mode == "wrong_endpoint_serves_model":
+                        return Response(200, model_body)
+                    error = ConnectionRefusedError(111, "connection refused")
+                    if mode == "wrong_endpoint_unreachable":
+                        error = OSError(errno.EHOSTUNREACH, "host unreachable")
+                    raise urllib.error.URLError(error)
+                if mode == "required_endpoint_unreachable":
+                    raise urllib.error.URLError(OSError(errno.EHOSTUNREACH, "host unreachable"))
+                if request.get_header("Authorization") != f"Bearer {key}":
+                    raise urllib.error.HTTPError(request.full_url, 401, "unauthorized", {}, None)
+                if parsed.path.endswith("/models"):
+                    return Response(200, model_body)
+                return Response(200, chat_body)
+
+        monkeypatch.setenv("WIRECLAW_PROVIDER_API_KEY", key)
+        monkeypatch.setattr(qualifier.urllib.request, "build_opener", lambda *_args: FakeOpener())
+        exec(compile(qualifier.CORE_INTEGRATION_PROBE, "<core-probe>", "exec"), {})
+
+    run_probe("wrong_endpoint_unreachable")
+    assert capsys.readouterr().out.strip() == "CORE_AUTH_MODELS_CHAT_WRONG_ENDPOINT=PASS"
+    with pytest.raises(SystemExit, match="core_host_unreachable"):
+        run_probe("required_endpoint_unreachable")
+    with pytest.raises(SystemExit, match="wrong_endpoint_served_model"):
+        run_probe("wrong_endpoint_serves_model")
+
+
+def test_metal_sample_reader_enforces_size_limit_and_removes_file(tmp_path):
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_metal_sample_cleanup")
+
+    class FinishedProcess:
+        def wait(self, timeout):
+            return 0
+
+        def poll(self):
+            return 0
+
+    sample_path = tmp_path / "sample.txt"
+    sample_path.write_text("ggml_metal_graph_compute", encoding="utf-8")
+    assert (
+        qualifier._finish_metal_sample((FinishedProcess(), sample_path))
+        == "ggml_metal_graph_compute"
+    )
+    assert not sample_path.exists()
+    sample_path.write_bytes(b"x" * (qualifier.MAX_METAL_SAMPLE_BYTES + 1))
+    assert qualifier._finish_metal_sample((FinishedProcess(), sample_path)) == ""
+    assert not sample_path.exists()

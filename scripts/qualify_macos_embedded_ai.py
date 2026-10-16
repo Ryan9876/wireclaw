@@ -13,10 +13,12 @@ import re
 import selectors
 import subprocess
 import sys
+import tempfile
 import textwrap
 import time
 import urllib.error
 import urllib.request
+from contextlib import suppress
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,6 +36,7 @@ HELPER_ENTITLEMENTS = {
 MODEL_ID = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
 PROVIDER_ENDPOINT = "http://host.docker.internal:8767/v1"
 MAX_CORE_RESPONSE_BYTES = 65_536
+MAX_METAL_SAMPLE_BYTES = 4 * 1024 * 1024
 TASK10_CHAT_PROMPT = "Reply exactly with WIRECLAW_TASK10_INFERENCE_OK."
 TASK10_CHAT_EXPECTED = "WIRECLAW_TASK10_INFERENCE_OK"
 
@@ -119,6 +122,19 @@ def validate_metal_log(log_text: str) -> None:
     normalized = log_text.lower()
     if "ggml_metal_init: found device:" not in normalized:
         raise ValueError("ai_metal_device_unverified")
+
+
+def validate_metal_runtime_evidence(log_text: str, sample_text: str) -> None:
+    try:
+        validate_metal_log(log_text)
+        return
+    except ValueError:
+        normalized = sample_text.lower()
+        if (
+            "ggml_metal_graph_compute" not in normalized
+            or "ggml_metal_synchronize" not in normalized
+        ):
+            raise ValueError("ai_metal_device_unverified") from None
 
 
 def validate_core_reachability(returncode: int) -> None:
@@ -313,6 +329,13 @@ CORE_INTEGRATION_PROBE = textwrap.dedent(
             if getattr(reason, "errno", None) in {errno.EPERM, errno.EACCES}:
                 raise SystemExit("core_network_permission_denied")
             raise SystemExit("core_transport_error")
+    def request_expected_closed_endpoint(url, token):
+        try:
+            return request(url, token=token)
+        except SystemExit as error:
+            if error.code not in {"core_connection_refused", "core_host_unreachable"}:
+                raise
+            return 0, b""
     for path, body in (("/models", None), ("/chat/completions", json.dumps({
         "model": MODEL, "messages": [{"role": "user", "content": "Reply exactly with WIRECLAW_TASK10_INFERENCE_OK."}],
         "max_tokens": 16, "temperature": 0}).encode())):
@@ -347,7 +370,9 @@ CORE_INTEGRATION_PROBE = textwrap.dedent(
             or type(usage.get("total_tokens")) is not int
             or usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]):
         raise SystemExit("chat_request_failed")
-    wrong_status, wrong_body = request("http://host.docker.internal:8768/v1/models", token=key)
+    wrong_status, wrong_body = request_expected_closed_endpoint(
+        "http://host.docker.internal:8768/v1/models", key
+    )
     try:
         wrong_ids = [item.get("id") for item in json.loads(wrong_body).get("data", []) if isinstance(item, dict)]
     except (ValueError, UnicodeError, AttributeError):
@@ -542,7 +567,44 @@ def _readiness_and_listener(root: Path) -> int:
     return identity["pid"]
 
 
-def _verify_metal_runtime_log() -> None:
+def _start_metal_sample(helper_pid: int):
+    """Sample the real helper during Core inference when launch logs are unavailable."""
+    fd, sample_path = tempfile.mkstemp(prefix="wireclaw-task10-metal-", suffix=".sample")
+    os.close(fd)
+    try:
+        process = subprocess.Popen(
+            ["/usr/bin/sample", str(helper_pid), "5", "1", "-file", sample_path],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        Path(sample_path).unlink(missing_ok=True)
+        return None
+    return process, Path(sample_path)
+
+
+def _finish_metal_sample(sample) -> str:
+    if sample is None:
+        return ""
+    process, sample_path = sample
+    try:
+        if process.wait(timeout=15) != 0:
+            return ""
+        if sample_path.stat().st_size > MAX_METAL_SAMPLE_BYTES:
+            return ""
+        return sample_path.read_text(encoding="utf-8", errors="replace")
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    finally:
+        if process.poll() is None:
+            process.kill()
+            with suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=2)
+        sample_path.unlink(missing_ok=True)
+
+
+def _verify_metal_runtime_log(sample_text: str = "") -> None:
     state = (
         Path.home()
         / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
@@ -555,7 +617,7 @@ def _verify_metal_runtime_log() -> None:
         contents = state.read_text(encoding="utf-8", errors="replace")
     except OSError:
         raise ValueError("ai_runtime_log_unavailable") from None
-    validate_metal_log(contents)
+    validate_metal_runtime_evidence(contents, sample_text)
 
 
 def _run_core_integration(root: Path) -> None:
@@ -669,19 +731,25 @@ def run_task10_integration(root: Path) -> int:
     start_attempted = False
     failure = None
     helper_pid = None
+    metal_sample = None
     try:
         start_attempted = True
         started = _run_hidden([str(root / "launch/macos/start.sh")], cwd=root, timeout=600)
         if started is None or started.returncode:
             raise ValueError("ai_launcher_start_failed")
         helper_pid = _readiness_and_listener(root)
+        metal_sample = _start_metal_sample(helper_pid)
         _run_core_integration(root)
-        _verify_metal_runtime_log()
+        sample_text = _finish_metal_sample(metal_sample)
+        metal_sample = None
+        _verify_metal_runtime_log(sample_text)
     except ValueError as error:
         failure = str(error)
     except (OSError, subprocess.SubprocessError):
         failure = "ai_integration_command_failed"
     finally:
+        if metal_sample is not None:
+            _finish_metal_sample(metal_sample)
         if start_attempted:
             try:
                 _stop_and_verify(root, helper_pid)
