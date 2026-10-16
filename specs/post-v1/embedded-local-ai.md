@@ -211,17 +211,23 @@ Implementation may use different concrete flags when required by the pinned llam
 
 ## 10. Process ownership and shutdown
 
-Wireclaw must manage only the AI process it starts.
+Wireclaw must manage only the fixed packaged AI helper it starts. Process signaling belongs to the trusted, unsandboxed macOS launcher; a later sandboxed `WireclawAI` invocation must not signal a child launched by an earlier sandbox invocation.
 
-Required behavior:
+The trust split is:
 
-- store runtime PID/state only beneath the Wireclaw user runtime directory;
-- state files are user-only readable/writable;
-- before stopping a recorded PID, verify it is the Wireclaw-managed packaged runtime rather than blindly signaling a reused PID;
-- never use broad process-name kills such as `pkill llama-server`;
-- repeated start is idempotent and cannot create duplicate managed AI servers;
-- normal Wireclaw stop terminates the managed AI process with bounded graceful shutdown followed by a bounded forced termination only for that verified process;
-- AI shutdown must not delete case data or model assets.
+- **Trusted unsandboxed host launcher:** owns the authoritative host lifecycle receipt and independently verifies the expected helper before signaling. It sends `SIGTERM`, waits for a bounded graceful interval, and re-verifies identity immediately before any `SIGKILL`. It never signals by process name and never treats runtime/model-controlled identity as sufficient authority.
+- **Trusted sandboxed `WireclawAI`:** verifies and launches only the fixed helper, records sandbox-private lifecycle state, and may return bounded non-secret identity/status receipts. It performs no cross-invocation process signaling.
+- **Untrusted sandboxed `llama-server`:** cannot access or modify the trusted host lifecycle receipt and cannot control signal targets. It remains denied Docker Engine and Wireclaw host authority.
+
+The authoritative host receipt is stored beneath the existing trusted Wireclaw user runtime directory with mode `0600`. It contains only the helper PID, process-start identity, fixed expected executable identity/path, and expected helper hash/signature identity where applicable. It contains no AI key, host-bridge token, runtime/model-controlled arbitrary path, or arguments. The sandboxed helper must be unable to read or modify it. Sandbox-private lifecycle state is not authoritative for host signaling because the compromised helper shares that sandbox/container domain.
+
+Before `SIGTERM`, the host launcher verifies the PID, process-start identity, fixed packaged helper executable identity/path, and expected hash/signature identity where applicable. If the graceful interval expires, it rereads and freshly verifies those same fields immediately before `SIGKILL`. Any failed or mismatched check means no signal and fail-closed handling. It never uses broad process-name kills such as `pkill llama-server`.
+
+`WireclawAI start` remains short-lived: after fixed verified launch and initial identity verification, it records sandbox-private state and returns a bounded internal identity receipt to the trusted launcher. The launcher independently verifies that launch identity and writes its own authoritative host receipt. `WireclawAI status` is a fresh sandbox invocation that verifies private state and may return a bounded internal identity/status receipt, but does not signal. The host may use that receipt only to recover missing or stale host state; before signaling, it must independently verify every identity field against the fixed packaged helper. If exact identity cannot be established, it fails closed and does not signal.
+
+The trusted launcher stop sequence is: load the authoritative host receipt; independently verify the exact helper; send `SIGTERM`; wait a bounded interval; if still alive, reread and reverify immediately; send `SIGKILL` only if the exact identity still matches; confirm exit; invoke `WireclawAI stop` for sandbox-private cleanup; then remove the host receipt. `WireclawAI stop` is cleanup-only and must never call `kill()`. It verifies that the recorded helper is no longer alive as the managed identity; if it remains alive, stop returns a bounded failure and preserves private key/lifecycle state. Only confirmed helper exit permits private cleanup. Repeated start/stop remains idempotent and cannot create duplicate managed AI servers. AI shutdown must not delete case data or model assets.
+
+Numeric-PID signal delivery retains a narrow PID-reuse time-of-check/time-of-use residual between the final identity verification and signal delivery. Do not claim atomic identity-bound signaling. Moving signaling to the already-trusted launcher does not grant the runtime authority over the launcher, Docker Engine, the host bridge, or unrelated processes.
 
 ## 11. Release layout
 
@@ -322,7 +328,7 @@ If any of the following occurs, Wireclaw must preserve deterministic investigati
 - malformed JSON;
 - unsupported evidence reference;
 - repeated capability request;
-- model process crash;
+- model process crash or verified lifecycle-stop failure;
 - resource-limit termination.
 
 The application must not silently present a rules-only report as AI-assisted. Effective provider mode/status is visible in health/capability state and persisted investigation metadata.

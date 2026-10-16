@@ -2,7 +2,7 @@
 
 Date: 2026-10-16
 
-Status: **Design approved; implementation planning not started**
+Status: **Design approved; implementation planning not started; lifecycle amendment approved after native EPERM evidence**
 
 ## Purpose and authority
 
@@ -155,12 +155,15 @@ The command accepts no other subcommands or arguments. `start` requires the key 
 - verifies the signed bundle, runtime/model manifests, artifact hashes, fixed executable identity, and manifest-declared model identity before execution;
 - writes the key into private container state;
 - constructs the fixed `llama-server` arguments and starts the sandbox-inheriting helper;
-- records the child PID, process start identity, and executable identity in private state;
+- records the child PID, process-start identity, and executable identity in sandbox-private state;
+- returns a bounded INTERNAL identity receipt to the trusted host launcher containing only PID, process-start identity, fixed helper executable identity, and expected helper hash/signature identity as needed;
 - reports bounded launch success/failure without exposing the key.
 
-`status` reads only private lifecycle state, verifies the current child PID/start/executable identity, and returns a small bounded machine-readable process state, such as `{"state":"running"}` or `{"state":"unavailable","reason":"process_missing"}`. It exposes no secret, PID, or path data beyond what current public status permits. It does not probe the HTTP endpoint because the sandbox has no `network.client` entitlement. After `start`, the trusted outer launcher performs the authenticated `/models` identity check against the manifest-declared model and verifies Docker-core reachability, then publishes the existing public ready/unavailable state.
+The internal identity receipt contains no AI key, bridge token, arbitrary runtime-controlled path, or model-controlled data. The trusted host launcher independently verifies the launch identity and writes its own authoritative mode-0600 host lifecycle receipt.
 
-`stop` reads private lifecycle state, verifies process identity before sending `TERM`, re-verifies immediately before any `KILL`, removes stale state without signaling a mismatched process, and removes the private key state. Its output is bounded and contains no secret.
+`status` is a fresh sandbox invocation. It reads only sandbox-private lifecycle state, verifies the current child PID/start/executable identity, and returns a small bounded INTERNAL machine-readable verified status/identity receipt. It performs NO signaling. The receipt may be used only as recovery input when trusted host state is missing or stale. The host launcher must independently verify every identity field against the fixed packaged helper before signaling; if exact identity cannot be established, it fails closed and does not signal. Status exposes no secret or arbitrary path. It does not probe the HTTP endpoint because the sandbox has no `network.client` entitlement. After `start`, the trusted outer launcher performs the authenticated `/models` identity check against the manifest-declared model and verifies Docker-core reachability, then publishes the existing public ready/unavailable state.
+
+`stop` is cleanup-only and MUST NOT call `kill()`. It reads private lifecycle state and verifies that the recorded helper is no longer alive as the managed identity. If the expected helper remains alive, it returns bounded failure and preserves private key/lifecycle state. Only after confirmed helper exit may it remove sandbox-private key and lifecycle state. Its output is bounded and contains no secret.
 
 The wrapper is responsible for:
 
@@ -169,9 +172,9 @@ The wrapper is responsible for:
 - constructing fixed `llama-server` arguments;
 - accepting the key only on fd 3 and creating its private sandbox copy;
 - launching the embedded helper and verifying its initial process identity;
-- recording child PID and start/executable identity;
+- recording child PID and start/executable identity in sandbox-private state and returning the bounded internal identity receipt;
 - reporting bounded launch success/failure through the approved launcher boundary;
-- orderly shutdown and safe process-loss recovery.
+- private-state cleanup after the host launcher confirms child exit.
 
 The helper's stdout/stderr must not carry the key. Redirect runtime diagnostics to bounded private logging within the sandbox container; the trusted launcher reports only normalized readiness/failure states. The authenticated `/models` identity is checked by the trusted outer launcher after `start`, not by the sandboxed wrapper.
 
@@ -179,15 +182,17 @@ It is not a general command runner, file broker, arbitrary argument pass-through
 
 ## 10. Process ownership and shutdown
 
-Use the **child-persists-after-start** lifecycle model. `WireclawAI start` is a short-lived operation: it verifies and launches the helper, records its identity in sandbox-private state, reports launch success/failure, then exits. The `llama-server` child remains running in its inherited App Sandbox after the start process exits. Later `WireclawAI status` and `WireclawAI stop` invocations use the same signed bundle identity and private container state to inspect and control that child. This avoids a resident supervisor or separate control channel. The inherited sandbox remains attached to the child independently of the creator's lifetime.
+Use the **child-persists-after-start** lifecycle model. `WireclawAI start` is short-lived: it verifies and launches the fixed helper, records sandbox-private lifecycle state, verifies initial child identity, returns a bounded internal identity receipt to the trusted launcher, then exits. The child remains in its inherited App Sandbox. A fresh `WireclawAI status` verifies sandbox-private state and returns a bounded internal status/identity receipt. Neither status nor any later sandbox invocation signals the child.
 
-An Apple-Silicon macOS disposable feasibility probe using an ad-hoc signed App Sandbox wrapper/helper verified the required mechanics: fd 3 carried one bounded key record into `start` without printing it; the sandboxed wrapper wrote the key in its private container; the inherited-sandbox helper opened that key file using its fixed `--api-key-file` argument and remained alive after `start` exited; a later `status` invocation verified PID/start/executable identity; and a later `stop` invocation terminated the child and removed private state. The probe used a test helper, not production `llama-server`, and ad-hoc signatures; production signing and runtime behavior remain subject to the qualification requirements below.
+Native evidence established that a separate signed status invocation verified helper identity, while a separate signed stop invocation received `EPERM` from `kill(pid, SIGTERM)`. Therefore fresh-sandbox signaling is not a supported lifecycle mechanism. No entitlement or architecture relaxation was attempted. Unified sandbox-denial log access was unavailable; do not claim a denial log was captured. An enclosing-command-sandbox pre-start `SIGABRT` is a distinct harness limitation and is not the evidence for this process-control decision.
 
-Preserve verify-before-signal safety. Private process state identifies the child `llama-server` by PID, process start identity, and signed bundle executable identity/path. The `start` invocation is identified by its running process while it executes but is not persisted as a lifecycle owner after it exits. The normal launcher invokes only the three fixed operations; no general IPC or process-control service is introduced.
+The trusted unsandboxed macOS launcher owns signaling and an authoritative host lifecycle receipt. The receipt is stored beneath the existing trusted Wireclaw user runtime directory with mode `0600` and contains only PID, process-start identity, fixed expected executable identity/path, and expected helper hash/signature identity where applicable. It contains no AI key, bridge token, or runtime/model-controlled arbitrary paths/arguments. The sandboxed helper must not be able to read or modify it. Sandbox-private lifecycle state is not authoritative for host signaling because a compromised helper shares that sandbox/container domain.
 
-Shutdown sends `TERM` only after verifying the recorded child identity. If the bounded graceful period expires, re-check identity immediately before any `KILL`. A stale or mismatched PID is discarded without signaling the process it currently names. Retain the documented PID-reuse residual; do not claim atomic PID identity protection.
+For stop, the host launcher loads the authoritative receipt and independently verifies PID, process-start identity, fixed packaged helper executable identity/path, and expected hash/signature where applicable before `SIGTERM`. It waits a bounded graceful interval. If the helper remains alive, it rereads and freshly verifies all identity fields immediately before `SIGKILL`; any mismatch or failed check means no signal and fail-closed handling. It confirms exit, invokes `WireclawAI stop` only for private cleanup, then removes the host receipt. `WireclawAI stop` never calls `kill()` and preserves private key/lifecycle state if the expected helper remains alive.
 
-Process-loss handling must publish AI unavailable, preserve deterministic analysis, and support restart through the trusted wrapper with readiness re-established before reporting recovery.
+If host receipt is missing or stale, the launcher may request the bounded verified status receipt as recovery input. The host independently verifies every field against the fixed packaged helper before signaling. If exact identity cannot be established, it fails closed and does not signal. Runtime/model-controlled identity is never sufficient authority, and no general process-control API is introduced. Never signal by process name or disturb a mismatched/reused process.
+
+Retain the numeric-PID time-of-check/time-of-use residual between final identity verification and signal delivery; do not claim atomic identity-bound signaling. Process-loss handling publishes AI unavailable, preserves deterministic analysis, and supports restart only after trusted-launcher identity and readiness checks succeed.
 
 ## 11. Signing, Hardened Runtime, and notarization
 
@@ -227,7 +232,7 @@ The implementation and native qualification must provide evidence for:
 - absence of `network.client` and broad filesystem entitlements;
 - inherited fd 3 key bootstrap, bounded input validation, no key in argv/stdout/stderr, same key in the Core process environment, and removal/rotation across stop/restart;
 - identical per-launch key delivery to the Core process environment, no key in Wireclaw persistence/output sinks, and accurate inspection of Docker-managed container environment metadata;
-- fixed `start`/`status`/`stop` interface, rejection of extra commands/arguments, helper survival after `start` exits, and later-invocation status/stop behavior;
+- fixed `start`/`status`/`stop` interface, rejection of extra commands/arguments, helper survival after `start` exits, bounded status receipts, and cleanup-only stop behavior;
 - manifest, hash, model-identity, and executable verification before launch;
 - fixed executable and argument construction;
 - denial of discovered Docker Engine sockets and Wireclaw data/state/host-bridge state;
@@ -236,10 +241,12 @@ The implementation and native qualification must provide evidence for:
 - normal-operation loopback-only `127.0.0.1:8767` binding, no Compose publication, and Docker-core reachability;
 - authenticated model identity, chat, and Metal inference;
 - startup, shutdown, process loss to deterministic fallback, and restart to ready;
-- safe PID ownership checks, including stale/mismatched PID behavior;
+- host receipt mode/content and sandbox inaccessibility; wrapper status/stop never signaling; cleanup refusal while helper is live; host PID/start/executable/hash verification before TERM and fresh re-verification before KILL; status-assisted recovery with independent host verification; stale/mismatched/reused PID preservation; and repeated-stop idempotence;
 - continued evidence, capability, recommendation, privacy, and deterministic-fallback protections.
 
 The vmnetd check is diagnostic/informational only. Do not infer capability from `connect()` and do not send undocumented protocol messages.
+
+Native lifecycle evidence: a separate signed status invocation verified process identity; a separate signed stop invocation received `EPERM` from `kill(pid, SIGTERM)`. No entitlement relaxation was attempted, and unified sandbox-denial log access was unavailable. An enclosing-command-sandbox pre-start `SIGABRT` is a separate harness limitation, not evidence for this lifecycle decision.
 
 ## 15. Qualification reset
 

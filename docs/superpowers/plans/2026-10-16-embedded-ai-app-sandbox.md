@@ -18,8 +18,8 @@
 - The only public wrapper operations are `WireclawAI start`, `WireclawAI status`, and `WireclawAI stop`, with no extra arguments or general IPC/XPC/daemon.
 - Key wire representation is 64 lowercase hexadecimal characters plus one newline, transferred to `start` only over inherited anonymous fd 3; the same per-launch value enters Core only through the trusted Compose/Core process environment.
 - The helper binds `127.0.0.1:8767`; Compose does not publish that port; Core uses `http://host.docker.internal:8767/v1`.
-- `start` exits while the sandboxed helper persists; later `status`/`stop` invocations verify PID, process-start identity, and executable identity.
-- Verify before TERM and re-verify immediately before KILL. Retain the documented PID-reuse residual; make no atomic identity claim.
+- `start` exits while the sandboxed helper persists. Fresh `status` verifies and reports identity; fresh sandbox `stop` never signals. The trusted unsandboxed launcher owns authoritative host lifecycle state and all TERM/KILL signaling.
+- Verify PID, process-start identity, fixed executable identity/path, and expected helper hash/signature before TERM; re-read and re-verify immediately before KILL. Retain the numeric-PID reuse TOCTOU residual; make no atomic identity claim.
 - Recreate Core whenever its key changes and remove the Core container on shutdown. Rotate/remove sandbox-private key state at stop/restart.
 - Every sandbox, signature, manifest, hash, startup, readiness, network, or process failure leaves deterministic analysis usable.
 - Preserve Qwen3-4B-Instruct-2507 Q4_K_M; context <= 16384, generation <= 2048, one inference slot, and `--cache-ram 0`.
@@ -64,7 +64,7 @@ Use **Go 1.23** for the headless `WireclawAI` executable. This is the repository
 ## Review Focus
 
 1. **Secret-bearing process boundaries:** partial, oversized, malformed, missing, and extra fd-3 input; assert the key is absent from argv, wrapper/helper environment, stdout, stderr, `.env`, Compose files, persisted host state, SQLite, reports, artifacts, browser responses, prompts, and logs. Core's Docker-managed environment metadata is the one documented exception; the sandboxed runtime must be unable to reach Docker Engine to inspect it.
-2. **Lifecycle state substitution:** stale/replaced state, PID reuse, PID/start/executable mismatch, symlinked state, executable/model/bundle substitution, and stop races must never signal a mismatched process or launch an unverified artifact.
+2. **Lifecycle state substitution:** host receipt tampering, sandbox read/write attempts, stale/replaced state, PID reuse, PID/start/executable/hash mismatch, symlinked state, executable/model/bundle substitution, and stop races must never signal a mismatched process or launch an unverified artifact. Sandbox-private state is not authoritative for host signaling.
 3. **Overbroad signed capabilities:** inspect entitlements embedded in the signed parent/helper and reject any extra capability, including `network.client`, home/Docker/Wireclaw filesystem access, or user-selected-file access.
 4. **Isolation versus required connectivity:** prove Docker Engine sockets, Wireclaw state and bridge state are denied; outbound Core/bridge/arbitrary targets fail; packaged assets and bounded private writes work; authenticated Core-to-runtime requests still work on the fixed loopback path.
 5. **Failure and recovery:** invalid signature/manifest/hash/model, absent bundle, helper startup/readiness failure, process loss, and restart must each preserve deterministic analysis and report only normalized public status.
@@ -141,6 +141,8 @@ Use **Go 1.23** for the headless `WireclawAI` executable. This is the repository
 
 **Interfaces:** `start` uses only the verified fixed `llama-server` and model. It supplies fixed arguments: `--model`, approved model alias, `--host 127.0.0.1`, `--port 8767`, `--ctx-size 16384`, approved batch values, `--n-predict 2048`, `--parallel 1`, sandbox-private `--api-key-file`, `--no-agent`, `--no-webui`, and `--cache-ram 0`. The helper inherits the App Sandbox, serves on numeric loopback, and persists after `start` exits.
 
+**Completion record:** This fixed verified helper launch is complete and committed as `00fa8e3` (`feat: launch fixed sandboxed inference helper`). Its recorded child identity remains valid launch input for trusted host receipt creation. It does not authorize a later sandboxed `WireclawAI stop` invocation to signal the helper.
+
 - [ ] Add failing tests that capture executable/argv/environment, assert all fixed options and no user-controlled args, verify helper key is a file path rather than key value, and prove child remains alive after the start invocation exits.
 - [ ] Add invalid helper/model/bundle substitution tests that assert no process is launched.
 - [ ] Run focused tests and confirm failure before implementation.
@@ -148,19 +150,19 @@ Use **Go 1.23** for the headless `WireclawAI` executable. This is the repository
 - [ ] Run wrapper tests and a disposable ad-hoc signed macOS parent/helper probe; verify helper survives parent exit and signed helper carries only `app-sandbox` plus `inherit`.
 - [ ] Commit `feat: launch fixed sandbox-inheriting inference helper`.
 
-### Task 6: Status, stop, recovery, and PID safety
+### Task 6: Status, cleanup-only stop, host signaling, recovery, and PID safety
 
 **Files:**
 - Modify: wrapper state/status/stop code and macOS process identity binding.
 - Test: wrapper lifecycle/process tests.
 
-**Interfaces:** `status` returns only bounded running/unavailable state after PID/start/executable verification. `stop` removes stale mismatched state without signaling; TERM follows a successful identity check, and KILL requires a fresh immediate identity check. Stop removes/rotates key and lifecycle state. PID reuse remains a documented residual.
+**Interfaces:** `status` verifies sandbox-private state and returns a bounded non-secret internal status/identity receipt; it never signals. `stop` is cleanup-only, never calls `kill()`, and refuses to clear key/lifecycle state while the expected helper remains alive. The trusted unsandboxed launcher owns an authoritative mode-0600 host receipt, verifies the exact fixed helper before TERM and freshly before KILL, confirms exit, invokes wrapper cleanup, then removes host state. A verified status receipt may support recovery only after independent host verification against the fixed packaged helper. Unverifiable or mismatched state fails closed. Task 5's recorded identity remains launch input for host receipt creation, not authority for a later sandboxed stop to signal.
 
-- [ ] Add failing tests for stale/replaced state, PID/start/executable mismatch, PID reuse, symlinked state, TERM timeout, KILL recheck, mismatched-process preservation, idempotent stop, process-loss status, and later fresh-invocation status/stop.
+- [ ] Add failing tests for host receipt mode/contents and absence of key/token; sandbox denial of host receipt read/write; bounded status identity receipt; status never signaling; wrapper stop never signaling; cleanup refusal while helper is live; cleanup after confirmed exit; host TERM requiring PID/start/executable/hash verification; TERM mismatch preserving unrelated process; fresh KILL re-verification; identity change between TERM and KILL preventing KILL; stale host receipt fail-closed behavior; recovery from missing host receipt through verified status with independent fixed-helper checks; unverified recovery never signaling; repeated stop safe/idempotent; and documented PID-reuse residual.
 - [ ] Run the focused tests and confirm mismatched identities currently fail.
-- [ ] Implement process identity capture/check using macOS process metadata and the signed bundle executable identity; do not rely on PID alone.
-- [ ] Run wrapper tests plus a native start-exit/status/stop sequence from separate invocations; verify no mismatched process receives a signal.
-- [ ] Commit `feat: verify sandbox runtime ownership for status and stop`.
+- [ ] Implement bounded status receipt and cleanup-only wrapper stop. Implement host-side receipt creation/validation and signaling in the trusted launcher; never accept runtime/model-controlled identity as sufficient authority.
+- [ ] Run tests plus native start-exit/status/launcher-stop/cleanup sequence. Verify the launcher stops only the verified helper, wrapper status/stop cannot signal, and mismatched/reused processes survive.
+- [ ] Commit `feat: separate sandbox status from trusted host signaling`.
 
 ### Task 7: macOS launcher integration
 
@@ -168,12 +170,14 @@ Use **Go 1.23** for the headless `WireclawAI` executable. This is the repository
 - Modify: `launch/macos/common.sh`, `launch/macos/start.sh`, `launch/macos/stop.sh`.
 - Test: `tests/packaging/test_macos_launchers.py`.
 
-**Interfaces:** The launcher generates one key per start, invokes only the fixed wrapper operation with an anonymous pipe duplicated to fd 3 and a key-free allowlisted wrapper environment, asks `status` for process identity, then performs authenticated `/models` and listener checks from the trusted outer launcher. Failure selects deterministic fallback.
+**Interfaces:** The launcher generates one key per start, invokes only the fixed wrapper operation with an anonymous pipe duplicated to fd 3 and a key-free allowlisted wrapper environment, writes the authoritative mode-0600 host lifecycle receipt from independently verified start identity, asks `status` for bounded identity/status and recovery only, and performs authenticated `/models` and listener checks from the trusted outer launcher. The outer launcher owns TERM/KILL and invokes wrapper `stop` only for cleanup after confirmed child exit. No general process-control API is introduced. Failure selects deterministic fallback.
 
-- [ ] Add failing launcher tests proving only the three wrapper operations are called, fd 3 carries the key without key in argv/stdout/stderr/wrapper environment, readiness uses authenticated expected-model identity, and no direct `llama-server` launch remains in Bash.
+Native evidence driving this task boundary: a separate signed status invocation verified process identity; a separate signed stop invocation received `EPERM` at `kill(pid, SIGTERM)`. Thus fresh-sandbox signaling is unsupported; no entitlement relaxation was attempted, and unified sandbox-denial log access was unavailable. The enclosing-command-sandbox pre-start `SIGABRT` is a distinct harness limitation and is not this evidence.
+
+- [ ] Add failing launcher tests proving only the three fixed wrapper operations are called, fd 3 carries the key without key in argv/stdout/stderr/wrapper environment, host receipt is mode 0600/non-secret/sandbox-inaccessible, readiness uses authenticated expected-model identity, host TERM/KILL require independent identity checks, and no direct `llama-server` launch remains in Bash.
 - [ ] Add fallback tests for missing app, signature/verification failure, helper startup failure, lost readiness, and process loss.
 - [ ] Run `pytest tests/packaging/test_macos_launchers.py -q`; verify expected failure.
-- [ ] Replace direct lifecycle/key/PID management with the wrapper boundary while preserving bridge behavior, normalized diagnostics, and authenticated bounded no-proxy/no-redirect readiness checks.
+- [ ] Replace direct runtime launch/key handling with the wrapper boundary while retaining trusted host receipt and verified signaling in the outer launcher; preserve bridge behavior, normalized diagnostics, and authenticated bounded no-proxy/no-redirect readiness checks.
 - [ ] Run focused tests plus `bash -n launch/macos/*.sh`; confirm PASS.
 - [ ] Commit `feat: integrate sandboxed AI lifecycle with macOS launcher`.
 
@@ -200,11 +204,11 @@ Use **Go 1.23** for the headless `WireclawAI` executable. This is the repository
 
 **Interfaces:** Tests inspect entitlements from the signed code, run probes inside the actual inherited sandbox, and emit bounded PASS/FAIL evidence without secrets. vmnetd is informational only; no protocol messages are sent.
 
-- [ ] Add failing native checks for denied discovered Docker Engine sockets (including both known Docker Desktop paths), Wireclaw data/state and bridge-state reads, Core API/bridge/arbitrary outbound connections, and inability to obtain a bridge grant.
+- [ ] Add failing native checks for denied discovered Docker Engine sockets (including both known Docker Desktop paths), Wireclaw data/state and bridge-state reads, trusted host lifecycle receipt read/write, Core API/bridge/arbitrary outbound connections, and inability to obtain a bridge grant.
 - [ ] Add positive checks for packaged model/runtime/private-key reads, bounded private temp/runtime writes, successful inbound Core request, and normal listener exactly `127.0.0.1:8767` with no wildcard/LAN listener.
 - [ ] Add signed-entitlement checks that reject broader-than-approved parent/helper entitlements and confirm helper inheritance; assert no network.client.
 - [ ] Run native tests on Apple Silicon with an ad-hoc signed disposable bundle; confirm the new security checks fail before implementation and do not classify vmnetd by connect alone.
-- [ ] Implement the minimum test probes needed to exercise the real parent/helper sandbox; retain logs without credential content.
+- [ ] Implement the minimum test probes needed to exercise the real parent/helper sandbox; prove compromised/runtime-controlled state cannot select a host signal target; retain logs without credential content.
 - [ ] Re-run native isolation tests; record `network.server` listener scope as the approved residual, not a test failure.
 - [ ] Commit `test: prove embedded runtime sandbox boundaries`.
 
@@ -274,7 +278,7 @@ Only after exact-head CI passes, freeze a new immutable candidate from that exac
 
 - Sections 1–3: Tasks 1, 4, 5, 9, and 11 define the signed headless bundle, parent/helper entitlements, inherited sandbox, no client entitlement, and signed-code inspection.
 - Sections 4–7 and residuals: Tasks 5, 9, and 10 test fixed normal loopback, Docker path, outbound denial, filesystem boundaries, vmnetd informational treatment, and post-compromise `network.server` residual without overclaiming kernel confinement.
-- Sections 8–10: Tasks 3, 5–8 preserve fd 3, one per-launch key, no prohibited secret sinks, fixed commands, child persistence, fresh-invocation lifecycle, process identity, TERM/KILL checks, Core recreation/removal, and Docker metadata caveat.
+- Sections 8–10: Tasks 3, 5–9 preserve fd 3, one per-launch key, no prohibited secret sinks, fixed commands, child persistence, fresh status and cleanup-only stop, authoritative sandbox-inaccessible host receipt, host-owned verified TERM/KILL, recovery verification, Core recreation/removal, and Docker metadata caveat. Task 5 remains complete at `00fa8e3`; its recorded identity is launch input for host receipt creation, not authority for a later sandboxed stop to signal.
 - Sections 11–13: Task 11 separates ad-hoc CI from Developer ID/Hardened Runtime/notarization; Tasks 5, 10, and 12 preserve Metal/model limits and deterministic fallback.
 - Sections 14–15: Tasks 9–13 cover sandbox probes, security and Gate 7 protections, immutable new candidate, exact-head CI, three unchanged benchmark runs, all 16 EAI.14 checks, and fresh reviews.
 - Section 17: No sandbox-exec production design, separate user, network extension, Docker Desktop mutation, general broker, downloads, runtime selection, hot swap, external model server, or App Store requirement is introduced.
