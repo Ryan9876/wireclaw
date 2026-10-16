@@ -20,8 +20,17 @@ type observedReader struct {
 
 func (r *observedReader) Close() error { r.closed = true; return nil }
 
+func testPrivateRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
 func TestKeyRecordAndDescriptorClosure(t *testing.T) {
-	dir := t.TempDir()
+	dir := testPrivateRoot(t)
 	r := &observedReader{Reader: strings.NewReader(testKey + "\n")}
 	path, err := bootstrapKey(r, dir)
 	if err != nil || !r.closed {
@@ -50,7 +59,7 @@ func TestKeyRecordRejectsInvalidInput(t *testing.T) {
 		"too_long": strings.Repeat("a", 10000), "empty": "",
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir := filepath.Join(t.TempDir(), "private")
+			dir := filepath.Join(testPrivateRoot(t), "private")
 			r := &observedReader{Reader: strings.NewReader(record)}
 			_, err := bootstrapKey(r, dir)
 			if err == nil || !r.closed {
@@ -67,16 +76,39 @@ func TestKeyRecordRejectsInvalidInput(t *testing.T) {
 }
 
 func TestKeyMissingFDAndWriteFailure(t *testing.T) {
-	if _, err := bootstrapKey(nil, t.TempDir()); err == nil {
+	if _, err := bootstrapKey(nil, testPrivateRoot(t)); err == nil {
 		t.Fatal("missing fd accepted")
 	}
 	r := &observedReader{Reader: strings.NewReader(testKey + "\n")}
-	path := filepath.Join(t.TempDir(), "occupied")
+	path := filepath.Join(testPrivateRoot(t), "occupied")
 	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := bootstrapKey(r, path); err == nil || !r.closed {
 		t.Fatal("write failure accepted or fd left open")
+	}
+}
+
+func TestSymlinkedPrivateAncestorRejectedBeforeWriting(t *testing.T) {
+	root := testPrivateRoot(t)
+	container := filepath.Join(root, "Library", "Containers", bundleID, "Data")
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(container, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(container, "Library")); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(container, "Library", "Application Support", "WireclawAI")
+	r := &observedReader{Reader: strings.NewReader(testKey + "\n")}
+	if _, err := bootstrapKey(r, dir); err == nil || !r.closed {
+		t.Fatal("symlinked ancestor accepted or fd remained open")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "Application Support", "WireclawAI", "api-key")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("key was written outside the app container")
 	}
 }
 
@@ -120,7 +152,7 @@ func TestFD3BootstrapKeepsSentinelOutOfProcessSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(t.TempDir(), "private")
+	dir := filepath.Join(testPrivateRoot(t), "private")
 	cmd := exec.Command(os.Args[0], "-test.run=^TestFD3BootstrapKeepsSentinelOutOfProcessSurfaces$")
 	cmd.ExtraFiles = []*os.File{readEnd}
 	cmd.Env = append(os.Environ(), "WIRECLAW_TEST_FD3_CHILD=1", "WIRECLAW_TEST_PRIVATE_DIR="+dir)

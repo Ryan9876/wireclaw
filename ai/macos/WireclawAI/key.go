@@ -103,12 +103,24 @@ func bootstrapKey(fd io.ReadCloser, dir string) (string, error) {
 }
 
 func ensurePrivateDir(dir string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	info, err := os.Lstat(dir)
-	if err != nil || !info.IsDir() {
+	if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
 		return errKeyState
+	}
+	// Walk each ancestor without following an existing symlink. MkdirAll
+	// would follow an intermediate link before the final Lstat could see it.
+	current := string(filepath.Separator)
+	for _, part := range strings.Split(strings.TrimPrefix(dir, current), current) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(current, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+				return err
+			}
+			info, err = os.Lstat(current)
+		}
+		if err != nil || !info.IsDir() {
+			return errKeyState
+		}
 	}
 	return os.Chmod(dir, 0o700)
 }
