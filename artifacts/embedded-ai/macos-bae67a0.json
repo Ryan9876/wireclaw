@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "stage": "EAI.14",
+  "source_sha": "bae67a0996afa7ca34c2890295e72de0acd02221",
+  "verdict": "PASS",
+  "candidate": {
+    "archive_sha256": "747f90fdb45828db59651780b0d6834d803a9db7c9d5da7c9880a7e4ffdd305d",
+    "archive_size_bytes": 2671237120,
+    "bundle_tree_sha256": "41a8d6f063d36450eb0df7d696e64a80d2f163101f982638a86dbd2bd9d0ad3a",
+    "core_image_id": "sha256:708e7d806ef5a3bd794bec94c34e18ed6b3eb75c7f48f5bd3e48d9d2c728639d",
+    "core_image_archive_sha256": "fd2f9d6f93e39139a232eadc2b72685273d1711bb469c8b10791d74a8b69b983",
+    "compiled_web_tree_sha256": "752056be9b75616354a57ffd9e0f92e9b87a48ca390d7d0f245ade3c6350b706",
+    "macos_arm64_bridge_sha256": "f1a64583b0331129458f6f9c4ee56c43e012d725312d915e0482465d7b126964",
+    "model_sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc",
+    "model_size_bytes": 2497279040,
+    "llama_server_sha256": "84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034",
+    "runtime_manifest_sha256": "5cafd2ecfa0d76a484ca1c5a9d039588c1832e7f26175d46417f1f361f40a93c",
+    "model_manifest_sha256": "a40ec1543fc060a2fb5513fb3cedeea045fc048f06ce68acc3efafb9c5f1c285",
+    "release_metadata_sha256": "e243c0232bede6350fc62ed0f3a418874ffa680f86feb5bf51ad7dae532f7c64"
+  },
+  "runtime_policy": {
+    "platform": "macOS arm64",
+    "listen_address": "127.0.0.1:8767",
+    "authentication": "required; ephemeral per launch",
+    "model_alias": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+    "context_size": 16384,
+    "generation_cap": 2048,
+    "parallel_slots": 1,
+    "metal": true,
+    "mmap": "enabled by llama.cpp default; --no-mmap absent from launch arguments",
+    "prompt_cache_ram_mib": 0,
+    "argv_includes": ["--cache-ram", "0"],
+    "agent_tools": false,
+    "web_ui": false,
+    "network_downloads": false
+  },
+  "checks": [
+    {"id": "EAI.14.1", "status": "PASS", "evidence": "Fresh extraction launched the packaged arm64 llama-server from the release tree; no separately installed model runtime was used. See native/bae67a0/runtime-process-final.txt and runtime-loaded-files-final.txt."},
+    {"id": "EAI.14.2", "status": "PASS", "evidence": "Model and runtime were already in the frozen archive; first launch loaded those local paths, runtime policy sets network_downloads=false, and the running process exposed only its loopback listener. No full-host packet capture was made."},
+    {"id": "EAI.14.3", "status": "PASS", "evidence": "Archive, tree, release metadata, model/runtime manifests, model, llama-server, core image/archive, compiled web tree, bridge, and runtime-file hashes match the freeze record. Final recheck is native/bae67a0/candidate-integrity-final.json."},
+    {"id": "EAI.14.4", "status": "PASS", "evidence": "Packaged start.sh automatically started the managed runtime on fresh launch and after recovery; launcher exit was 0 and ready state was observed."},
+    {"id": "EAI.14.5", "status": "PASS", "evidence": "Runtime manifest records Metal enabled; lsof confirmed the live packaged process loaded the packaged libggml-metal.dylib and Q4_K_M model. mmap is enabled by the runtime default; --no-mmap was absent."},
+    {"id": "EAI.14.6", "status": "PASS", "evidence": "Packaged Docker core reached host.docker.internal:8767; core logs record authenticated /v1/models HTTP 200 and real /v1/chat/completions HTTP 200."},
+    {"id": "EAI.14.7", "status": "PASS", "evidence": "Playwright rendered Local embedded AI ready against the packaged UI; see native/bae67a0/case-run/ui.png and ui-final-text.txt."},
+    {"id": "EAI.14.8", "status": "PASS", "evidence": "Packaged high-RTT case 9d93d258ad994f0a94f8fe4effb778b0 completed model_assisted with tcp.rtt and 17 evidence records. Original capture SHA-256 was 72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c; evidence capture SHA-256 was 57d3283c32204a84e9ea212581b09907cbcb512b603238f45230ee9e5cedb7a9."},
+    {"id": "EAI.14.9", "status": "PASS", "evidence": "Playwright invoked Full Capture and Evidence Capture in native Wireshark; both opened with tcp.stream == 0. See native/bae67a0/case-run/ui-actions.json and screenshots."},
+    {"id": "EAI.14.10", "status": "PASS", "evidence": "Only verified packaged llama-server PID 62750 was terminated. Before a new case, /api/health reported unavailable/runtime-unhealthy; the core remained healthy and a high-RTT case completed model_fallback with tcp.rtt."},
+    {"id": "EAI.14.11", "status": "PASS", "evidence": "Restart through packaged start.sh restored ready status. The original case remained COMPLETE with the same capture SHA, 17 evidence records, and evidence-capture SHA."},
+    {"id": "EAI.14.12", "status": "PASS", "evidence": "Packaged stop/start preserved the original case row and capture/evidence files; final API reads, model hash, and runtime hash match the pre-restart record."},
+    {"id": "EAI.14.13", "status": "PASS", "evidence": "The release extraction, HOME, and data root all included spaces: /private/tmp/Wireclaw EAI14 bae67a0. Launch and analysis succeeded."},
+    {"id": "EAI.14.14", "status": "PASS", "evidence": "A deliberate loopback listener caused port-in-use and rules_only fallback; packaged stop left the fixture alive, then it was explicitly terminated and port 8767 verified free. A separate archive extraction with one model byte changed reported invalid-bundle and retained healthy deterministic tcp.rtt analysis."},
+    {"id": "EAI.14.15", "status": "PASS", "evidence": "lsof recorded the core on 127.0.0.1:28795, bridge on 127.0.0.1:28796, and llama-server on 127.0.0.1:8767; no LAN listener was observed."},
+    {"id": "EAI.14.16", "status": "PASS", "evidence": "All three official benchmark runs had zero privacy leaks and all safety counters zero. Live authenticated status/model probes passed; the ephemeral token was absent from health, capabilities, case/report data, UI text, and persisted logs; key/runtime permissions were 0600/0700."}
+  ],
+  "async_probe_regression": {
+    "status": "PASS",
+    "real_async_capture_executed": true,
+    "logs_scanned": 13,
+    "unawaited_probe_warning_count": 0,
+    "runtime_warning_count": 0,
+    "evidence": "native/bae67a0/async-probe-warning-audit.json"
+  },
+  "qualification_endpoints": {
+    "core": "http://127.0.0.1:28795",
+    "bridge": "http://127.0.0.1:28796",
+    "embedded_ai": "http://127.0.0.1:8767/v1"
+  },
+  "implementation_ci": {
+    "workflow_run": 38829585198,
+    "url": "https://github.com/Ryan9876/wireclaw/actions/runs/38829585198",
+    "head_sha": "bae67a0996afa7ca34c2890295e72de0acd02221",
+    "conclusion": "success",
+    "jobs": ["linux-full", "docker-release", "bridge-platform (ubuntu-24.04)", "bridge-platform (macos-14)", "bridge-platform (windows-2025)"]
+  },
+  "environment": {
+    "macos": "27.0.1 arm64",
+    "xcode": "27.0 (27A266a)",
+    "docker": "29.8.2",
+    "docker_compose": "5.6.0",
+    "wireshark": "4.6.9",
+    "reference_host": "Apple M3 Pro; 36 GiB RAM"
+  },
+  "limitations": [
+    "No full-host packet capture was made for no-download verification; evidence is the bundled offline model/runtime, network_downloads=false policy, local packaged executable/model paths, and observed loopback-only runtime sockets.",
+    "The packaged launcher redirects host-bridge stdout/stderr to /dev/null. macOS unified-log access was denied, so no bridge log text was available; process identity, loopback listener, and /v1/health evidence were preserved separately."
+  ]
+}

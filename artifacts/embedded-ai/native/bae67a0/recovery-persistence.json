@@ -1,0 +1,54 @@
+{
+  "health_status": 200,
+  "health": {
+    "status": "ok",
+    "gate": 7,
+    "provider_mode": "embedded_local",
+    "ai": {
+      "effective_provider_mode": "embedded_local",
+      "embedded_availability": "ready",
+      "model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+      "failure_code": null
+    }
+  },
+  "case_status": 200,
+  "case_state": "COMPLETE",
+  "case_capture_sha": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+  "report_status": 200,
+  "report_reasoning": {
+    "accepted_categories": [
+      "tcp.rtt"
+    ],
+    "embedded_availability": "ready",
+    "embedded_failure_code": null,
+    "mode": "model_assisted",
+    "model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+    "provider_mode": "embedded_local",
+    "rejected_proposals": 0,
+    "status": "complete",
+    "steps": 1
+  },
+  "evidence_status": 200,
+  "evidence_count": 17,
+  "artifact_status": 200,
+  "artifact": {
+    "id": "90d9303924104146a7a4074dc1dec2a0",
+    "kind": "evidence_capture",
+    "sha256": "57d3283c32204a84e9ea212581b09907cbcb512b603238f45230ee9e5cedb7a9",
+    "bytes": 600,
+    "parent_sha": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c"
+  },
+  "db_sha256": "6eb69af0d3febd59d865eedcdb50de8b58ae63a8f92a9aaa0a74c118686e5b1c",
+  "db_case_row": [
+    "9d93d258ad994f0a94f8fe4effb778b0",
+    "COMPLETE",
+    "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c"
+  ],
+  "case_files": {
+    "data/cases/9d93d258ad994f0a94f8fe4effb778b0/analyzer/cases/72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c/original/capture": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+    "data/cases/9d93d258ad994f0a94f8fe4effb778b0/evidence/7b93a0d1dfd24f70bf58e96db73f367a.pcapng": "57d3283c32204a84e9ea212581b09907cbcb512b603238f45230ee9e5cedb7a9"
+  },
+  "model_sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc",
+  "runtime_sha256": "84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034",
+  "persistence_matches": true
+}

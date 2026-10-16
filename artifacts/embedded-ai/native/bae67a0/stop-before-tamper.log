@@ -1,0 +1,7 @@
+ Container wireclaw-release-wireclaw-core-1 Stopping 
+ Container wireclaw-release-wireclaw-core-1 Stopped 
+ Container wireclaw-release-wireclaw-core-1 Removing 
+ Container wireclaw-release-wireclaw-core-1 Removed 
+ Network wireclaw-release_default Removing 
+ Network wireclaw-release_default Removed 
+Wireclaw stopped. Case data was preserved.

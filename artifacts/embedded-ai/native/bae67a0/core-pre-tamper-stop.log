@@ -1,0 +1,3 @@
+HTTP Request: GET http://host.docker.internal:8767/v1/models "HTTP/1.1 200 OK"
+HTTP Request: GET http://host.docker.internal:8767/v1/models "HTTP/1.1 200 OK"
+HTTP Request: GET http://host.docker.internal:8767/v1/models "HTTP/1.1 200 OK"

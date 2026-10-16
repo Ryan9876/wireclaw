@@ -1,0 +1,11 @@
+{
+  "health_status": 200,
+  "health": {
+    "status": "ok",
+    "wireshark_available": true
+  },
+  "process": "65932     1 Thu Oct 15 21:10:06 2026     /private/tmp/Wireclaw EAI14 bae67a0/home/Library/Application Support/Wireclaw/bin/wireclaw-host-bridge --data-root /private/tmp/Wireclaw EAI14 bae67a0/data --listen 127.0.0.1:28796 --app-port 28795 --wireshark /Applications/Wireshark.app/Contents/MacOS/Wireshark",
+  "listener": "COMMAND     PID   USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nwireclaw- 65932 smithr    3u  IPv4 0x84cea17da7579d30      0t0  TCP 127.0.0.1:28796 (LISTEN)\n",
+  "stdout_stderr": "not captured: packaged start.sh redirects bridge output to /dev/null",
+  "pass": true
+}
