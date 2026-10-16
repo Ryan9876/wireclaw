@@ -165,7 +165,7 @@ def test_signing_modes_preserve_order_and_set_runtime_by_mode(
                 "Authority=Developer ID Application: Wireclaw (TESTTEAM)\n"
                 "TeamIdentifier=TESTTEAM\nflags=0x10000(runtime)"
                 if runtime
-                else "flags=0x0"
+                else "Signature=adhoc\nflags=0x0"
             )
         elif "--entitlements" in argv:
             role = "helper" if argv[-1].endswith("llama-server") else "parent"
@@ -254,7 +254,7 @@ def test_signing_adds_and_verifies_helper_framework_runpath(tmp_path: Path) -> N
         elif "--verify" in argv:
             output = ""
         elif "-dv" in argv:
-            output = "flags=0x0"
+            output = "Signature=adhoc\nflags=0x0"
         elif "--entitlements" in argv:
             role = "helper" if argv[-1].endswith("llama-server") else "parent"
             entitlements = HELPER_ENTITLEMENTS if role == "helper" else PARENT_ENTITLEMENTS
@@ -293,6 +293,21 @@ def test_signing_rejects_missing_developer_id_and_invalid_signature(tmp_path: Pa
 
     with pytest.raises(ValueError, match="signature verification failed"):
         verify_signed_bundle(app, mode="adhoc", runner=failed_verify)
+
+
+def test_adhoc_verifier_rejects_non_adhoc_signature_identity(tmp_path: Path) -> None:
+    app = tmp_path / "WireclawAI.app"
+    macos = app / "Contents/MacOS"
+    macos.mkdir(parents=True)
+    (macos / "WireclawAI").write_bytes(b"wrapper")
+    (macos / "llama-server").write_bytes(b"helper")
+
+    def non_adhoc(argv, **_kwargs):
+        details = "Signature=Apple Development: Example (TEAM)\nflags=0x0" if "-dv" in argv else ""
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": details})()
+
+    with pytest.raises(ValueError, match="ad-hoc signature identity missing"):
+        verify_signed_bundle(app, mode="adhoc", runner=non_adhoc)
 
 
 def test_production_verifier_rejects_nested_team_id_mismatch(tmp_path: Path) -> None:

@@ -3,10 +3,12 @@ import errno
 import hashlib
 import importlib.util
 import json
+import plistlib
 import tarfile
 import urllib.error
 import urllib.parse
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -165,26 +167,85 @@ def test_package_refuses_unverified_or_incomplete_ai_stage(tmp_path, failure):
 def test_candidate_archive_is_deterministic_for_identical_release_tree(tmp_path):
     release = tmp_path / "wireclaw-release"
     (release / "ai/models").mkdir(parents=True)
+    app = release / "ai/WireclawAI.app"
+    (app / "Contents/MacOS").mkdir(parents=True)
+    (app / "Contents/Info.plist").write_bytes(
+        plistlib.dumps({"CFBundleIdentifier": "com.wireclaw.WireclawAI"})
+    )
+    (app / "Contents/MacOS/WireclawAI").write_bytes(b"wrapper")
+    (app / "Contents/MacOS/llama-server").write_bytes(b"helper")
     (release / "README.md").write_text("candidate", encoding="utf-8")
     (release / "ai/models/model.gguf").write_bytes(b"fixture-model")
     (release / "release-metadata.json").write_text(
-        json.dumps({"source_sha": "a" * 40, "embedded_ai": {"model": {"id": "fixture"}}}),
+        json.dumps(
+            {
+                "source_sha": "a" * 40,
+                "embedded_ai": {"model": {"id": "fixture"}},
+                "signed_app": {
+                    "path": "ai/WireclawAI.app",
+                    "bundle_identifier": "com.wireclaw.WireclawAI",
+                    "signing_mode": "adhoc",
+                    "signing_identity": "-",
+                    "hardened_runtime": False,
+                    "developer_id_validation": "NOT_RUN",
+                    "production_qualification": "NOT_RUN",
+                    "notarization": "NOT_RUN",
+                    "stapling": "NOT_RUN",
+                    "model_sha256": "b" * 64,
+                    "llama_server_sha256": "c" * 64,
+                },
+            }
+        ),
         encoding="utf-8",
     )
     freezer = module_at(ROOT / "scripts/freeze_embedded_ai_candidate.py", "freeze_candidate")
-    first = freezer.freeze_candidate(release, tmp_path / "candidate-one.tar")
-    second = freezer.freeze_candidate(release, tmp_path / "candidate-two.tar")
+
+    def codesign_runner(argv, **_kwargs):
+        target = Path(argv[-1])
+        if "--verify" in argv:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if "-dv" in argv:
+            identifier = (
+                "llama-server" if target.name == "llama-server" else "com.wireclaw.WireclawAI"
+            )
+            details = f"Identifier={identifier}\nSignature=adhoc\nTeamIdentifier=not set\nflags=0x0"
+            return SimpleNamespace(returncode=0, stdout="", stderr=details)
+        entitlements = (
+            {"com.apple.security.app-sandbox": True, "com.apple.security.inherit": True}
+            if target.name == "llama-server"
+            else {
+                "com.apple.security.app-sandbox": True,
+                "com.apple.security.network.server": True,
+            }
+        )
+        return SimpleNamespace(
+            returncode=0, stdout=plistlib.dumps(entitlements).decode(), stderr=""
+        )
+
+    first = freezer.freeze_candidate(
+        release, tmp_path / "candidate-one.tar", codesign_runner=codesign_runner
+    )
+    second = freezer.freeze_candidate(
+        release, tmp_path / "candidate-two.tar", codesign_runner=codesign_runner
+    )
     assert first["archive_sha256"] == second["archive_sha256"]
     assert (tmp_path / "candidate-one.tar").read_bytes() == (
         tmp_path / "candidate-two.tar"
     ).read_bytes()
     assert first["source_sha"] == "a" * 40
     assert first["embedded_ai"]["model"]["id"] == "fixture"
+    assert first["signed_app"]["bundle_identifier"] == "com.wireclaw.WireclawAI"
     with tarfile.open(tmp_path / "candidate-one.tar") as archive:
         assert archive.getnames() == [
             "wireclaw-release",
             "wireclaw-release/README.md",
             "wireclaw-release/ai",
+            "wireclaw-release/ai/WireclawAI.app",
+            "wireclaw-release/ai/WireclawAI.app/Contents",
+            "wireclaw-release/ai/WireclawAI.app/Contents/Info.plist",
+            "wireclaw-release/ai/WireclawAI.app/Contents/MacOS",
+            "wireclaw-release/ai/WireclawAI.app/Contents/MacOS/WireclawAI",
+            "wireclaw-release/ai/WireclawAI.app/Contents/MacOS/llama-server",
             "wireclaw-release/ai/models",
             "wireclaw-release/ai/models/model.gguf",
             "wireclaw-release/release-metadata.json",
@@ -562,6 +623,30 @@ def test_task10_reports_missing_release_model_as_not_run_and_core_probe_is_secre
     assert sentinel not in qualifier.CORE_INTEGRATION_PROBE
     assert "WIRECLAW_PROVIDER_API_KEY" in qualifier.CORE_INTEGRATION_PROBE
     assert "host.docker.internal:8768" in qualifier.CORE_INTEGRATION_PROBE
+
+
+def test_task10_integration_requires_two_completed_cycles_without_shared_state_deletion(tmp_path):
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "task10_cycle_count")
+    calls = []
+
+    def completed_cycle(_root):
+        calls.append("completed")
+        return None
+
+    assert qualifier._run_task10_cycles(tmp_path, cycle_runner=completed_cycle) is None
+    assert calls == ["completed", "completed"]
+
+    calls.clear()
+
+    def failed_cycle(_root):
+        calls.append("failed")
+        return "ai_launcher_start_failed"
+
+    assert (
+        qualifier._run_task10_cycles(tmp_path, cycle_runner=failed_cycle)
+        == "ai_launcher_start_failed"
+    )
+    assert calls == ["failed"]
 
 
 def test_linux_ci_host_gateway_alias_is_opt_in_and_test_only():

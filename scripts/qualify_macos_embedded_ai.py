@@ -690,44 +690,7 @@ def _stop_and_verify(root: Path, helper_pid: int | None) -> None:
         raise ValueError("ai_core_container_cleanup_failed")
 
 
-def run_task10_integration(root: Path) -> int:
-    """Run the real packaged app/Core path, or report a precise NOT_RUN reason."""
-    root = Path(root).resolve()
-    if sys.platform != "darwin" or platform.machine() != "arm64":
-        print("Task 10 packaged inference/Core integration: NOT_RUN (macOS arm64 required)")
-        return 0
-    missing = task10_release_prerequisite(root)
-    if missing:
-        print(f"Task 10 packaged inference/Core integration: NOT_RUN ({missing})")
-        return 0
-    app = root / "ai/WireclawAI.app"
-    try:
-        verify_signed_app_bundle(app)
-        verify_packaged_model_identity(app)
-    except ValueError as error:
-        print(f"Task 10 packaged inference/Core integration: FAIL ({error})", file=sys.stderr)
-        return 1
-
-    for argv in (["docker", "info"], ["docker", "compose", "version"]):
-        check = _run_hidden(list(argv), cwd=root, timeout=30)
-        if check is None or check.returncode:
-            print(
-                "Task 10 packaged inference/Core integration: NOT_RUN (Docker Engine unavailable)"
-            )
-            return 0
-    active = _run_hidden(
-        _compose(root, "ps", "-q", "wireclaw-core"),
-        cwd=root,
-        timeout=30,
-        capture_stdout=True,
-    )
-    if active is None or active.returncode or active.stdout_truncated:
-        print("Task 10 packaged inference/Core integration: NOT_RUN (Compose state unavailable)")
-        return 0
-    if active.stdout.strip():
-        print("Task 10 packaged inference/Core integration: NOT_RUN (Core is already running)")
-        return 0
-
+def _run_task10_cycle(root: Path) -> str | None:
     start_attempted = False
     failure = None
     helper_pid = None
@@ -755,6 +718,57 @@ def run_task10_integration(root: Path) -> int:
                 _stop_and_verify(root, helper_pid)
             except ValueError as error:
                 failure = str(error)
+    return failure
+
+
+def _run_task10_cycles(root: Path, cycle_runner=_run_task10_cycle) -> str | None:
+    """Exercise initial launch and a fresh launch after confirmed cleanup."""
+    for _ in range(2):
+        failure = cycle_runner(root)
+        if failure:
+            return failure
+    return None
+
+
+def run_task10_integration(root: Path) -> int:
+    """Run two real packaged app/Core cycles, or report a precise NOT_RUN reason."""
+    root = Path(root).resolve()
+    if sys.platform != "darwin" or platform.machine() != "arm64":
+        print("Task 10 packaged inference/Core integration: NOT_RUN (macOS arm64 required)")
+        return 0
+    missing = task10_release_prerequisite(root)
+    if missing:
+        print(f"Task 10 packaged inference/Core integration: NOT_RUN ({missing})")
+        return 0
+    app = root / "ai/WireclawAI.app"
+    try:
+        verify_signed_app_bundle(app)
+        verify_packaged_model_identity(app)
+    except ValueError as error:
+        print(f"Task 10 packaged inference/Core integration: FAIL ({error})", file=sys.stderr)
+        return 1
+
+    for argv in (["docker", "info"], ["docker", "compose", "version"]):
+        check = _run_hidden(list(argv), cwd=root, timeout=30)
+        if check is None or check.returncode:
+            print(
+                "Task 10 packaged inference/Core integration: NOT_RUN (Docker Engine unavailable)"
+            )
+            return 0
+    active = _run_hidden(
+        _compose(root, "ps", "-aq", "wireclaw-core"),
+        cwd=root,
+        timeout=30,
+        capture_stdout=True,
+    )
+    if active is None or active.returncode or active.stdout_truncated:
+        print("Task 10 packaged inference/Core integration: NOT_RUN (Compose state unavailable)")
+        return 0
+    if active.stdout.strip():
+        print("Task 10 packaged inference/Core integration: NOT_RUN (Core container state exists)")
+        return 0
+
+    failure = _run_task10_cycles(root)
     if failure:
         print(f"Task 10 packaged inference/Core integration: FAIL ({failure})", file=sys.stderr)
         return 1

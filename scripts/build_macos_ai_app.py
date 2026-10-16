@@ -338,6 +338,8 @@ def verify_signed_bundle(app: Path, *, mode: str, runner=subprocess.run) -> None
         has_runtime = bool(re.search(r"flags=.*\bruntime\b", detail_text))
         if details.returncode or has_runtime != (mode == "developer-id"):
             raise ValueError("signature Hardened Runtime mode mismatch")
+        if mode == "adhoc" and not re.search(r"^Signature=adhoc$", detail_text, flags=re.MULTILINE):
+            raise ValueError("ad-hoc signature identity missing")
         if mode == "developer-id":
             authority = re.search(r"^Authority=(.+)$", detail_text, flags=re.MULTILINE)
             if not authority or not authority.group(1).startswith("Developer ID Application:"):
