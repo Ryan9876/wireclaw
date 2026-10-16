@@ -168,8 +168,13 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
         if "--sign" in call:
             assert "--options" in call and call[call.index("--options") + 1] == "runtime"
     helper_call = next(call for call in calls if call[-1] == str(macos / "llama-server"))
+    library_call = next(
+        call for call in calls if call[-1] == str(frameworks / "libggml-metal.dylib")
+    )
     wrapper_call = next(call for call in calls if call[-1] == str(macos / "WireclawAI"))
     parent_call = next(call for call in calls if call[-1] == str(app))
+    assert "--identifier" in library_call
+    assert library_call[library_call.index("--identifier") + 1] == "libggml-metal.dylib"
     assert "--entitlements" in helper_call
     assert "--identifier" in helper_call
     assert helper_call[helper_call.index("--identifier") + 1] == "llama-server"

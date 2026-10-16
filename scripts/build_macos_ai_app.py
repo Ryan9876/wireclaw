@@ -218,7 +218,16 @@ def sign_bundle(
         signing_options.append("--timestamp")
     for target in runtime_files:
         _run_codesign(
-            ["/usr/bin/codesign", "--force", *signing_options, "--sign", identity, str(target)],
+            [
+                "/usr/bin/codesign",
+                "--force",
+                *signing_options,
+                "--identifier",
+                target.name,
+                "--sign",
+                identity,
+                str(target),
+            ],
             runner,
         )
     _run_codesign(
