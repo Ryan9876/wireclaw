@@ -211,12 +211,14 @@ Native evidence driving this task boundary: a separate signed status invocation 
 
 **Interfaces:** The exact same 64-hex key consumed by wrapper fd 3 is passed only as `WIRECLAW_PROVIDER_API_KEY` in the trusted Compose/Core process environment. It never enters `.env`, Compose source/config output, argv, or persisted host state. Core is force-recreated on key rotation; shutdown removes the Core container, not its case data.
 
-- [ ] Add failing tests that capture fd-3 input and Compose process environment and assert byte-for-byte key equality, absence from argv/files/logs, forced recreation after rotation, and container removal at stop.
-- [ ] Add a Compose metadata test documenting the intentional Docker-managed process-environment metadata exposure and that the Compose file publishes no AI port.
-- [ ] Run the focused tests and confirm they fail on existing persisted/configured key handoff.
-- [ ] Implement per-command environment injection, `--force-recreate` (or equivalent proved recreation), and `down --remove-orphans`; ensure probe commands receive the same transient key without printing it.
-- [ ] Run Compose/launcher tests and verify changing the key recreates Core while preserving case data.
-- [ ] Commit `feat: rotate embedded key with Core container lifecycle`.
+- [x] Add failing tests that capture fd-3 input and Compose process environment and assert byte-for-byte key equality, absence from argv/files/logs, forced recreation after rotation, and container removal at stop.
+- [x] Add a Compose metadata test documenting the intentional Docker-managed process-environment metadata exposure and that the Compose file publishes no AI port.
+- [x] Run the focused tests and confirm they fail on existing persisted/configured key handoff.
+- [x] Implement per-command environment injection, `--force-recreate` (or equivalent proved recreation), and `down --remove-orphans`; ensure probe commands receive the same transient key without printing it.
+- [x] Run Compose/launcher tests and verify changing the key recreates Core while preserving case data.
+- [x] Commit `feat: rotate embedded key with Core container lifecycle`.
+
+Compose resolves the transient key in memory to create Core. The launcher invokes only `config --quiet` and emits or writes no expanded config. Docker-managed container environment metadata retains the key for the container lifetime; this is the documented exception.
 
 ### Task 9: Native App Sandbox isolation tests
 

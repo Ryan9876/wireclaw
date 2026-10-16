@@ -17,6 +17,7 @@ wireclaw_ai_model_id=wireclaw-qwen3-4b-instruct-2507-q4_k_m
 wireclaw_ai_base_url=http://host.docker.internal:8767/v1
 wireclaw_ai_host_receipt_file="${wireclaw_runtime_dir}/ai-host-receipt.json"
 wireclaw_ai_lifecycle_tool="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/ai_lifecycle.py"
+wireclaw_compose_api_key=''
 
 # Task 6 trusted-host primitives. Task 7 wires these into start/stop order.
 # create/recover read the bounded internal wrapper receipt on stdin.
@@ -300,6 +301,7 @@ configure_provider_environment() {
     export WIRECLAW_PROVIDER_BASE_URL="${2:-}"
     export WIRECLAW_PROVIDER_MODEL="${3:-}"
     export WIRECLAW_PROVIDER_API_KEY="${4:-}"
+    wireclaw_compose_api_key="${4:-}"
     export WIRECLAW_EMBEDDED_AI_STATUS=not_applicable
     return 0
   fi
@@ -308,7 +310,8 @@ configure_provider_environment() {
     export WIRECLAW_PROVIDER_MODE=embedded_local
     export WIRECLAW_PROVIDER_BASE_URL="$wireclaw_ai_base_url"
     export WIRECLAW_PROVIDER_MODEL="$wireclaw_ai_model_id"
-    export WIRECLAW_PROVIDER_API_KEY="$wireclaw_ai_start_key"
+    wireclaw_compose_api_key="$wireclaw_ai_start_key"
+    unset WIRECLAW_PROVIDER_API_KEY
     export WIRECLAW_EMBEDDED_AI_STATUS=ready
     return 0
   fi
@@ -317,15 +320,68 @@ configure_provider_environment() {
   export WIRECLAW_PROVIDER_MODE=none
   export WIRECLAW_PROVIDER_BASE_URL=
   export WIRECLAW_PROVIDER_MODEL=
-  export WIRECLAW_PROVIDER_API_KEY=
+  wireclaw_compose_api_key=''
+  unset WIRECLAW_PROVIDER_API_KEY
   export WIRECLAW_EMBEDDED_AI_STATUS="unavailable:$failure"
+}
+
+# Keep the per-launch embedded key out of the launcher and unrelated child
+# environments. Compose receives it only in the environment of its own process.
+compose_with_provider_environment() {
+  release_dir="$1"
+  env_file="$2"
+  shift 2
+  WIRECLAW_PROVIDER_API_KEY="$wireclaw_compose_api_key" \
+    docker compose --env-file "$env_file" -f "$release_dir/compose.yaml" "$@"
+}
+
+compose_start_core() {
+  release_dir="$1"
+  env_file="$2"
+  configured_mode="$3"
+  if ! compose_with_provider_environment "$release_dir" "$env_file" config --quiet >/dev/null 2>&1; then
+    return 1
+  fi
+  if compose_with_provider_environment "$release_dir" "$env_file" up -d --force-recreate >/dev/null 2>&1; then
+    if wait_for_core_ready "$release_dir" "$env_file"; then return 0; fi
+    failure_reason=readiness-failed
+  else
+    failure_reason=start-failed
+  fi
+  if [ "$configured_mode" = embedded_local ] && [ "${WIRECLAW_PROVIDER_MODE:-}" = embedded_local ]; then
+    compose_with_provider_environment "$release_dir" "$env_file" rm -sf wireclaw-core >/dev/null 2>&1 || true
+    stop_ai || return 1
+    ai_unavailable "$failure_reason"
+    configure_provider_environment embedded_local
+    if compose_with_provider_environment "$release_dir" "$env_file" up -d --force-recreate >/dev/null 2>&1; then
+      if wait_for_core_ready "$release_dir" "$env_file"; then return 0; fi
+    fi
+  fi
+  compose_with_provider_environment "$release_dir" "$env_file" rm -sf wireclaw-core >/dev/null 2>&1 || true
+  return 1
+}
+
+wait_for_core_ready() {
+  release_dir="$1"
+  env_file="$2"
+  attempts="${3:-45}"
+  attempt=0
+  while [ "$attempt" -lt "$attempts" ]; do
+    container_id="$(compose_with_provider_environment "$release_dir" "$env_file" ps -q wireclaw-core 2>/dev/null || true)"
+    if [ -n "$container_id" ] && [ "$(docker inspect --format '{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)" = healthy ]; then
+      return 0
+    fi
+    sleep 2
+    attempt=$((attempt + 1))
+  done
+  return 1
 }
 
 probe_ai_from_core() {
   release_dir="$1"
   env_file="$2"
   probe_script='import json,os,urllib.request; req=urllib.request.Request("http://host.docker.internal:8767/v1/models",headers={"Authorization":"Bearer "+os.environ["WIRECLAW_PROVIDER_API_KEY"]}); opener=urllib.request.build_opener(urllib.request.ProxyHandler({})); body=json.load(opener.open(req,timeout=3)); expected="wireclaw-qwen3-4b-instruct-2507-q4_k_m"; raise SystemExit(0 if any(item.get("id")==expected for item in body.get("data",[])) else 1)'
-  docker compose --env-file "$env_file" -f "$release_dir/compose.yaml" run --rm --no-deps --entrypoint python wireclaw-core -c "$probe_script" >/dev/null 2>&1
+  compose_with_provider_environment "$release_dir" "$env_file" run --rm --no-deps --entrypoint python wireclaw-core -c "$probe_script" >/dev/null 2>&1
 }
 
 load_release_image() {

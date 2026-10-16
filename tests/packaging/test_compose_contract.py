@@ -73,6 +73,42 @@ def test_packaged_env_example_defaults_to_embedded_ai_without_token():
     assert "WIRECLAW_PROVIDER_API_KEY" not in env
 
 
+def test_compose_key_is_runtime_environment_only_and_docker_metadata_is_documented():
+    import os
+
+    source = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    assert 'WIRECLAW_PROVIDER_API_KEY: "${WIRECLAW_PROVIDER_API_KEY:-}"' in source
+    assert "WIRECLAW_PROVIDER_API_KEY" not in (ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "Docker-managed" in source and "retains the value for the container lifetime." in source
+    assert "Compose resolves this mapping in memory to create Core" in source
+    config = rendered_compose()
+    core = config["services"]["wireclaw-core"]
+    assert core["environment"]["WIRECLAW_PROVIDER_API_KEY"] == ""
+    assert all(port["published"] != "8767" for port in core.get("ports", []))
+    assert "http://host.docker.internal:8767/v1" in (
+        (ROOT / "launch/macos/common.sh").read_text(encoding="utf-8")
+    )
+
+    generated_config = ROOT / "compose.rendered.yaml"
+    assert not generated_config.exists()
+    compose_env = {
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ["HOME"],
+        "WIRECLAW_PROVIDER_API_KEY": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    }
+    result = subprocess.run(
+        ["docker", "compose", "--env-file", ".env.example", "-f", "compose.yaml", "config", "--quiet"],
+        cwd=ROOT,
+        env=compose_env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert result.stderr == ""
+    assert not generated_config.exists()
+
+
 def test_launcher_embedded_environment_is_ephemeral_and_has_rules_only_fallback(tmp_path):
     import os
 
@@ -85,9 +121,9 @@ def test_launcher_embedded_environment_is_ephemeral_and_has_rules_only_fallback(
     env_file = tmp_path / ".env"
     env_file.write_text("WIRECLAW_PROVIDER_MODE=embedded_local\n", encoding="utf-8")
     script = (
-        '. "$1/launch/macos/common.sh"; configure_provider_environment embedded_local "$2"; '
+        '. "$1/launch/macos/common.sh"; wireclaw_ai_start_key=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef; configure_provider_environment embedded_local "$2"; '
         'printf "%s\\n%s\\n%s\\n%s\\n%s\\n" "$WIRECLAW_PROVIDER_MODE" "$WIRECLAW_PROVIDER_BASE_URL" '
-        '"$WIRECLAW_PROVIDER_MODEL" "$WIRECLAW_PROVIDER_API_KEY" "$WIRECLAW_EMBEDDED_AI_STATUS"'
+        '"$WIRECLAW_PROVIDER_MODEL" "${WIRECLAW_PROVIDER_API_KEY:-}" "$WIRECLAW_EMBEDDED_AI_STATUS"'
     )
     result = subprocess.run(
         ["bash", "-c", script, "test", str(ROOT), str(env_file)],
@@ -101,7 +137,7 @@ def test_launcher_embedded_environment_is_ephemeral_and_has_rules_only_fallback(
         "embedded_local",
         "http://host.docker.internal:8767/v1",
         "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
-        "ephemeral-test-token",
+        "",
         "ready",
     ]
     assert env_file.read_text() == "WIRECLAW_PROVIDER_MODE=embedded_local\n"

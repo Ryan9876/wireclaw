@@ -19,6 +19,9 @@ services:
       WIRECLAW_PROVIDER_MODE: "${WIRECLAW_PROVIDER_MODE:-none}"
       WIRECLAW_PROVIDER_BASE_URL: "${WIRECLAW_PROVIDER_BASE_URL:-}"
       WIRECLAW_PROVIDER_MODEL: "${WIRECLAW_PROVIDER_MODEL:-}"
+      # The launcher uses `config --quiet`; it never emits or writes expanded config.
+      # Compose resolves this mapping in memory to create Core; Docker-managed
+      # container environment metadata retains the value for the container lifetime.
       WIRECLAW_PROVIDER_API_KEY: "${WIRECLAW_PROVIDER_API_KEY:-}"
       WIRECLAW_EMBEDDED_AI_STATUS: "${WIRECLAW_EMBEDDED_AI_STATUS:-not_applicable}"
     security_opt:

@@ -39,6 +39,8 @@ def make_fake_tools(root: Path, *, daemon=True, compose=True, busy_port=""):
         f'  "info "*) exit {0 if daemon else 1} ;;\n'
         '  "image inspect") [ -f "$WIRECLAW_TEST_IMAGE_STATE" ] && cat "$WIRECLAW_TEST_IMAGE_STATE" || exit 1 ;;\n'
         '  "load --input") printf "%s\\n" "$WIRECLAW_TEST_IMAGE_ID" > "$WIRECLAW_TEST_IMAGE_STATE"; printf "%s\\n" "$*" >> "$WIRECLAW_TEST_DOCKER_LOG" ;;\n'
+        '  *"inspect --format"*) printf "healthy\\n" ;;\n'
+        '  *" ps -q wireclaw-core"*) printf "fake-container\\n" ;;\n'
         '  *) printf "%s\\n" "$*" >> "$WIRECLAW_TEST_DOCKER_LOG"; exit 0 ;;\n'
         "esac\n",
         encoding="utf-8",
@@ -164,8 +166,207 @@ def test_ai_stop_without_state_is_idempotent(tmp_path):
 
 def test_start_loads_and_uses_the_packaged_image_without_rebuilding():
     assert 'load_release_image "$RELEASE_DIR"' in START_SOURCE
-    assert 'compose.yaml" up -d;' in START_SOURCE
+    assert 'compose_start_core "$RELEASE_DIR" "$ENV_FILE" "$PROVIDER_MODE"' in START_SOURCE
+    assert 'up -d --force-recreate' in (LAUNCH / "common.sh").read_text(encoding="utf-8")
     assert "up -d --build" not in START_SOURCE
+
+
+def test_core_compose_key_handoff_rotation_and_shutdown_contract(tmp_path):
+    common = (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    start = (LAUNCH / "start.sh").read_text(encoding="utf-8")
+    stop = (LAUNCH / "stop.sh").read_text(encoding="utf-8")
+    assert "compose_with_provider_environment" in common
+    assert "compose_start_core" in start
+    assert "--force-recreate" in common
+    assert "down --remove-orphans" in stop
+    embedded_config = common.split('if [ "$status" = ready ]', 1)[1].split("probe_ai_from_core()", 1)[0]
+    assert "unset WIRECLAW_PROVIDER_API_KEY" in embedded_config
+    assert "wireclaw_compose_api_key=\"$wireclaw_ai_start_key\"" in embedded_config
+
+    persistent = tmp_path / "case-data"
+    persistent.mkdir()
+    release = make_release(
+        tmp_path,
+        f"WIRECLAW_PROVIDER_MODE=embedded_local\nWIRECLAW_DATA_ROOT={persistent}\n",
+    )
+    (release / "compose.yaml").write_bytes((ROOT / "compose.yaml").read_bytes())
+    metadata = tmp_path / "docker-containers"
+    metadata.mkdir()
+    generation = tmp_path / "docker-generation"
+    fake_env, _ = make_fake_tools(tmp_path)
+    docker = Path(fake_env["PATH"].split(":", 1)[0]) / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$*" >> "$WIRECLAW_TEST_DOCKER_ARGS"\n'
+        'printf "%s" "${WIRECLAW_PROVIDER_API_KEY-<unset>}" > "$WIRECLAW_TEST_DOCKER_ENV"\n'
+        'case " $* " in\n'
+        '  *" up "*)\n'
+        '    [ "${*}" = "${*#*--force-recreate}" ] && exit 9\n'
+        '    count=0; [ ! -f "$WIRECLAW_TEST_DOCKER_GENERATION" ] || count=$(cat "$WIRECLAW_TEST_DOCKER_GENERATION")\n'
+        '    count=$((count + 1)); printf "%s" "$count" > "$WIRECLAW_TEST_DOCKER_GENERATION"\n'
+        '    rm -f "$WIRECLAW_TEST_DOCKER_METADATA"/*\n'
+        '    cp "$WIRECLAW_TEST_DOCKER_ENV" "$WIRECLAW_TEST_DOCKER_METADATA/container-$count.env" ;;\n'
+        '  *" ps -q wireclaw-core"*) printf "container\\n" ;;\n'
+        '  *"inspect --format"*) printf "healthy\\n" ;;\n'
+        '  *" down "*) rm -f "$WIRECLAW_TEST_DOCKER_METADATA"/* ;;\n'
+        'esac\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o700)
+    case_db = persistent / "cases.sqlite3"
+    case_db.write_bytes(b"preserve")
+    assets = release / "ai/assets/model.gguf"
+    assets.parent.mkdir(parents=True)
+    assets.write_bytes(b"model")
+    fake_env.update({
+        "WIRECLAW_TEST_DOCKER_ARGS": str(tmp_path / "docker-args"),
+        "WIRECLAW_TEST_DOCKER_ENV": str(tmp_path / "docker-env"),
+        "WIRECLAW_TEST_DOCKER_METADATA": str(metadata),
+        "WIRECLAW_TEST_DOCKER_GENERATION": str(generation),
+    })
+    script = r'''
+. "$1/launch/macos/common.sh"
+wireclaw_compose_api_key="$2"
+WIRECLAW_PROVIDER_MODE=embedded_local
+compose_start_core "$1" "$1/.env" embedded_local
+'''
+    first_key = "1" * 64
+    second_key = "2" * 64
+    for key in (first_key, second_key):
+        result = run_bash(script, str(release), key, env=fake_env)
+        assert result.returncode == 0, result.stderr
+        assert key not in result.stdout + result.stderr
+        containers = list(metadata.glob("*.env"))
+        assert len(containers) == 1
+        assert containers[0].read_text(encoding="utf-8") == key
+    assert generation.read_text(encoding="utf-8") == "2"
+    args = Path(fake_env["WIRECLAW_TEST_DOCKER_ARGS"]).read_text(encoding="utf-8")
+    assert first_key not in args and second_key not in args
+    assert second_key in next(metadata.glob("*.env")).read_text(encoding="utf-8")
+    assert "--force-recreate" in args
+    env_file = release / ".env"
+    assert first_key not in env_file.read_text(encoding="utf-8")
+    assert second_key not in env_file.read_text(encoding="utf-8")
+    compose_config = subprocess.run(
+        ["docker", "compose", "--env-file", str(env_file), "-f", str(release / "compose.yaml"), "config", "--format", "json"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    configured_core = json.loads(compose_config.stdout)["services"]["wireclaw-core"]
+    assert configured_core["volumes"][0]["source"] == str(persistent)
+
+    result = subprocess.run(
+        ["bash", str(release / "launch/macos/stop.sh")],
+        cwd=release,
+        env=os.environ | fake_env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not list(metadata.glob("*.env")), "Docker-managed key metadata must be removed with the container"
+    assert "down --remove-orphans" in Path(fake_env["WIRECLAW_TEST_DOCKER_ARGS"]).read_text(encoding="utf-8")
+    assert case_db.read_bytes() == b"preserve"
+    assert assets.read_bytes() == b"model"
+
+
+def test_core_recreate_failure_retries_without_key_and_normalizes_errors(tmp_path):
+    release = make_release(tmp_path, "")
+    fake_env, _ = make_fake_tools(tmp_path)
+    metadata = tmp_path / "docker-containers"
+    metadata.mkdir()
+    marker = tmp_path / "first-up"
+    docker = Path(fake_env["PATH"].split(":", 1)[0]) / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$*" >> "$WIRECLAW_TEST_DOCKER_ARGS"\n'
+        'case " $* " in\n'
+        '  *" up "*)\n'
+        '    if [ ! -f "$WIRECLAW_TEST_FIRST_UP" ]; then\n'
+        '      printf "%s" "${WIRECLAW_PROVIDER_API_KEY-}" > "$WIRECLAW_TEST_METADATA/failed.env"\n'
+        '      printf "compose failed for key %s\\n" "${WIRECLAW_PROVIDER_API_KEY-}" >&2\n'
+        '      touch "$WIRECLAW_TEST_FIRST_UP"; exit 1\n'
+        '    fi\n'
+        '    printf "%s" "${WIRECLAW_PROVIDER_API_KEY-}" > "$WIRECLAW_TEST_METADATA/fallback.env" ;;\n'
+        '  *" rm "*) rm -f "$WIRECLAW_TEST_METADATA"/* ;;\n'
+        '  *" ps -q wireclaw-core"*) printf "container\\n" ;;\n'
+        '  *"inspect --format"*) printf "healthy\\n" ;;\n'
+        'esac\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o700)
+    fake_env.update({
+        "WIRECLAW_TEST_DOCKER_ARGS": str(tmp_path / "docker-args"),
+        "WIRECLAW_TEST_METADATA": str(metadata),
+        "WIRECLAW_TEST_FIRST_UP": str(marker),
+    })
+    runtime = Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run"
+    runtime.mkdir(parents=True)
+    key = "f" * 64
+    script = r'''
+. "$1/launch/macos/common.sh"
+wireclaw_compose_api_key="$2"
+WIRECLAW_PROVIDER_MODE=embedded_local
+stop_ai() { return 0; }
+compose_start_core "$1" "$1/.env" embedded_local
+printf 'MODE:%s KEY:%s' "$WIRECLAW_PROVIDER_MODE" "${WIRECLAW_PROVIDER_API_KEY:-}"
+'''
+    result = run_bash(script, str(release), key, env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.endswith("MODE:none KEY:")
+    assert key not in result.stdout
+    assert result.stderr == ""
+    assert (runtime / "ai-status").read_text(encoding="utf-8").strip() == "unavailable:start-failed"
+    assert list(metadata.glob("*")) == [metadata / "fallback.env"]
+    assert (metadata / "fallback.env").read_text(encoding="utf-8") == ""
+    args = Path(fake_env["WIRECLAW_TEST_DOCKER_ARGS"]).read_text(encoding="utf-8")
+    assert key not in args
+
+
+def test_core_unhealthy_embedded_start_removes_key_and_retries_rules_only(tmp_path):
+    release = make_release(tmp_path, "")
+    fake_env, _ = make_fake_tools(tmp_path)
+    metadata = tmp_path / "docker-containers"
+    metadata.mkdir()
+    docker = Path(fake_env["PATH"].split(":", 1)[0]) / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        'case " $* " in\n'
+        '  *" up "*)\n'
+        '    if [ -n "${WIRECLAW_PROVIDER_API_KEY-}" ]; then printf "%s" "$WIRECLAW_PROVIDER_API_KEY" > "$WIRECLAW_TEST_METADATA/embedded.env"; '
+        '    else printf "" > "$WIRECLAW_TEST_METADATA/rules-only.env"; fi ;;\n'
+        '  *" rm "*) rm -f "$WIRECLAW_TEST_METADATA"/* ;;\n'
+        '  *" ps -q wireclaw-core"*) printf "container\\n" ;;\n'
+        '  *"inspect --format"*)\n'
+        '    if [ -f "$WIRECLAW_TEST_METADATA/embedded.env" ]; then printf "starting\\n"; else printf "healthy\\n"; fi ;;\n'
+        'esac\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o700)
+    fake_env["WIRECLAW_TEST_METADATA"] = str(metadata)
+    fake_env["HOME"] = str(tmp_path / "home")
+    (Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run").mkdir(parents=True)
+    key = "e" * 64
+    script = r'''
+. "$1/launch/macos/common.sh"
+wireclaw_compose_api_key="$2"
+WIRECLAW_PROVIDER_MODE=embedded_local
+stop_ai() { return 0; }
+sleep() { :; }
+compose_start_core "$1" "$1/.env" embedded_local
+printf 'MODE:%s KEY:%s' "$WIRECLAW_PROVIDER_MODE" "${WIRECLAW_PROVIDER_API_KEY:-}"
+'''
+    result = run_bash(script, str(release), key, env=fake_env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.endswith("MODE:none KEY:")
+    assert key not in result.stdout + result.stderr
+    assert list(metadata.iterdir()) == [metadata / "rules-only.env"]
+    assert (metadata / "rules-only.env").read_text(encoding="utf-8") == ""
+    assert (Path(fake_env["HOME"]) / "Library/Application Support/Wireclaw/run/ai-status").read_text().strip() == "unavailable:readiness-failed"
 
 def test_start_reports_missing_docker_cli(tmp_path):
     release = make_release(tmp_path, "WIRECLAW_PORT=8765\nWIRECLAW_BRIDGE_PORT=8766\n")
@@ -353,10 +554,22 @@ def test_embedded_start_uses_fixed_wrapper_with_key_only_on_fd3_and_allowlisted_
     app = release / "ai/WireclawAI.app/Contents/MacOS/WireclawAI"
     app.parent.mkdir(parents=True)
     observed = tmp_path / "wrapper-observed.json"
+    sandbox_state = home / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    case_database = tmp_path / "cases.sqlite3"
+    import sqlite3
+    with sqlite3.connect(case_database) as database:
+        database.execute("CREATE TABLE cases (name TEXT)")
+        database.execute("INSERT INTO cases VALUES ('non-secret fixture')")
+    (tmp_path / "report.json").write_bytes(b'{"finding":"non-secret fixture"}')
+    (tmp_path / "artifact.bin").write_bytes(b"non-secret fixture")
+    (tmp_path / "provider.log").write_bytes(b"provider initialized")
     app.write_text(
         "#!/usr/bin/python3\n"
         "import json, os, sys\n"
         "key = os.read(3, 128).decode().strip() if sys.argv[1] == 'start' else ''\n"
+        "state = os.path.join(os.environ['HOME'], 'Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI')\n"
+        "os.makedirs(state, mode=0o700, exist_ok=True)\n"
+        "open(os.path.join(state, 'process.json'), 'w').write(json.dumps({'pid':12345,'process_start':'1:2','executable_sha256':'" + "a" * 64 + "'}))\n"
         f"open({str(observed)!r}, 'w').write(json.dumps({{'op':sys.argv[1], 'argv':sys.argv[1:], 'env':dict(os.environ), 'key':key}}))\n"
         "print(json.dumps({'state':'running','pid':12345,'process_start':'1:2','executable':" + repr(str(app.parent / "llama-server")) + ",'executable_sha256':'" + "a" * 64 + "'}))\n",
         encoding="utf-8",
@@ -366,6 +579,19 @@ def test_embedded_start_uses_fixed_wrapper_with_key_only_on_fd3_and_allowlisted_
     helper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     helper.chmod(0o700)
     fake_env, _ = make_fake_tools(tmp_path)
+    docker_env_capture = tmp_path / "compose-key-env"
+    docker_args_capture = tmp_path / "compose-args"
+    docker = Path(fake_env["PATH"].split(":", 1)[0]) / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        'printf "%s" "${WIRECLAW_PROVIDER_API_KEY-<unset>}" > "$WIRECLAW_TEST_COMPOSE_KEY_ENV"\n'
+        'printf "%s\\n" "$*" >> "$WIRECLAW_TEST_COMPOSE_ARGS"\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o700)
+    fake_env["WIRECLAW_TEST_COMPOSE_KEY_ENV"] = str(docker_env_capture)
+    fake_env["WIRECLAW_TEST_COMPOSE_ARGS"] = str(docker_args_capture)
     codesign = Path(fake_env["PATH"].split(":", 1)[0]) / "codesign"
     codesign.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     codesign.chmod(0o700)
@@ -379,12 +605,17 @@ ai_host_receipt_create() { cat > "$wireclaw_ai_host_receipt_file"; chmod 600 "$w
 probe_ai_health() { return 0; }
 ai_listener_matches() { return 0; }
 start_ai "$2" 18765 18766 embedded_local
+configure_provider_environment embedded_local
+compose_with_provider_environment "$2" "$2/.env" config --quiet
 '''
     result = run_bash(script, str(release), str(release), env=fake_env)
     assert result.returncode == 0, result.stderr
     call = json.loads(observed.read_text(encoding="utf-8"))
     assert call["argv"] == ["start"]
     assert call["key"] and len(call["key"]) == 64
+    assert all(char in "0123456789abcdef" for char in call["key"])
+    assert docker_env_capture.read_text(encoding="utf-8") == call["key"]
+    assert call["key"] not in docker_args_capture.read_text(encoding="utf-8")
     assert call["key"] not in json.dumps(call["env"])
     assert set(call["env"]) <= {
         "HOME", "TMPDIR", "PATH", "__CF_USER_TEXT_ENCODING", "SDKROOT", "CPATH",
@@ -396,6 +627,15 @@ start_ai "$2" 18765 18766 embedded_local
     assert receipt.stat().st_mode & 0o777 == 0o600
     assert call["key"] not in receipt.read_text(encoding="utf-8")
     assert (runtime_dir / "ai-status").read_text(encoding="utf-8").strip() == "ready"
+    assert call["key"] not in (sandbox_state / "process.json").read_text(encoding="utf-8")
+    assert call["key"] not in docker_args_capture.read_text(encoding="utf-8")
+    # The observer files capture the trusted Compose process environment and the
+    # wrapper fd-3 input for this test. They are the deliberate Docker metadata
+    # exception and test instrumentation; all other generated files are scanned.
+    excluded_observers = {observed, docker_env_capture}
+    for path in tmp_path.rglob("*"):
+        if path.is_file() and path not in excluded_observers:
+            assert call["key"].encode() not in path.read_bytes(), path
 
 def test_stop_ai_uses_host_verified_stop_then_wrapper_cleanup_without_shell_signals(tmp_path):
     release = make_release(tmp_path, "")

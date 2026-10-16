@@ -67,27 +67,8 @@ if [ "$PROVIDER_MODE" = embedded_local ] && [ "$WIRECLAW_PROVIDER_MODE" = embedd
     configure_provider_environment embedded_local
   fi
 fi
-docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" config --quiet \
-  || fail "Compose configuration is invalid; review .env against .env.example."
-if ! docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" up -d; then
-  docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
+if ! compose_start_core "$RELEASE_DIR" "$ENV_FILE" "$PROVIDER_MODE"; then
   fail "Wireclaw core did not start. Check Docker Desktop and the packaged release files."
-fi
-
-ready=0
-attempt=0
-while [ "$attempt" -lt 45 ]; do
-  container_id="$(docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" ps -q wireclaw-core 2>/dev/null || true)"
-  if [ -n "$container_id" ] && [ "$(docker inspect --format '{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)" = healthy ]; then
-    ready=1
-    break
-  fi
-  sleep 2
-  attempt=$((attempt + 1))
-done
-if [ "$ready" -ne 1 ]; then
-  docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
-  fail "Wireclaw core did not become healthy within 90 seconds. Data was preserved; inspect Docker Desktop logs."
 fi
 
 if [ -f "$wireclaw_pid_file" ]; then
