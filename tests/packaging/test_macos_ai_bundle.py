@@ -119,6 +119,13 @@ def test_entitlement_templates_are_exact() -> None:
     validate_entitlements("helper", helper)
 
 
+def test_wrapper_private_key_state_uses_fixed_app_container() -> None:
+    key_source = (ROOT / "ai/macos/WireclawAI/key.go").read_text()
+    assert f'const bundleID = "{BUNDLE_IDENTIFIER}"' in key_source
+    assert '"Library", "Containers", bundleID, "Data"' in key_source
+    assert 'filepath.Join(dir, "api-key")' in key_source
+
+
 @pytest.mark.parametrize(
     "role,extra",
     [

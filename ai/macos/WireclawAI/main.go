@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 )
@@ -23,7 +24,28 @@ type lifecycle interface {
 // verification and lifecycle tasks. Until then, the runtime is unavailable.
 type lifecycleOps struct{}
 
-func (lifecycleOps) start() commandResult  { return commandResult{"unavailable", "not_implemented"} }
+func (lifecycleOps) start() commandResult {
+	fd := os.NewFile(3, "key-bootstrap")
+	dir, err := productionStateDir()
+	if err != nil {
+		if fd != nil {
+			_ = fd.Close()
+		}
+		return commandResult{"unavailable", "state_unavailable"}
+	}
+	path, err := bootstrapKey(fd, dir)
+	if err != nil {
+		if errors.Is(err, errInvalidKey) {
+			return commandResult{"unavailable", "invalid_key"}
+		}
+		return commandResult{"unavailable", "state_unavailable"}
+	}
+	// Helper launch is added later. Do not retain a key for an unavailable run.
+	if err := os.Remove(path); err != nil {
+		return commandResult{"unavailable", "state_unavailable"}
+	}
+	return commandResult{"unavailable", "not_implemented"}
+}
 func (lifecycleOps) status() commandResult { return commandResult{"unavailable", "not_implemented"} }
 func (lifecycleOps) stop() commandResult   { return commandResult{"unavailable", "not_implemented"} }
 
