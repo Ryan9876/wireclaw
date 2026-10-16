@@ -144,3 +144,23 @@ def test_rejects_extra_or_overbroad_entitlements(role: str, extra: dict) -> None
     with pytest.raises(ValueError):
         validate_entitlements(role, expected | extra)
 
+
+def test_native_isolation_qualification_has_repeatable_signed_probe_contract() -> None:
+    runner = ROOT / "scripts/qualify_macos_embedded_ai.py"
+    native_dir = ROOT / "tests/packaging/macos"
+    assert runner.is_file(), "native signed sandbox qualification runner is missing"
+    assert native_dir.is_dir(), "native sandbox fixtures are missing"
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            runner,
+            ROOT / "ai/macos/WireclawAI/native_isolation_darwin_test.go",
+            native_dir / "README.md",
+        )
+    )
+    for marker in (
+        "codesign", "network.client", "network.server", "inherit",
+        "Docker", "host.docker.internal", "8767", "vmnetd",
+    ):
+        assert marker in source, f"native qualification omits {marker} contract"
+
