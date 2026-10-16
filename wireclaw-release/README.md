@@ -75,3 +75,20 @@ images, tool versions, compiled web hash, core image ID, and bridge SHA-256.
 
 This post-V1 embedded-AI package is qualified for macOS arm64 only. Windows and
 Linux embedded-AI implementation and qualification are outside this stage.
+
+## Signed macOS app
+
+The release packager builds `ai/WireclawAI.app` from the verified staged model
+and runtime assets, then signs nested runtime code before the helper and parent
+app. The default `--signing-mode adhoc` is for local development qualification
+only. It enables Hardened Runtime and verifies the exact parent/helper
+entitlement sets, but is not Developer ID or notarization acceptance.
+
+For a protected production release environment, use
+`--signing-mode developer-id` with `WIRECLAW_DEVELOPER_IDENTITY` set to the
+Developer ID Application identity and `WIRECLAW_NOTARY_PROFILE` set to a
+preconfigured `notarytool` Keychain profile. The package submits, staples, and
+validates the app. It records signing mode and notarization status in
+`release-metadata.json`; credentials are never written into the bundle or
+metadata. Without those protected credentials, production signing remains
+`NOT_RUN`.

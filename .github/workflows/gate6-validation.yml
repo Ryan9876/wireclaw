@@ -118,6 +118,8 @@ jobs:
         run: python -m pytest -q tests/packaging/test_macos_ai_bundle.py
       - name: Run ad-hoc signed App Sandbox isolation qualification
         run: python scripts/qualify_macos_embedded_ai.py
+      - name: Record production signing status
+        run: echo 'Developer ID and notarization release qualification: NOT_RUN (protected release credentials are not configured in CI)'
 
   docker-release:
     runs-on: ubuntu-24.04

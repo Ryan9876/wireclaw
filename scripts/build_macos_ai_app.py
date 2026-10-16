@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import plistlib
+import re
 import shutil
+import subprocess
 from pathlib import Path
 
 BUNDLE_IDENTIFIER = "com.wireclaw.WireclawAI"
@@ -19,6 +24,12 @@ REQUIRED_AI_RESOURCES = (
     "ai/model.gguf",
     "ai/runtime-manifest.json",
     "ai/model-manifest.json",
+)
+PARENT_ENTITLEMENTS_PATH = (
+    Path(__file__).resolve().parents[1] / "ai/macos/parent.entitlements.plist"
+)
+HELPER_ENTITLEMENTS_PATH = (
+    Path(__file__).resolve().parents[1] / "ai/macos/helper.entitlements.plist"
 )
 
 
@@ -114,3 +125,177 @@ def assemble_bundle(
         directory.chmod(0o555)
     app.chmod(0o555)
     return app
+
+
+def _run_codesign(argv: list[str], runner=subprocess.run) -> subprocess.CompletedProcess:
+    result = runner(argv, capture_output=True, text=True, check=False)
+    if result.returncode:
+        raise ValueError("codesign operation failed")
+    return result
+
+
+def _runtime_path(contents: Path, manifest_path: str) -> Path:
+    if manifest_path == "macos-arm64/llama-server":
+        return contents / "MacOS/llama-server"
+    if manifest_path.startswith("macos-arm64/"):
+        return contents / "Frameworks" / manifest_path.removeprefix("macos-arm64/")
+    raise ValueError("runtime manifest contains an unsupported code path")
+
+
+def _refresh_runtime_hashes(app: Path) -> None:
+    manifest_path = app / "Contents/Resources/ai/runtime-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for record in manifest["files"]:
+        path = _runtime_path(app / "Contents", record["path"])
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("signed runtime file is missing or unsafe")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        record["sha256"] = digest
+        record["size_bytes"] = path.stat().st_size
+    manifest_path.chmod(0o644)
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    manifest_path.chmod(0o444)
+
+
+def _prepare_signing_permissions(app: Path) -> None:
+    app.chmod(0o755)
+    for path in app.rglob("*"):
+        if path.is_dir() and not path.is_symlink():
+            path.chmod(0o755)
+    for relative in ("Contents/MacOS/WireclawAI", "Contents/MacOS/llama-server"):
+        (app / relative).chmod(0o755)
+    for path in (app / "Contents/Frameworks").rglob("*"):
+        if (
+            path.is_file()
+            and not path.is_symlink()
+            and (path.suffix == ".dylib" or os.access(path, os.X_OK))
+        ):
+            path.chmod(0o755)
+
+
+def _restore_read_only_modes(app: Path) -> None:
+    for path in app.rglob("*"):
+        if path.is_symlink():
+            raise ValueError("signed bundle unexpectedly contains a symlink")
+        if path.is_dir():
+            path.chmod(0o555)
+        elif path.is_file():
+            executable = path.stat().st_mode & 0o111
+            path.chmod(0o555 if executable else 0o444)
+    app.chmod(0o555)
+
+
+def sign_bundle(
+    app: Path,
+    *,
+    mode: str,
+    identity: str | None = None,
+    runner=subprocess.run,
+) -> None:
+    """Sign nested runtime code first, then parent code and bundle, with HR."""
+    if mode not in {"adhoc", "developer-id"}:
+        raise ValueError("unsupported signing mode")
+    if mode == "developer-id" and not identity:
+        raise ValueError("Developer ID identity required")
+    if mode == "adhoc" and identity not in (None, "-"):
+        raise ValueError("ad-hoc signing identity must be '-'")
+    identity = "-" if mode == "adhoc" else identity
+    contents = app / "Contents"
+    helper = contents / "MacOS/llama-server"
+    wrapper = contents / "MacOS/WireclawAI"
+    runtime_files = sorted(
+        path
+        for path in (contents / "Frameworks").rglob("*")
+        if path.is_file()
+        and not path.is_symlink()
+        and (path.suffix == ".dylib" or os.access(path, os.X_OK))
+    )
+    if not wrapper.is_file() or not helper.is_file() or not (contents / "Info.plist").is_file():
+        raise ValueError("application bundle is incomplete")
+    _prepare_signing_permissions(app)
+    signing_options = ["--options", "runtime"]
+    if mode == "developer-id":
+        signing_options.append("--timestamp")
+    for target in runtime_files:
+        _run_codesign(
+            ["/usr/bin/codesign", "--force", *signing_options, "--sign", identity, str(target)],
+            runner,
+        )
+    _run_codesign(
+        [
+            "/usr/bin/codesign",
+            "--force",
+            *signing_options,
+            "--entitlements",
+            str(HELPER_ENTITLEMENTS_PATH),
+            "--sign",
+            identity,
+            str(helper),
+        ],
+        runner,
+    )
+    _refresh_runtime_hashes(app)
+    for target in (wrapper, app):
+        identifier_args = ["--identifier", BUNDLE_IDENTIFIER] if target == wrapper else []
+        _run_codesign(
+            [
+                "/usr/bin/codesign",
+                "--force",
+                *signing_options,
+                *identifier_args,
+                "--entitlements",
+                str(PARENT_ENTITLEMENTS_PATH),
+                "--sign",
+                identity,
+                str(target),
+            ],
+            runner,
+        )
+    verify_signed_bundle(app, runner=runner)
+    _restore_read_only_modes(app)
+
+
+def verify_signed_bundle(app: Path, *, runner=subprocess.run) -> None:
+    """Strictly verify the app and exact signed parent/helper entitlements."""
+    result = runner(
+        ["/usr/bin/codesign", "--verify", "--strict", "--deep", "--verbose=4", str(app)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        raise ValueError("signature verification failed")
+    for target, expected in (
+        (app, PARENT_ENTITLEMENTS),
+        (app / "Contents/MacOS/WireclawAI", PARENT_ENTITLEMENTS),
+        (app / "Contents/MacOS/llama-server", HELPER_ENTITLEMENTS),
+    ):
+        details = runner(
+            ["/usr/bin/codesign", "-dv", "--verbose=4", str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if details.returncode or not re.search(
+            r"flags=.*\bruntime\b", details.stdout + details.stderr
+        ):
+            raise ValueError("Hardened Runtime signature missing")
+        dumped = runner(
+            ["/usr/bin/codesign", "-d", "--entitlements", ":-", str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if dumped.returncode:
+            raise ValueError("signed entitlements could not be inspected")
+        raw = dumped.stdout or dumped.stderr
+        try:
+            actual = plistlib.loads(raw[raw.index("<?xml") :].encode())
+        except (ValueError, TypeError):
+            try:
+                start = raw.index("<?xml")
+                actual = plistlib.loads(raw[start:].encode())
+            except (ValueError, TypeError):
+                raise ValueError("signed entitlements could not be inspected") from None
+        if actual != expected:
+            raise ValueError("signed entitlements do not match approved exact set")

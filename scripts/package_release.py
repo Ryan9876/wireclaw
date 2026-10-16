@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -71,6 +72,92 @@ def _embedded_ai_builder():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _app_builder():
+    path = ROOT / "scripts/build_macos_ai_app.py"
+    spec = importlib.util.spec_from_file_location("wireclaw_build_macos_ai_app", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("macos_app_builder_unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def build_signed_ai_app(release_root: Path, *, signing_mode: str, identity: str | None) -> dict:
+    if sys.platform != "darwin" or os.uname().machine != "arm64":
+        raise RuntimeError("signed_macos_ai_app_requires_apple_silicon")
+    ai_root = release_root / "ai"
+    wrapper = release_root / "build/WireclawAI"
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    build_env = os.environ | {"GOOS": "darwin", "GOARCH": "arm64", "CGO_ENABLED": "1"}
+    run(
+        ["go", "build", "-trimpath", "-ldflags", "-s -w", "-o", str(wrapper), "."],
+        cwd=ROOT / "ai/macos/WireclawAI",
+        env=build_env,
+    )
+    builder = _app_builder()
+    with tempfile.TemporaryDirectory(prefix="wireclaw-app-resources-") as temporary:
+        resources = Path(temporary) / "Resources"
+        _embedded_ai_builder().prepare_app_resources(ai_root, resources)
+        app = ai_root / "WireclawAI.app"
+        builder.assemble_bundle(
+            app,
+            wrapper=wrapper,
+            helper=ai_root / "macos-arm64/llama-server",
+            runtime_dir=ai_root / "macos-arm64",
+            resources_dir=resources,
+        )
+    builder.sign_bundle(app, mode=signing_mode, identity=identity)
+    info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    model_manifest = json.loads(
+        (app / "Contents/Resources/ai/model-manifest.json").read_text(encoding="utf-8")
+    )
+    runtime_manifest = json.loads(
+        (app / "Contents/Resources/ai/runtime-manifest.json").read_text(encoding="utf-8")
+    )
+    helper_record = next(
+        item for item in runtime_manifest["files"] if item["path"] == "macos-arm64/llama-server"
+    )
+    result = {
+        "path": "ai/WireclawAI.app",
+        "bundle_identifier": info["CFBundleIdentifier"],
+        "signing_mode": signing_mode,
+        "signing_identity": identity or "-",
+        "hardened_runtime": True,
+        "notarization": "NOT_RUN",
+        "production_model_present": True,
+        "model_sha256": model_manifest["artifact"]["sha256"],
+        "llama_server_sha256": helper_record["sha256"],
+    }
+    if signing_mode == "developer-id":
+        profile = os.environ.get("WIRECLAW_NOTARY_PROFILE", "")
+        if not profile:
+            raise RuntimeError("notarization_profile_required_for_developer_id_release")
+        archive = release_root / "WireclawAI-notarization.zip"
+        run(
+            ["/usr/bin/ditto", "-c", "-k", "--keepParent", str(app), str(archive)], cwd=release_root
+        )
+        run(
+            [
+                "/usr/bin/xcrun",
+                "notarytool",
+                "submit",
+                str(archive),
+                "--keychain-profile",
+                profile,
+                "--wait",
+            ],
+            cwd=release_root,
+        )
+        run(["/usr/bin/xcrun", "stapler", "staple", str(app)], cwd=release_root)
+        run(["/usr/bin/xcrun", "stapler", "validate", str(app)], cwd=release_root)
+        archive.unlink()
+        result["notarization"] = "PASS"
+        result["stapling"] = "PASS"
+    result["bundle_sha256"] = tree_sha256(app)
+    shutil.rmtree(wrapper.parent)
+    return result
 
 
 def stage_embedded_ai(source: Path, release_root: Path) -> dict:
@@ -188,6 +275,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output_directory", type=Path)
     parser.add_argument("--embedded-ai-stage", type=Path, required=True)
+    parser.add_argument("--signing-mode", choices=("adhoc", "developer-id"), default="adhoc")
     args = parser.parse_args()
     status = run(["git", "status", "--porcelain"], cwd=ROOT)
     if status:
@@ -214,6 +302,16 @@ def main() -> int:
     builder = _embedded_ai_builder()
     builder.smoke_test(stage / "ai", builder.load_lock(ROOT / "ai/embedded-ai.lock.json"))
     metadata_embedded_ai["protocol_smoke"] = "PASS"
+    signing_identity = (
+        os.environ.get("WIRECLAW_DEVELOPER_IDENTITY")
+        if args.signing_mode == "developer-id"
+        else None
+    )
+    if args.signing_mode == "developer-id" and not signing_identity:
+        raise SystemExit("Developer ID identity required in protected release environment")
+    metadata_app = build_signed_ai_app(
+        stage, signing_mode=args.signing_mode, identity=signing_identity
+    )
 
     architecture = run(["uname", "-m"], cwd=ROOT)
     if architecture != "arm64":
@@ -247,6 +345,7 @@ def main() -> int:
         "bridge_sha256": sha256(bridge),
         "core_image_id": None,
         "embedded_ai": metadata_embedded_ai,
+        "signed_app": metadata_app,
     }
     env = os.environ | {"WIRECLAW_DATA_ROOT": str(output / "Wireclaw Release Data")}
     run(

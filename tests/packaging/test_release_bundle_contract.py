@@ -235,6 +235,20 @@ def test_release_readme_documents_staged_bundle_and_platform_scope():
     assert "Qwen3-4B-Instruct-2507 Q4_K_M" in readme
 
 
+def test_release_signing_pipeline_distinguishes_adhoc_from_production_acceptance():
+    workflow = (ROOT / ".github/workflows/gate6-validation.yml").read_text(encoding="utf-8")
+    app_builder = (ROOT / "scripts/build_macos_ai_app.py").read_text(encoding="utf-8")
+    assert 'choices=("adhoc", "developer-id")' in PACKAGER
+    assert "build_signed_ai_app" in PACKAGER and "sign_bundle(app" in PACKAGER
+    assert "WIRECLAW_DEVELOPER_IDENTITY" in PACKAGER
+    assert "WIRECLAW_NOTARY_PROFILE" in PACKAGER
+    assert "notarytool" in PACKAGER and "stapler" in PACKAGER
+    assert 'signing_options = ["--options", "runtime"]' in app_builder
+    assert "Hardened Runtime signature missing" in app_builder
+    assert "Developer ID and notarization release qualification: NOT_RUN" in workflow
+    assert "--signing-mode developer-id" not in workflow
+
+
 def test_container_acceptance_reuses_frozen_image_for_mounted_tls_privacy_test():
     assert 'command.extend(["-d", "--no-build"])' in CONTAINER_VALIDATOR
     assert 'compose(env, "up", files=host_route_files)' in CONTAINER_VALIDATOR
