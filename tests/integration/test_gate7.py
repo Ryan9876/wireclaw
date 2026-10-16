@@ -1,15 +1,23 @@
 """Gate 7 orchestration, persistence, and safe fallback without a real model."""
 
+import gc
+import hashlib
 import json
+import warnings
+from threading import get_ident
 
+import httpx
 import wireclaw_api.app as api_module
+import wireclaw_api.gate7_service as gate7_module
 from fastapi.testclient import TestClient
+from wireclaw_analyzer import AnalyzerError
 from wireclaw_api import create_app
 from wireclaw_api.config import Policy, ProviderMode
 from wireclaw_api.gate4_service import Service as Gate4Service
 from wireclaw_api.gate6_service import Service as Gate6Service
 from wireclaw_api.gate7_service import Service
 from wireclaw_api.models import CapabilityRequest, State
+from wireclaw_api.providers import openai_compatible
 from wireclaw_api.providers.models import ProviderResult
 from wireclaw_api.reasoning import loop, persistence
 from wireclaw_api.service import Service as Gate3Service
@@ -89,6 +97,151 @@ def capability_action(name="analyze_dns"):
 
 def finalize_action():
     return {"action": "finalize", "hypotheses": [], "remaining_hypotheses": []}
+
+
+def test_async_capture_executes_embedded_status_probe_off_the_event_loop(tmp_path, monkeypatch):
+    model_id = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+    token = "ASYNC_CAPTURE_STATUS_TOKEN_SENTINEL_" + "x" * 32
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model=model_id,
+        provider_api_key=token,
+    )
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
+
+    requests = []
+    probe_threads = []
+    real_client = httpx.AsyncClient
+
+    async def healthy_model_server(request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": [{"id": model_id}]})
+
+    transport = httpx.MockTransport(healthy_model_server)
+
+    def client_factory(*args, **kwargs):
+        return real_client(*args, transport=transport, **kwargs)
+
+    real_probe = openai_compatible.embedded_runtime_available
+
+    def observed_probe(current_policy):
+        probe_threads.append(get_ident())
+        return real_probe(current_policy)
+
+    monkeypatch.setattr(openai_compatible.httpx, "AsyncClient", client_factory)
+    monkeypatch.setattr(gate7_module, "embedded_runtime_available", observed_probe)
+
+    app = create_app(tmp_path / "async-capture", policy)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        service = client.app.state.service
+
+        def complete_fake_ingest(case_id, run_id, path):
+            capture_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+            service.transition(case_id, State.VALIDATING_CAPTURE)
+            with service.db.connect() as conn:
+                conn.execute(
+                    "UPDATE cases SET capture_sha=?,original_id=? WHERE id=?",
+                    (capture_sha, "c" * 32, case_id),
+                )
+                conn.execute("UPDATE runs SET status='complete' WHERE id=?", (run_id,))
+            service.transition(case_id, State.BASELINE_ANALYSIS)
+            return service.get(case_id)
+
+        service.ingest = complete_fake_ingest
+        created = client.post("/api/cases", json={"symptom": "A slow connection"})
+        assert created.status_code == 201
+        requests.clear()
+        probe_threads.clear()
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always", RuntimeWarning)
+            uploaded = client.post(
+                f"/api/cases/{created.json()['id']}/capture",
+                content=b"synthetic capture bytes",
+                headers={"content-type": "application/octet-stream"},
+            )
+            gc.collect()
+
+    unawaited_warnings = [
+        str(item.message) for item in caught_warnings if "was never awaited" in str(item.message)
+    ]
+    assert len(requests) == 2, (
+        "expected embedded model probes in begin_ingest and threaded ingest; "
+        f"observed {len(requests)} requests and warnings {unawaited_warnings}"
+    )
+    assert not unawaited_warnings
+    assert uploaded.status_code == 200, uploaded.text
+    assert uploaded.json()["state"] == State.BASELINE_ANALYSIS
+    assert len(probe_threads) == 2
+    assert all(request.headers["authorization"] == f"Bearer {token}" for request in requests)
+
+
+def test_async_capture_cleanup_executes_embedded_status_probe_off_the_event_loop(
+    tmp_path, monkeypatch
+):
+    model_id = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model=model_id,
+        provider_api_key="ASYNC_CAPTURE_CLEANUP_TOKEN_SENTINEL_" + "x" * 32,
+    )
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
+
+    requests = []
+    real_client = httpx.AsyncClient
+
+    async def healthy_model_server(request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": [{"id": model_id}]})
+
+    transport = httpx.MockTransport(healthy_model_server)
+    monkeypatch.setattr(
+        openai_compatible.httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: real_client(*args, transport=transport, **kwargs),
+    )
+    monkeypatch.setattr(
+        gate7_module, "embedded_runtime_available", openai_compatible.embedded_runtime_available
+    )
+
+    app = create_app(tmp_path / "async-capture-cleanup", policy)
+    with TestClient(app, base_url="http://127.0.0.1:8765") as client:
+        service = client.app.state.service
+
+        def fail_ingest(_case_id, _run_id, _path):
+            raise AnalyzerError("synthetic_ingest_failure")
+
+        service.ingest = fail_ingest
+        created = client.post("/api/cases", json={"symptom": "A slow connection"})
+        assert created.status_code == 201
+        case_id = created.json()["id"]
+        requests.clear()
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always", RuntimeWarning)
+            uploaded = client.post(
+                f"/api/cases/{case_id}/capture",
+                content=b"synthetic capture bytes",
+                headers={"content-type": "application/octet-stream"},
+            )
+            gc.collect()
+        with service.db.connect() as conn:
+            failed_state = conn.execute(
+                "SELECT state FROM cases WHERE id=?", (case_id,)
+            ).fetchone()["state"]
+
+    unawaited_warnings = [
+        str(item.message) for item in caught_warnings if "was never awaited" in str(item.message)
+    ]
+    assert len(requests) == 2, (
+        "expected embedded model probes in begin_ingest and cleanup_ingest; "
+        f"observed {len(requests)} requests and warnings {unawaited_warnings}"
+    )
+    assert not unawaited_warnings
+    assert uploaded.status_code == 422
+    assert failed_state == State.FAILED
 
 
 def install_cycle_runner(monkeypatch, providers, capability_calls):

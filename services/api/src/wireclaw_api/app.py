@@ -197,7 +197,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
             raise ApiError("capture_content_type_required", 415)
         svc = service()
         with svc.admission():
-            run_id, path = svc.begin_ingest(case_id)
+            run_id, path = await run_in_threadpool(svc.begin_ingest, case_id)
             try:
                 total = 0
                 with path.open("xb") as stream:
@@ -219,7 +219,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
                     )
                 )
                 svc.fail(case_id, run_id, code, fatal=True)
-                svc.cleanup_ingest(case_id)
+                await run_in_threadpool(svc.cleanup_ingest, case_id)
                 raise ApiError(code, 413 if code == "capture_size_limit" else 422) from None
             finally:
                 path.unlink(missing_ok=True)

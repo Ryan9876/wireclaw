@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -97,6 +98,39 @@ def test_embedded_runtime_probe_requires_auth_expected_model_and_bounded_http():
     assert all(options["follow_redirects"] is False for options in client_options)
     assert all(options["trust_env"] is False for options in client_options)
     assert all(options["timeout"] == EMBEDDED_STATUS_TIMEOUT_SECONDS for options in client_options)
+
+
+def test_embedded_runtime_probe_enforces_total_operation_deadline(monkeypatch):
+    model = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+    policy = Policy(
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model=model,
+        provider_api_key="x" * 32,
+    )
+    real_client = httpx.AsyncClient
+    requests = []
+    cancelled = []
+
+    async def slow_response(request):
+        requests.append(request)
+        try:
+            await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+        return httpx.Response(200, json={"data": [{"id": model}]})
+
+    transport = httpx.MockTransport(slow_response)
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: real_client(*args, transport=transport, **kwargs),
+    )
+
+    assert embedded_runtime_available(policy) is False
+    assert [request.url.path for request in requests] == ["/v1/models"]
+    assert cancelled == [True]
 
 
 @pytest.mark.parametrize(
