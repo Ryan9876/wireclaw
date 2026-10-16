@@ -244,11 +244,11 @@ Compose resolves the transient key in memory to create Core. The launcher invoke
 
 **Interfaces:** Against the built signed app, verify model identity, authenticated `/v1/models`, authenticated `/v1/chat/completions`, Metal load/device, numeric loopback bind, and actual Docker Core access through `host.docker.internal:8767`.
 
-- [ ] Add failing integration assertions for wrong model identity/auth, redirect/proxy behavior, absent Metal, extra listener, wrong endpoint, and Core reachability failure.
-- [ ] Build fixture-sized package contract tests without downloading the production model; confirm they fail on unsigned/incorrect bundle metadata.
-- [ ] Implement only missing integration/metadata seams; retain Q4_K_M and all runtime limits.
-- [ ] On Apple Silicon, run one packaged inference and Core request with a real release-sized model; verify Metal and the fixed listener. If an architecture/signing incompatibility appears, stop and revise the approved design before broad qualification.
-- [ ] Run relevant packaging and integration tests; commit `test: validate sandboxed Metal provider integration`.
+- [x] Add failing integration assertions for wrong model identity/auth, redirect/proxy behavior, absent Metal, extra listener, wrong endpoint, and Core reachability failure.
+- [x] Build fixture-sized package contract tests without downloading the production model; confirm they fail on unsigned/incorrect bundle metadata.
+- [x] Implement only missing integration/metadata seams; retain Q4_K_M and all runtime limits.
+- [x] On Apple Silicon, run one packaged inference and Core request with a real release-sized model; verify Metal and the fixed listener. If an architecture/signing incompatibility appears, stop and revise the approved design before broad qualification. PASS on the exact-HEAD ad-hoc development bundle; production signing checks remain `NOT_RUN`.
+- [x] Run relevant packaging and integration tests; commit `test: validate sandboxed Metal provider integration` (`8e08fb2`).
 
 ### Task 11: Developer ID, Hardened Runtime, and notarized packaging
 
