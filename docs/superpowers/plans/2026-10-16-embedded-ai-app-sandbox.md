@@ -271,10 +271,10 @@ Compose resolves the transient key in memory to create Core. The launcher invoke
 
 **Interfaces:** Sandboxing changes transport/lifecycle only; deterministic findings, evidence authorization, capability allowlists, recommendation binding, provider status, prompt privacy, and fallback semantics remain unchanged.
 
-- [ ] Add/retain regression assertions for arbitrary prose exclusion, evidence/cross-case validation, deterministic hypothesis authority, recommendation evidence binding, privacy sentinels, and normalized provider/runtime-unhealthy fallback.
-- [ ] Run focused Gate 7/security tests and confirm any intended architecture behavior changes are isolated to runtime availability/key lifecycle.
-- [ ] Make no unrelated reasoning changes; if a new product defect is found, add the failing regression first and stop to scope it against the governing spec.
-- [ ] Run focused tests plus full Python regression when implementation is complete; commit `test: retain Gate 7 guarantees under sandbox failures`.
+- [x] Add/retain regression assertions for arbitrary prose exclusion, evidence/cross-case validation, deterministic hypothesis authority, recommendation evidence binding, privacy sentinels, and normalized provider/runtime-unhealthy fallback. Added an integration regression that the model cannot remove a deterministic finding by omitting it.
+- [x] Run focused Gate 7/security tests and confirm any intended architecture behavior changes are isolated to runtime availability/key lifecycle. No production behavior changes were needed.
+- [x] Make no unrelated reasoning changes; if a new product/security defect is found, add the failing regression first and stop to scope it against the governing spec. No new defect surfaced.
+- [x] Run focused tests plus full Python regression when implementation is complete; commit `test: retain Gate 7 guarantees under sandbox failures` (`77230aa`).
 
 ### Task 13: Candidate and native qualification reset tooling
 
