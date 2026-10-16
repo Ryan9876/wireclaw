@@ -33,19 +33,37 @@ func (lifecycleOps) start() commandResult {
 		}
 		return commandResult{"unavailable", "state_unavailable"}
 	}
-	path, err := bootstrapKey(fd, dir)
-	if err != nil {
-		if errors.Is(err, errInvalidKey) {
-			return commandResult{"unavailable", "invalid_key"}
-		}
-		return commandResult{"unavailable", "state_unavailable"}
-	}
-	// Helper launch is added later. Do not retain a key for an unavailable run.
-	if err := os.Remove(path); err != nil {
-		return commandResult{"unavailable", "state_unavailable"}
-	}
-	return commandResult{"unavailable", "not_implemented"}
+	return startVerified(fd, dir, verifyBundle, func(VerifiedBundle, string) commandResult {
+		// Task 5 supplies the fixed helper launch; no unverified path is accepted.
+		return commandResult{"unavailable", "not_implemented"}
+	})
 }
+
+// Read and close fd 3, verify every asset, then persist the private key and
+// cross the launch boundary with a VerifiedBundle. Failure never launches.
+func startVerified(fd io.ReadCloser, dir string, verify func() (VerifiedBundle, error), launch func(VerifiedBundle, string) commandResult) commandResult {
+	key, err := readKeyRecord(fd)
+	if err != nil {
+		return commandResult{"unavailable", "invalid_key"}
+	}
+	defer wipe(key[:])
+	bundle, err := verify()
+	if err != nil || bundle.helperPath == "" || bundle.modelPath == "" {
+		return commandResult{"unavailable", "verification_failed"}
+	}
+	path, err := storeKeyRecord(key, dir)
+	if err != nil {
+		return commandResult{"unavailable", "state_unavailable"}
+	}
+	result := launch(bundle, path)
+	if result.state != "running" {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return commandResult{"unavailable", "state_unavailable"}
+		}
+	}
+	return result
+}
+
 func (lifecycleOps) status() commandResult { return commandResult{"unavailable", "not_implemented"} }
 func (lifecycleOps) stop() commandResult   { return commandResult{"unavailable", "not_implemented"} }
 

@@ -727,3 +727,41 @@ def test_runtime_aliases_are_copied_as_regular_packaged_libraries(tmp_path):
     assert alias.is_file()
     assert not alias.is_symlink()
     assert alias.read_bytes() == actual.read_bytes()
+
+
+def test_app_resources_preserve_pinned_sources_and_add_bundle_identity(tmp_path):
+    module = builder()
+    source, model, runtime = fixture_ai(tmp_path / "source")
+    destination = tmp_path / "resources"
+    module.prepare_app_resources(source, destination)
+    copied_model = json.loads((destination / "ai/model-manifest.json").read_text())
+    copied_runtime = json.loads((destination / "ai/runtime-manifest.json").read_text())
+    assert copied_model == {**model, "bundle_identifier": "com.wireclaw.WireclawAI"}
+    assert copied_runtime == {**runtime, "bundle_identifier": "com.wireclaw.WireclawAI"}
+    assert (destination / "ai/model.gguf").read_bytes() == b"fixture-model"
+    assert json.loads((source / "model-manifest.json").read_text()) == model
+    assert json.loads((source / "runtime-manifest.json").read_text()) == runtime
+    assert (destination / "ai/licenses/Qwen-Apache-2.0.txt").is_file()
+
+
+def test_app_resources_reject_invalid_assets_before_writing(tmp_path):
+    module = builder()
+    source, _, _ = fixture_ai(tmp_path / "source")
+    (source / "macos-arm64/llama-server").write_bytes(b"substitution")
+    destination = tmp_path / "resources"
+    with pytest.raises(ValueError, match="runtime_hash_mismatch"):
+        module.prepare_app_resources(source, destination)
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("name", ["model", "runtime"])
+@pytest.mark.parametrize("schema", [None, True, 2])
+def test_app_resources_reject_invalid_manifest_schema(tmp_path, name, schema):
+    module = builder()
+    source, _, _ = fixture_ai(tmp_path / "source")
+    path = source / f"{name}-manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["schema_version"] = schema
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="manifest_schema_invalid"):
+        module.prepare_app_resources(source, tmp_path / "resources")

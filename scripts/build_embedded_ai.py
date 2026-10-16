@@ -186,6 +186,9 @@ def validate_staged_ai(ai_root: Path, lock: dict) -> dict:
         _fail("manifest_symlink_invalid")
     model = _read_manifest(ai_root, MODEL_MANIFEST)
     runtime = _read_manifest(ai_root, RUNTIME_MANIFEST)
+    for manifest in (model, runtime):
+        if type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1:
+            _fail("manifest_schema_invalid")
     expected_model = lock["model"]
     expected_runtime = lock["runtime"]
     if model.get("model_id") != expected_model["id"]:
@@ -283,6 +286,34 @@ def validate_staged_ai(ai_root: Path, lock: dict) -> dict:
     ):
         _fail("runtime_policy_mismatch")
     return {"model": model, "runtime": runtime}
+
+
+def prepare_app_resources(ai_root: Path, resources_dir: Path) -> Path:
+    """Copy validated source assets to the fixed app Resources layout.
+
+    Source manifests stay immutable. Their paths retain pinned source identity;
+    the wrapper maps only those fixed paths to MacOS/Frameworks/Resources.
+    Signing must update file hashes in the bundle copy after nested signing and
+    before signing the enclosing app. This function does not sign any code.
+    """
+    validated = validate_staged_ai(ai_root, load_lock(LOCK_PATH))
+    if resources_dir.exists() or resources_dir.is_symlink():
+        _fail("app_resources_destination_exists")
+    resources_dir.mkdir(parents=True)
+    destination = resources_dir / "ai"
+    destination.mkdir()
+    shutil.copyfile(ai_root / validated["model"]["artifact"]["path"], destination / "model.gguf")
+    licenses = {validated["model"]["license_path"], *validated["runtime"]["license_paths"]}
+    for relative in sorted(licenses):
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(_confined_file(ai_root, relative), target)
+    for name, manifest in validated.items():
+        bundled = {**manifest, "bundle_identifier": "com.wireclaw.WireclawAI"}
+        (destination / f"{name}-manifest.json").write_text(
+            json.dumps(bundled, indent=2) + "\n", encoding="utf-8"
+        )
+    return resources_dir
 
 
 def _repo(work: Path, lock: dict) -> Path:

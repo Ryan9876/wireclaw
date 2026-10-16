@@ -71,6 +71,11 @@ func bootstrapKey(fd io.ReadCloser, dir string) (string, error) {
 		return "", errInvalidKey
 	}
 	defer wipe(key[:])
+	return storeKeyRecord(key, dir)
+}
+
+func storeKeyRecord(key [65]byte, dir string) (string, error) {
+	defer wipe(key[:])
 	if err := ensurePrivateDir(dir); err != nil {
 		return "", errKeyState
 	}
