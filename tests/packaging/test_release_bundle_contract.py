@@ -563,3 +563,14 @@ def test_task10_reports_missing_release_model_as_not_run_and_core_probe_is_secre
 def test_linux_ci_host_gateway_alias_is_opt_in_and_test_only():
     assert 'os.environ.get("WIRECLAW_TEST_HOST_GATEWAY") != "1"' in CONTAINER_VALIDATOR
     assert "host.docker.internal:host-gateway" in CONTAINER_VALIDATOR
+
+
+def test_core_probe_failure_diagnostics_are_bounded_and_allowlisted():
+    qualifier = module_at(ROOT / "scripts/qualify_macos_embedded_ai.py", "ai_core_failure_codes")
+    assert qualifier.normalize_core_probe_failure("chat_request_failed\n") == "chat_request_failed"
+    assert (
+        qualifier.normalize_core_probe_failure("core_name_resolution_failed\n")
+        == "core_name_resolution_failed"
+    )
+    assert qualifier.normalize_core_probe_failure("Bearer secret-value") is None
+    assert qualifier.normalize_core_probe_failure("wrong_endpoint_served_model\n" * 500) is None

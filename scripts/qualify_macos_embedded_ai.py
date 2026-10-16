@@ -277,7 +277,7 @@ def task10_release_prerequisite(root: Path, *, environ=None) -> str | None:
 
 CORE_INTEGRATION_PROBE = textwrap.dedent(
     r"""
-    import json, os, urllib.error, urllib.request
+    import errno, json, os, socket, urllib.error, urllib.request
     BASE = "http://host.docker.internal:8767/v1"
     MODEL = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
@@ -300,6 +300,19 @@ CORE_INTEGRATION_PROBE = textwrap.dedent(
                 return response.status, raw
         except urllib.error.HTTPError as error:
             return error.code, b""
+        except urllib.error.URLError as error:
+            reason = error.reason
+            if isinstance(reason, socket.gaierror):
+                raise SystemExit("core_name_resolution_failed")
+            if isinstance(reason, ConnectionRefusedError):
+                raise SystemExit("core_connection_refused")
+            if isinstance(reason, TimeoutError):
+                raise SystemExit("core_connection_timeout")
+            if getattr(reason, "errno", None) in {errno.EHOSTUNREACH, errno.ENETUNREACH}:
+                raise SystemExit("core_host_unreachable")
+            if getattr(reason, "errno", None) in {errno.EPERM, errno.EACCES}:
+                raise SystemExit("core_network_permission_denied")
+            raise SystemExit("core_transport_error")
     for path, body in (("/models", None), ("/chat/completions", json.dumps({
         "model": MODEL, "messages": [{"role": "user", "content": "Reply exactly with WIRECLAW_TASK10_INFERENCE_OK."}],
         "max_tokens": 16, "temperature": 0}).encode())):
@@ -374,6 +387,7 @@ def _run_hidden(
     cwd: Path | None = None,
     timeout: int = 180,
     capture_stdout: bool = False,
+    merge_stderr: bool = False,
     max_output_bytes: int = 4096,
 ):
     env = {key: value for key, value in os.environ.items() if key != "WIRECLAW_PROVIDER_API_KEY"}
@@ -396,7 +410,7 @@ def _run_hidden(
             argv,
             cwd=cwd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT if merge_stderr else subprocess.DEVNULL,
             env=env,
         )
         assert process.stdout is not None
@@ -443,6 +457,54 @@ def _run_hidden(
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+
+CORE_PROBE_FAILURE_CODES = {
+    "chat_request_failed",
+    "chat_response_invalid",
+    "core_response_too_large",
+    "core_name_resolution_failed",
+    "core_connection_refused",
+    "core_connection_timeout",
+    "core_host_unreachable",
+    "core_network_permission_denied",
+    "core_transport_error",
+    "invalid_core_provider_state",
+    "model_identity_mismatch",
+    "model_response_invalid",
+    "unauthenticated_request_accepted",
+    "wrong_endpoint_served_model",
+    "wrong_key_accepted",
+}
+CORE_PROBE_EXCEPTION_TYPES = {
+    "AttributeError",
+    "ConnectionError",
+    "HTTPError",
+    "KeyError",
+    "ModuleNotFoundError",
+    "NameError",
+    "SyntaxError",
+    "TimeoutError",
+    "TypeError",
+    "URLError",
+}
+
+
+def normalize_core_probe_failure(output: str) -> str | None:
+    """Return only a fixed probe error token; never surface subprocess text."""
+    if len(output.encode("utf-8", errors="replace")) > 4096:
+        return None
+    matches = [
+        code
+        for code in CORE_PROBE_FAILURE_CODES
+        if len(re.findall(rf"\b{re.escape(code)}\b", output)) in {1, 2}
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    for error_type in CORE_PROBE_EXCEPTION_TYPES:
+        if re.search(rf"\b{error_type}:\s", output):
+            return f"exception_{error_type}"
+    return None
 
 
 def _readiness_and_listener(root: Path) -> int:
@@ -503,6 +565,7 @@ def _run_core_integration(root: Path) -> None:
         cwd=root,
         timeout=180,
         capture_stdout=True,
+        merge_stderr=True,
     )
     if (
         result is None
@@ -510,6 +573,23 @@ def _run_core_integration(root: Path) -> None:
         or result.stdout_truncated
         or result.stdout.strip() != "CORE_AUTH_MODELS_CHAT_WRONG_ENDPOINT=PASS"
     ):
+        code = normalize_core_probe_failure(result.stdout if result is not None else "")
+        if code is not None:
+            prefix = "ai_" if code.startswith("core_") else "ai_core_"
+            raise ValueError(f"{prefix}{code}")
+        if result is None:
+            raise ValueError("ai_core_probe_unavailable")
+        if result.stdout_truncated:
+            raise ValueError("ai_core_probe_output_too_large")
+        if not result.stdout.strip():
+            raise ValueError("ai_core_probe_no_output")
+        if (
+            result.returncode
+            and result.stdout.strip() == "CORE_AUTH_MODELS_CHAT_WRONG_ENDPOINT=PASS"
+        ):
+            raise ValueError("ai_core_probe_exit_status_invalid")
+        if "CORE_AUTH_MODELS_CHAT_WRONG_ENDPOINT=PASS" in result.stdout:
+            raise ValueError("ai_core_probe_output_invalid")
         raise ValueError("ai_core_integration_failed")
 
 
