@@ -138,10 +138,19 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
     for path in (macos / "WireclawAI", macos / "llama-server", frameworks / "libggml-metal.dylib"):
         path.write_bytes(b"fixture")
     calls: list[list[str]] = []
+    runpaths = ["@loader_path"]
 
     def runner(argv, **kwargs):
         calls.append(list(argv))
-        if "--sign" in argv and Path(argv[-1]).is_file():
+        if argv[:2] == ["/usr/bin/otool", "-l"]:
+            output = "".join(
+                f"Load command {index}\n cmd LC_RPATH\n path {value} (offset 12)\n"
+                for index, value in enumerate(runpaths, start=1)
+            )
+        elif argv[0] == "/usr/bin/install_name_tool":
+            runpaths.append(argv[2])
+            output = ""
+        elif "--sign" in argv and Path(argv[-1]).is_file():
             with Path(argv[-1]).open("ab") as stream:
                 stream.write(b"signed")
             output = ""
@@ -167,7 +176,9 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
     for call in calls:
         if "--sign" in call:
             assert "--options" in call and call[call.index("--options") + 1] == "runtime"
-    helper_call = next(call for call in calls if call[-1] == str(macos / "llama-server"))
+    helper_call = next(
+        call for call in calls if "--sign" in call and call[-1] == str(macos / "llama-server")
+    )
     library_call = next(
         call for call in calls if call[-1] == str(frameworks / "libggml-metal.dylib")
     )
@@ -190,6 +201,65 @@ def test_signing_orders_nested_code_before_hardened_runtime_parent(tmp_path: Pat
         payload = (app / relative).read_bytes()
         assert record["sha256"] == hashlib.sha256(payload).hexdigest()
     assert (macos / "llama-server").stat().st_mode & 0o777 == 0o555
+
+
+def test_signing_adds_and_verifies_helper_framework_runpath(tmp_path: Path) -> None:
+    app = tmp_path / "WireclawAI.app"
+    macos = app / "Contents/MacOS"
+    frameworks = app / "Contents/Frameworks"
+    macos.mkdir(parents=True)
+    frameworks.mkdir()
+    (app / "Contents/Info.plist").write_bytes(
+        plistlib.dumps({"CFBundleIdentifier": BUNDLE_IDENTIFIER})
+    )
+    resources = app / "Contents/Resources/ai"
+    resources.mkdir(parents=True)
+    (resources / "runtime-manifest.json").write_text(
+        '{"files": [{"path": "macos-arm64/llama-server", "sha256": "old", "size_bytes": 1}]}',
+        encoding="utf-8",
+    )
+    for path in (macos / "WireclawAI", macos / "llama-server"):
+        path.write_bytes(b"fixture")
+
+    runpaths = ["@loader_path"]
+    calls: list[list[str]] = []
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[:2] == ["/usr/bin/otool", "-l"]:
+            output = "".join(
+                f"Load command {index}\n cmd LC_RPATH\n path {value} (offset 12)\n"
+                for index, value in enumerate(runpaths, start=1)
+            )
+        elif argv[0] == "/usr/bin/install_name_tool":
+            assert argv[1] == "-add_rpath"
+            runpaths.append(argv[2])
+            output = ""
+        elif "--verify" in argv:
+            output = ""
+        elif "-dv" in argv:
+            output = "flags=0x10000(runtime)"
+        elif "--entitlements" in argv:
+            role = "helper" if argv[-1].endswith("llama-server") else "parent"
+            entitlements = HELPER_ENTITLEMENTS if role == "helper" else PARENT_ENTITLEMENTS
+            output = plistlib.dumps(entitlements, fmt=plistlib.FMT_XML).decode()
+        else:
+            if "--sign" in argv and Path(argv[-1]).is_file():
+                with Path(argv[-1]).open("ab") as stream:
+                    stream.write(b"signed")
+            output = ""
+        return type("Result", (), {"returncode": 0, "stdout": output, "stderr": ""})()
+
+    sign_bundle(app, mode="adhoc", runner=runner)
+
+    helper = str(macos / "llama-server")
+    assert [
+        "/usr/bin/install_name_tool",
+        "-add_rpath",
+        "@executable_path/../Frameworks",
+        helper,
+    ] in calls
+    assert runpaths == ["@loader_path", "@executable_path/../Frameworks"]
 
 
 def test_signing_rejects_missing_developer_id_and_invalid_signature(tmp_path: Path) -> None:

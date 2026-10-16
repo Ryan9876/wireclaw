@@ -173,6 +173,40 @@ def _prepare_signing_permissions(app: Path) -> None:
             path.chmod(0o755)
 
 
+def _ensure_helper_framework_runpath(helper: Path, *, runner=subprocess.run) -> None:
+    """Make Frameworks dependencies resolvable from the helper before signing."""
+    required = "@executable_path/../Frameworks"
+
+    def read_runpaths() -> list[str]:
+        result = runner(
+            ["/usr/bin/otool", "-l", str(helper)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            raise ValueError("helper runpaths could not be inspected")
+        return re.findall(
+            r"cmd LC_RPATH\s+.*?\bpath (.*?) \(offset",
+            result.stdout,
+            flags=re.DOTALL,
+        )
+
+    runpaths = read_runpaths()
+    if required not in runpaths:
+        result = runner(
+            ["/usr/bin/install_name_tool", "-add_rpath", required, str(helper)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            raise ValueError("helper framework runpath could not be added")
+        runpaths = read_runpaths()
+    if required not in runpaths:
+        raise ValueError("helper framework runpath verification failed")
+
+
 def _restore_read_only_modes(app: Path) -> None:
     for path in app.rglob("*"):
         if path.is_symlink():
@@ -213,6 +247,7 @@ def sign_bundle(
     if not wrapper.is_file() or not helper.is_file() or not (contents / "Info.plist").is_file():
         raise ValueError("application bundle is incomplete")
     _prepare_signing_permissions(app)
+    _ensure_helper_framework_runpath(helper, runner=runner)
     signing_options = ["--options", "runtime"]
     if mode == "developer-id":
         signing_options.append("--timestamp")
