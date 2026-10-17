@@ -18,12 +18,14 @@ from .models import (
     ArtifactResponse,
     BridgeGrantRequest,
     BridgeGrantResponse,
+    CapabilitiesResponse,
     CapabilityRequest,
     CaseResponse,
     CreateCase,
     DeletionResponse,
     EvidenceCaptureRequest,
     EvidenceCaptureResponse,
+    HealthResponse,
 )
 from .storage import ApiError
 from .web import register_web
@@ -138,11 +140,16 @@ def create_app(data_root: Path, policy: Policy | None = None):
     def service():
         return app.state.service
 
-    @app.get("/api/health")
+    @app.get("/api/health", response_model=HealthResponse)
     def health():
-        return {"status": "ok", "gate": 7, "provider_mode": policy.provider_mode.value}
+        return {
+            "status": "ok",
+            "gate": 7,
+            "provider_mode": policy.provider_mode.value,
+            "ai": service().ai_status(),
+        }
 
-    @app.get("/api/config/capabilities")
+    @app.get("/api/config/capabilities", response_model=CapabilitiesResponse)
     def capabilities():
         return {
             "capabilities": list(CAPABILITIES),
@@ -151,6 +158,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
                 "none",
                 "openai_compatible_cloud",
                 "openai_compatible_local",
+                "embedded_local",
             ],
             "bridge": {"origin": f"http://127.0.0.1:{policy.bridge_port}"},
             "limits": {
@@ -161,6 +169,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
                 "max_result_items": policy.max_result_items,
                 "max_evidence_capture_bytes": policy.max_evidence_capture_bytes,
             },
+            "ai": service().ai_status(),
         }
 
     @app.post("/api/cases", status_code=201, response_model=CaseResponse)
@@ -188,7 +197,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
             raise ApiError("capture_content_type_required", 415)
         svc = service()
         with svc.admission():
-            run_id, path = svc.begin_ingest(case_id)
+            run_id, path = await run_in_threadpool(svc.begin_ingest, case_id)
             try:
                 total = 0
                 with path.open("xb") as stream:
@@ -210,7 +219,7 @@ def create_app(data_root: Path, policy: Policy | None = None):
                     )
                 )
                 svc.fail(case_id, run_id, code, fatal=True)
-                svc.cleanup_ingest(case_id)
+                await run_in_threadpool(svc.cleanup_ingest, case_id)
                 raise ApiError(code, 413 if code == "capture_size_limit" else 422) from None
             finally:
                 path.unlink(missing_ok=True)

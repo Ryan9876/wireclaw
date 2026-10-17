@@ -10,12 +10,15 @@ When sources conflict, follow this order:
 2. `specs/v1/requirements.md`
 3. `specs/v1/solution.md`
 4. accepted ADRs
-5. gate-specific execution/acceptance specifications and accepted `docs/` guidance
-6. `specs/v1/tasks.md`
-7. tests
-8. implementation
+5. accepted post-V1 feature specifications and gate-specific execution/acceptance specifications
+6. accepted `docs/` guidance and implementation plans
+7. `specs/v1/tasks.md` for V1 work
+8. tests
+9. implementation
 
 Gate-specific execution/acceptance specifications are subordinate to the constitution, requirements, solution, and accepted ADRs. They make an already-approved gate concrete; they may not silently weaken or redefine higher-authority behavior.
+
+Post-V1 specifications may extend V1-only exact sets or packaging behavior only for the post-V1 product. They must preserve the V1 constitution and applicable evidence, privacy, uncertainty, execution-safety, immutability, and native-Wireshark contracts unless a higher-authority source is deliberately revised first. Post-V1 work must not rewrite the frozen V1 acceptance record as though the new feature existed in V1.
 
 Before implementing Gates 7–9, agents **must** read the corresponding specification in addition to all higher-authority sources:
 
@@ -27,6 +30,14 @@ For V1 platform scope also read:
 
 - `docs/decisions/ADR-0006-macos-first-v1-platform-scope.md`
 - `docs/roadmap.md`
+
+Before implementing the post-V1 embedded-local-AI stage, agents **must** also read:
+
+- `specs/post-v1/README.md`
+- `specs/post-v1/embedded-local-ai.md`
+- `docs/decisions/ADR-0007-embedded-local-ai-native-runtime.md`
+- `specs/v1/gate7-execution.md` for the existing reasoning boundary
+- `docs/v1-acceptance.md` so V1 evidence is not accidentally reinterpreted
 
 Do not preserve implementation behavior that contradicts a higher-authority source. Update the specification first when product behavior intentionally changes.
 
@@ -62,20 +73,23 @@ The original capture is immutable. Evidence captures are derived artifacts.
 - Do not add remote-listen behavior implicitly.
 - Raw captures and payload bytes remain local by default.
 - Cloud-model adapters receive normalized metadata/evidence by default, not the raw PCAP.
+- Embedded/local models do not get broader raw-data access merely because inference occurs on the same machine.
 - Any future feature that transmits payload excerpts must be explicit, visible, bounded, and disabled by default.
-- Never log packet payloads, API keys, model credentials, host-bridge tokens, or other secrets.
-- Preserve an offline/rules-only analysis path where practical.
+- Never log packet payloads, API keys, model credentials, embedded-AI tokens, host-bridge tokens, or other secrets.
+- Preserve an offline/rules-only analysis path where practical and where the governing spec requires it.
 
 ## 5. Execution safety
 
-All external tool calls must use structured argument arrays and subprocess APIs without a shell.
+All external tool calls must use structured argument arrays and subprocess APIs without a shell when implemented in application code.
 
 Prohibited patterns include:
 
 - `shell=True`
-- `sh -c` / `bash -c` / `cmd /c` for analyzer execution
+- `sh -c` / `bash -c` / `cmd /c` for analyzer/runtime execution from application code
 - concatenating untrusted strings into command lines
 - arbitrary executable paths supplied by capture contents or model output
+
+Existing platform launch scripts may invoke fixed packaged executables directly, but must not use `eval`, source untrusted configuration, or convert browser/capture/model input into executable names or free-form flags.
 
 Tool execution must use an allowlisted capability layer. Validate and bound:
 
@@ -87,8 +101,9 @@ Tool execution must use an allowlisted capability layer. Validate and bound:
 - time ranges
 - execution time
 - generated artifact size
+- embedded-AI model/runtime paths and arguments when that feature is in scope
 
-Treat PCAP/PCAPNG and all tool output as untrusted input.
+Treat PCAP/PCAPNG and all tool/model output as untrusted input.
 
 ## 6. Host bridge boundary
 
@@ -105,6 +120,8 @@ It must:
 - validate display-filter length/content
 - reject path traversal and unknown artifact IDs
 - provide no general-purpose command-execution endpoint
+
+The embedded-AI runtime is a separate trust boundary. Do not add model inference, model file access, or arbitrary proxy behavior to the host bridge.
 
 ## 7. Investigation behavior
 
@@ -137,10 +154,11 @@ Keep these responsibilities separate:
 - `apps/web`: presentation and user interaction
 - `services/api`: case lifecycle, orchestration, persistence, provider adapters
 - `services/analyzer`: deterministic packet analysis and normalized evidence generation
-- `services/host-bridge`: native host integration only
+- `services/host-bridge`: native Wireshark integration only
+- `ai/` or equivalent release/runtime area defined by the post-V1 spec: packaged model/runtime manifests, assets, and platform-specific inference runtime only
 - `contracts`: shared machine-readable schemas
 
-The web UI must not invoke TShark/Zeek directly. The model adapter must not invoke processes directly. The host bridge must not become an alternate analyzer.
+The web UI must not invoke TShark/Zeek directly. The model adapter must not invoke analyzer or arbitrary host processes directly. The embedded-AI runtime must not become an alternate analyzer or general tool agent. The host bridge must not become an alternate analyzer or model proxy.
 
 ## 9. Preferred implementation stack
 
@@ -151,11 +169,12 @@ Unless the specification is deliberately amended:
 - Analyzer: Python wrappers around pinned TShark/Wireshark CLI and Zeek versions
 - Local metadata: SQLite
 - Host bridge: Go, producing small native binaries
-- Packaging: Docker Compose for web/API/analyzer plus a native host bridge/launcher for the supported release platform
+- V1 packaging: Docker Compose for web/API/analyzer plus a native host bridge/launcher for the supported release platform
+- Post-V1 embedded AI on macOS arm64: pinned native llama.cpp runtime + pinned Q4_K_M model packaged with the release and reached through the existing provider boundary
 
-Keep provider integrations behind interfaces. Support OpenAI-compatible cloud/local endpoints without coupling core analysis to one model vendor.
+Keep provider integrations behind interfaces. Support OpenAI-compatible cloud/local endpoints without coupling core deterministic analysis to one model vendor.
 
-V1 is release-qualified on macOS. Windows/Linux code and CI may remain as portability groundwork, but they are not V1 release blockers or support claims unless the authoritative specification is changed.
+V1 is release-qualified on macOS. Windows/Linux code and CI may remain as portability groundwork, but they are not V1 release blockers or support claims unless the authoritative specification is changed. Post-V1 embedded-AI qualification is also macOS arm64 first unless its specification is changed.
 
 ## 10. Tests are product evidence
 
@@ -170,6 +189,8 @@ Every analyzer feature should have:
 - regression tests for previously fixed diagnoses
 
 A model-generated explanation is not a passing test. Test deterministic evidence and the contract presented to the reasoner.
+
+For embedded-AI work, additionally test model/runtime integrity, process isolation, provider authentication, prompt-injection resistance, invalid evidence/capability rejection, deterministic fallback, resource bounds, and rules-only versus AI-assisted behavior over a versioned corpus. Do not use fluent prose alone as acceptance evidence.
 
 ## 11. Spec-first change process
 
@@ -198,6 +219,7 @@ A change is done only when:
 - macOS V1 behavior is not silently broken
 - deferred Windows/Linux portability groundwork is not accidentally broken where tests already cover it
 - user-visible diagnoses identify their evidence and uncertainty
+- when embedded AI is in scope, model/runtime provenance, integrity, local-only exposure, deterministic fallback, and native package behavior satisfy the post-V1 acceptance spec
 
 ## 13. Communication style for generated UI/report text
 

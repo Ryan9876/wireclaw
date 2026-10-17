@@ -1,0 +1,57 @@
+p65798
+fcwd
+n/Users/smithr/Documents/GitHub/Wireclaw/.superpowers/sdd/embedded-local-ai
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/llama-server
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libggml.0.dylib
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libggml-blas.0.dylib
+ftxt
+n/private/var/db/diagnostics/logd/.plist-cache.l01RgDeN
+ftxt
+n/System/Library/CoreServices/SystemVersion.bundle/English.lproj/SystemVersion.strings
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libggml-base.0.dylib
+ftxt
+n/usr/lib/dyld
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libmtmd.0.dylib
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libggml-cpu.0.dylib
+ftxt
+n/private/var/db/analyticsd/events.allowlist
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libllama-server-impl.dylib
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libllama-common.0.dylib
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libllama.0.dylib
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/macos-arm64/libggml-metal.0.dylib
+ftxt
+n/usr/share/icu/icudt78l.dat
+ftxt
+n/System/Library/Extensions/AGXMetalG15X_M1.bundle/Contents/Resources/ds.binary.metallib.g15s-b1
+ftxt
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/32024/libraries.data
+ftxt
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/16777235_419/functions.data
+ftxt
+n/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf
+f0
+n/dev/null
+f1
+n/private/tmp/Wireclaw EAI14 bae67a0/home/Library/Application Support/Wireclaw/run/ai-log.fifo
+f2
+n/private/tmp/Wireclaw EAI14 bae67a0/home/Library/Application Support/Wireclaw/run/ai-log.fifo
+f3
+nlocalhost:8767
+f4
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/32024/libraries.data
+f5
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/32024/libraries.list
+f6
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/16777235_419/functions.data
+f7
+n/private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/16777235_419/functions.list

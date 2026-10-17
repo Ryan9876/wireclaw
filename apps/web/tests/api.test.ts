@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { api, ApiError, errorMessage } from '../src/api';
+import { api, ApiError, errorMessage, revision, type Case } from '../src/api';
 import supported from './fixtures/supported.json';
 
 function response(value: unknown, status = 200) {
@@ -9,6 +9,17 @@ function response(value: unknown, status = 200) {
   });
 }
 describe('fixed same-origin API contract', () => {
+  it('does not invalidate report content when only derived artifact bookkeeping changes', () => {
+    const before = structuredClone(supported.case) as unknown as Case;
+    const after = structuredClone(supported.case) as unknown as Case;
+    after.artifacts.push({
+      ...after.artifacts[0],
+      id: 'derived-artifact',
+      kind: 'evidence_capture',
+      sha256: 'a'.repeat(64),
+    });
+    expect(revision(after)).toBe(revision(before));
+  });
   it('creates with context, uploads octet stream, and invokes the real endpoint shapes', async () => {
     const fetch = vi.fn().mockImplementation(async () => response(supported.case));
     vi.stubGlobal('fetch', fetch);
@@ -107,11 +118,52 @@ describe('fixed same-origin API contract', () => {
   it('rejects non-rules provider mode and unknown lifecycle states', async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValueOnce(response({ ...supported.case, provider_mode: 'cloud' }))
+      .mockResolvedValueOnce(response({ ...supported.case, provider_mode: 'mystery' }))
       .mockResolvedValueOnce(response({ ...supported.case, state: 'MAGIC' }));
     vi.stubGlobal('fetch', fetch);
     await expect(api.get(supported.case.id)).rejects.toThrow('contract_mismatch');
     await expect(api.get(supported.case.id)).rejects.toThrow('contract_mismatch');
+  });
+  it.each(['none', 'embedded_local', 'openai_compatible_local', 'openai_compatible_cloud'])(
+    'accepts known provider mode %s on cases and capabilities',
+    async (mode) => {
+      const value = { ...supported.case, provider_mode: mode };
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(response(value))
+        .mockResolvedValueOnce(
+          response({ provider_mode: mode, limits: { max_capture_bytes: 20 } }),
+        );
+      vi.stubGlobal('fetch', fetch);
+      await expect(api.get(supported.case.id)).resolves.toMatchObject({ provider_mode: mode });
+      await expect(api.limits()).resolves.toBe(20);
+    },
+  );
+  it('validates and returns normalized safe AI status', async () => {
+    const status = {
+      effective_provider_mode: 'none',
+      embedded_availability: 'unavailable',
+      model: 'wireclaw-qwen3-4b-instruct-2507-q4_k_m',
+      failure_code: 'docker-connectivity',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ ai: status })));
+    await expect(api.aiStatus()).resolves.toEqual(status);
+  });
+  it('rejects unknown provider modes in the AI status contract', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        response({
+          ai: {
+            effective_provider_mode: 'shell_agent',
+            embedded_availability: 'ready',
+            model: 'unexpected',
+            failure_code: null,
+          },
+        }),
+      ),
+    );
+    await expect(api.aiStatus()).rejects.toThrow('contract_mismatch');
   });
   it('handles API errors without echoing raw untrusted messages', async () => {
     vi.stubGlobal(

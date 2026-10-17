@@ -92,6 +92,61 @@ beforeEach(() => {
 });
 
 describe('primary intake and recovery workflow', () => {
+  it.each([
+    [
+      {
+        effective_provider_mode: 'embedded_local',
+        embedded_availability: 'ready',
+        model: 'wireclaw-qwen3-4b-instruct-2507-q4_k_m',
+        failure_code: null,
+      },
+      'Local embedded AI ready',
+    ],
+    [
+      {
+        effective_provider_mode: 'none',
+        embedded_availability: 'not_applicable',
+        model: null,
+        failure_code: null,
+      },
+      'Rules-only mode',
+    ],
+    [
+      {
+        effective_provider_mode: 'none',
+        embedded_availability: 'unavailable',
+        model: 'wireclaw-qwen3-4b-instruct-2507-q4_k_m',
+        failure_code: 'docker-connectivity',
+      },
+      'Local embedded AI unavailable — deterministic analysis remains available',
+    ],
+    [
+      {
+        effective_provider_mode: 'openai_compatible_local',
+        embedded_availability: 'not_applicable',
+        model: null,
+        failure_code: null,
+      },
+      'Custom local provider',
+    ],
+    [
+      {
+        effective_provider_mode: 'openai_compatible_cloud',
+        embedded_availability: 'not_applicable',
+        model: null,
+        failure_code: null,
+      },
+      'Cloud provider',
+    ],
+  ] as const)('shows the safe provider state %s', async (status, label) => {
+    fixture();
+    vi.spyOn(api, 'aiStatus').mockResolvedValue(status);
+    render(<App />);
+    expect(await screen.findByText(new RegExp(label))).toBeVisible();
+    expect(document.body.textContent).not.toContain('/private/');
+    expect(document.body.textContent).not.toContain('host.docker.internal');
+  });
+
   it('starts with a labeled intake and disabled investigation action', async () => {
     fixture();
     render(<App />);
@@ -210,6 +265,30 @@ describe('primary intake and recovery workflow', () => {
 });
 
 describe('evidence and uncertainty presentation', () => {
+  it('marks an embedded provider fallback on the report without hiding deterministic findings', async () => {
+    const fallback = structuredClone(supported);
+    fallback.case.provider_mode = 'embedded_local';
+    fallback.case.ai_status = {
+      effective_provider_mode: 'embedded_local',
+      embedded_availability: 'ready',
+      model: 'wireclaw-qwen3-4b-instruct-2507-q4_k_m',
+      failure_code: null,
+    };
+    fallback.report.reasoning = {
+      mode: 'model_fallback',
+      status: 'fallback',
+      steps: 1,
+      failure_code: 'provider_timeout',
+      provider_mode: 'embedded_local',
+      model: 'wireclaw-qwen3-4b-instruct-2507-q4_k_m',
+      embedded_availability: 'ready',
+      embedded_failure_code: null,
+    };
+    openExisting(fallback);
+    expect(await screen.findByText(/Local embedded AI unavailable/)).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Supported finding' })).toBeVisible();
+  });
+
   it('presents supported result with backend confidence and fault domains', async () => {
     openExisting();
     await screen.findByRole('heading', { name: 'Supported finding' });

@@ -1,0 +1,33 @@
+{
+  "check": "EAI.14.14 port-conflict",
+  "fixture": {
+    "pid": 64265,
+    "address": "127.0.0.1:8767",
+    "http_head_status": 200,
+    "listener_verified": true
+  },
+  "expected_behavior": {
+    "launcher_failure_code": "port-in-use",
+    "public_health_status": 200,
+    "core_status": "ok",
+    "embedded_availability": "unavailable",
+    "fallback_case_id": "bf14a574555e4636ad2214bb0ead3bba",
+    "fallback_mode": "rules_only",
+    "deterministic_category": "tcp.rtt"
+  },
+  "cleanup": {
+    "packaged_stop_left_fixture_running": true,
+    "fixture_terminated_explicitly": true,
+    "port_verified_free_after_termination": true,
+    "normal_packaged_restart_ready": true
+  },
+  "evidence": [
+    "core-port-conflict.log",
+    "launcher-port-conflict.stdout-stderr.log",
+    "launcher-after-port-conflict.stdout-stderr.log",
+    "port-conflict-case/case.json",
+    "stop-port-conflict.log",
+    "listener-ai-final.txt"
+  ],
+  "pass": true
+}

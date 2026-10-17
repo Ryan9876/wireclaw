@@ -1,7 +1,7 @@
 """Strict request contracts: no paths, executable names, flags or filters."""
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from wireclaw_analyzer import Capability
@@ -136,6 +136,15 @@ class RunResponse(StrictModel):
     created: str
 
 
+class AIStatusResponse(StrictModel):
+    effective_provider_mode: Literal[
+        "none", "openai_compatible_cloud", "openai_compatible_local", "embedded_local"
+    ]
+    embedded_availability: Literal["ready", "unavailable", "not_applicable"]
+    model: str | None
+    failure_code: str | None
+
+
 class CaseResponse(StrictModel):
     id: str
     symptom: str
@@ -152,6 +161,23 @@ class CaseResponse(StrictModel):
     evidence_count: int
     gate_boundary: str
     provider_mode: str
+    ai_status: AIStatusResponse
+
+
+class HealthResponse(StrictModel):
+    status: str
+    gate: int
+    provider_mode: str
+    ai: AIStatusResponse
+
+
+class CapabilitiesResponse(StrictModel):
+    capabilities: list[str]
+    provider_mode: str
+    provider_modes_supported_by_interface: list[str]
+    bridge: dict[str, str]
+    limits: dict[str, int | float]
+    ai: AIStatusResponse
 
 
 class DeletionResponse(StrictModel):

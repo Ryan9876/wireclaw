@@ -1,0 +1,9 @@
+{
+  "disposable_copy_only": true,
+  "path": "/private/tmp/Wireclaw EAI14 bae67a0 tamper copy/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf",
+  "manifest_expected_sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc",
+  "original_sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc",
+  "tampered_sha256": "ecc342bf4292985665ecc1d0405042b9555ffc4694f3b9d33225269393d661c3",
+  "changed_byte_offset": 0,
+  "changed": true
+}

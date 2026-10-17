@@ -1,0 +1,11 @@
+Wireclaw: Local embedded AI unavailable — deterministic analysis remains available (invalid-bundle).
+ Network wireclaw-release_default Creating 
+ Network wireclaw-release_default Creating 
+ Network wireclaw-release_default Created 
+ Network wireclaw-release_default Created 
+ Container wireclaw-release-wireclaw-core-1 Creating 
+ Container wireclaw-release-wireclaw-core-1 Created 
+ Container wireclaw-release-wireclaw-core-1 Starting 
+ Container wireclaw-release-wireclaw-core-1 Started 
+Open http://127.0.0.1:28895
+launcher_exit=0

@@ -1,0 +1,1 @@
+84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034  /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/llama-server

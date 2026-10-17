@@ -1,0 +1,35 @@
+{
+  "check": "EAI.14.10-EAI.14.12",
+  "runtime_loss": {
+    "terminated_pid": 62750,
+    "identity_verified": true,
+    "executable": "/private/tmp/Wireclaw EAI14 bae67a0/wireclaw-release/ai/runtime/llama-server",
+    "listener_absent_after_termination": true,
+    "public_health_before_next_case": {
+      "http_status": 200,
+      "core_status": "ok",
+      "embedded_availability": "unavailable",
+      "failure_code": "runtime-unhealthy"
+    },
+    "deterministic_fallback": {
+      "case_id": "1f2622e8f77145ab87e3a2741d05485b",
+      "mode": "model_fallback",
+      "failure_code": "provider_unavailable",
+      "deterministic_category": "tcp.rtt"
+    }
+  },
+  "recovery": {
+    "method": "packaged stop.sh then start.sh",
+    "restarted_pid": 63912,
+    "public_health": "ready",
+    "model_assisted_case": "9d93d258ad994f0a94f8fe4effb778b0",
+    "case_and_evidence_persisted": true,
+    "evidence": [
+      "case-run/fallback.json",
+      "recovery-persistence.json",
+      "listener-ai-after-loss.txt",
+      "launcher-restart.stdout-stderr.log"
+    ]
+  },
+  "pass": true
+}

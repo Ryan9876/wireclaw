@@ -1,0 +1,2 @@
+4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc  /private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf
+84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034  /private/tmp/Wireclaw Qualification f38bac2/wireclaw-release/ai/macos-arm64/llama-server

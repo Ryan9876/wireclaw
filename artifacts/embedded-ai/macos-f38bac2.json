@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "stage": "EAI.14",
+  "source_sha": "f38bac27cb893aec2530931c93cc2d1806a1b1d5",
+  "verdict": "PASS",
+  "candidate": {
+    "archive_sha256": "584f6ea27d08298b0920de244abe3cb03d9b2c729dd2905039ba3b1e60f973db",
+    "archive_size_bytes": 2671237120,
+    "bundle_tree_sha256": "c6988ddd616996b208837d701ea246f86c40f35bbc68137e3f34205a38f2a1aa",
+    "core_image_id": "sha256:6ebc5ad2ee966d841e2e1013a1dcf1a11e86d76ccb229f48469ff3d0e3c085ff",
+    "runtime_sha256": "84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034",
+    "model_sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc"
+  },
+  "checks": [
+    {
+      "id": "EAI.14.1",
+      "status": "PASS",
+      "evidence": "Packaged model/runtime are present in the frozen archive; launch used the packaged arm64 llama-server path."
+    },
+    {
+      "id": "EAI.14.2",
+      "status": "PASS",
+      "evidence": "Fresh launch from the frozen package required no runtime/model install or model fetch; the GGUF was already packaged, policy records network_downloads=false, and runtime exposed only loopback listener."
+    },
+    {
+      "id": "EAI.14.3",
+      "status": "PASS",
+      "evidence": "Archive/tree, release metadata, runtime manifest, model manifest, model, llama-server, core image, compiled web, bridge, and packaged runtime-file hashes verified against freeze/release metadata."
+    },
+    {
+      "id": "EAI.14.4",
+      "status": "PASS",
+      "evidence": "Packaged launcher automatically started llama-server; host process identity and loopback listener recorded during launch."
+    },
+    {
+      "id": "EAI.14.5",
+      "status": "PASS",
+      "evidence": "Runtime manifest records Metal enabled; live process loaded packaged libggml-metal and the packaged Qwen GGUF."
+    },
+    {
+      "id": "EAI.14.6",
+      "status": "PASS",
+      "evidence": "Packaged launcher Docker-core authenticated reachability probe succeeded; core log recorded HTTP 200 from host.docker.internal:8767/v1/models."
+    },
+    {
+      "id": "EAI.14.7",
+      "status": "PASS",
+      "evidence": "Playwright against packaged app rendered \u201cLocal embedded AI ready\u201d; screenshot: artifacts/embedded-ai/native/f38bac2/ui-ready.png."
+    },
+    {
+      "id": "EAI.14.8",
+      "status": "PASS",
+      "evidence": "Packaged candidate completed high-RTT case b84fd1f2bdf64ca8beedbbbffced0574 in model_assisted mode, retained tcp.rtt and 17 evidence records; capture SHA unchanged. See model-assisted-case.json."
+    },
+    {
+      "id": "EAI.14.9",
+      "status": "PASS",
+      "evidence": "Playwright invoked Full Capture and Evidence Capture in native Wireshark; both opened with tcp.stream == 0. Original and derived SHA values are in ui-actions.json."
+    },
+    {
+      "id": "EAI.14.10",
+      "status": "PASS",
+      "evidence": "After terminating only the verified packaged llama-server, /api/health changed to unavailable/runtime-unhealthy before a new investigation; core health remained ok. Next high-RTT case used model_fallback and retained deterministic tcp.rtt; see rules-only-fallback.json."
+    },
+    {
+      "id": "EAI.14.11",
+      "status": "PASS",
+      "evidence": "After packaged runtime restart, public status returned ready. The prior model-assisted case remained COMPLETE with the same capture SHA and 17 evidence records."
+    },
+    {
+      "id": "EAI.14.12",
+      "status": "PASS",
+      "evidence": "Documented package stop/start preserved the case database, capture/evidence artifacts, model SHA, and runtime SHA."
+    },
+    {
+      "id": "EAI.14.13",
+      "status": "PASS",
+      "evidence": "Package launched from /private/tmp/Wireclaw Qualification f38bac2, a path containing spaces."
+    },
+    {
+      "id": "EAI.14.14",
+      "status": "PASS",
+      "evidence": "Controlled listener on 127.0.0.1:8767 yielded port-in-use with healthy deterministic core and left unrelated listener alive through stop. One-byte runtime tamper yielded invalid-bundle and healthy core; exact bytes and SHA restored before recovery."
+    },
+    {
+      "id": "EAI.14.15",
+      "status": "PASS",
+      "evidence": "lsof showed app, bridge, and model listeners only on 127.0.0.1 ports 8765, 8766, and 8767; no LAN listener observed."
+    },
+    {
+      "id": "EAI.14.16",
+      "status": "PASS",
+      "evidence": "Three full benchmark runs had zero privacy leaks; exact-head full regression/CI and focused security/privacy sentinels passed. Runtime token was ephemeral and not present in public health/capabilities/UI."
+    }
+  ],
+  "limitations": [
+    "No full-host packet capture was made for no-download verification; evidence is packaged offline assets, fixed launcher path, network_downloads=false, and observed loopback-only runtime sockets."
+  ],
+  "environment": {
+    "macos": "macOS 27.0.1 arm64",
+    "xcode": "27.0 (27A266a)",
+    "cmake": "4.4.4",
+    "compiler": "Apple clang 21.0.0",
+    "docker": "29.8.2",
+    "docker_compose": "5.6.0"
+  },
+  "runtime_argv_template": [
+    "<packaged-runtime>/llama-server",
+    "--model",
+    "<packaged-model>/qwen3-4b-instruct-2507-q4_k_m.gguf",
+    "--alias",
+    "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8767",
+    "--ctx-size",
+    "16384",
+    "--batch-size",
+    "128",
+    "--ubatch-size",
+    "32",
+    "--n-predict",
+    "2048",
+    "--parallel",
+    "1",
+    "--api-key-file",
+    "<ephemeral-per-launch-key-file>",
+    "--no-agent",
+    "--no-webui",
+    "--cache-ram",
+    "0"
+  ]
+}

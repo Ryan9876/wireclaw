@@ -1,0 +1,3 @@
+{"capability":"baseline","case_id":"9e2c2f90bd10454e80729a5ec7de7841","component":"api","duration_ms":134,"error_code":null,"status":"complete"}
+{"capability":"diagnostics","case_id":"9e2c2f90bd10454e80729a5ec7de7841","component":"api","duration_ms":317,"error_code":null,"status":"complete"}
+{"capability":"report","case_id":"9e2c2f90bd10454e80729a5ec7de7841","component":"api","duration_ms":9,"error_code":null,"status":"complete"}

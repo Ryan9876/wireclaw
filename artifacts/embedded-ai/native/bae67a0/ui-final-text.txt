@@ -1,0 +1,104 @@
+Skip to investigation
+W
+Wireclaw
+Packet investigation
+◉ Local capture analysis / Local embedded AI ready
+EVIDENCE BEFORE DIAGNOSIS
+Capture investigation
+
+Deterministic packet facts. Traceable conclusions. Visible uncertainty.
+
+New case
+Case context
+Delete case
+
+Case 9d93d258ad994f0a94f8fe4effb778b0
+
+The user reports a slow connection to the server.
+
+Immutable original capture
+INVESTIGATION RESULT · COMPLETE
+Local Embedded AI Ready
+Supported finding
+
+TCP stream 0 has a measured median ACK RTT of 200 ms across 3 sample(s).
+
+Confidence
+Medium
+Fault domain
+Local Network · Network Path
+Capture quality
+Good
+
+Conclusions are inferred from deterministic evidence. Confidence describes support for the conclusion; it does not prove a root cause.
+
+Evidence
+ev_72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c_analyze_rtt_stream0
+Capture quality: good
+capture_drops
+duplicate_capture_artifacts
+Evidence
+ev_72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c_assess_capture_quality
+Time attribution
+Stage Subtotal: 400 Ms
+
+Available stage intervals only. This subtotal is not complete end-to-end transaction time; missing stages remain unknown.
+
+Available stage intervals and measurement classes
+STAGE	INTERVAL	MEASUREMENT	EVIDENCE
+Tcp Establishment	400 ms	derived (measured)	Inspect stage evidence
+ATTRIBUTION LIMITATIONS
+Time attribution is a non-overlapping measured stage subtotal for the top-ranked TCP stream, not complete user-visible transaction time.
+
+Unknown / unobserved: complete user-visible transaction time and any stage not listed above.
+
+Findings 1
+Backend priority order
+FINDING_001 / TCP RTT
+Medium Confidence · Inferred
+High transport RTT observed
+
+TCP stream 0 has a measured median ACK RTT of 200 ms across 3 sample(s).
+
+Fault domain: Local network · Network path
+
+Affected scope: tcp stream 0
+
+Evidence
+ev_72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c_analyze_rtt_stream0
+Deterministic support
+Derived analyze rtt
+LIMITATIONS
+Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.
+capture_drops
+duplicate_capture_artifacts
+ACK RTT is capture-point segment-to-ACK timing, includes delayed ACKs and may include SYN samples; not one-way path latency.
+TShark 4.2.2 does not expose newer ambiguous_ack classification; these samples do not independently implement Karn's algorithm.
+ALTERNATE EXPLANATIONS
+The 150 ms rule threshold is a diagnostic heuristic, not proof of a network fault.
+Path distance and capture location can legitimately produce higher RTT.
+NEXT VALIDATION
+Compare RTT from the same path under a known-good reproduction or from the opposite endpoint.
+Open Full Capture in Wireshark
+Open Evidence Capture in Wireshark
+
+Native bridge available. Launch grants are one-time and short-lived.
+
+WIRESHARK DISPLAY FILTER
+
+tcp.stream == 0
+Copy Wireshark Display Filter
+Show Packet Evidence
+
+Next evidence & limitations
+RECOMMENDED NEXT EVIDENCE
+Compare RTT from the same path under a known-good reproduction or from the opposite endpoint.
+INVESTIGATION LIMITATIONS
+capture_drops
+duplicate_capture_artifacts
+Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.
+ACK RTT is capture-point segment-to-ACK timing, includes delayed ACKs and may include SYN samples; not one-way path latency.
+TShark 4.2.2 does not expose newer ambiguous_ack classification; these samples do not independently implement Karn's algorithm.
+Analyzer versions & report provenance
+Investigation complete · inspect recorded lifecycle
+Local-first · Deterministic packet evidence remains authoritative

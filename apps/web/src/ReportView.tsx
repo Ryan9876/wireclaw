@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   api,
+  aiStatusLabel,
   ApiError,
   errorMessage,
   type Evidence,
+  type AIStatus,
   type NativeBridgeState,
   type Report,
 } from './api';
@@ -258,6 +260,26 @@ export function ReportView({
   onEvidence: (ids: string[]) => void;
 }) {
   const { conclusion, capture_quality: quality, time_attribution: time } = report;
+  const reasoningStatus = report.reasoning;
+  const embeddedFailed =
+    reasoningStatus?.provider_mode === 'embedded_local' &&
+    reasoningStatus.mode === 'model_fallback';
+  const statusForReport: AIStatus = {
+    effective_provider_mode:
+      embeddedFailed || reasoningStatus?.embedded_availability === 'unavailable'
+        ? 'none'
+        : (reasoningStatus?.provider_mode ?? 'none'),
+    embedded_availability: embeddedFailed
+      ? 'unavailable'
+      : (reasoningStatus?.embedded_availability ?? 'not_applicable'),
+    model:
+      embeddedFailed || reasoningStatus?.embedded_availability === 'unavailable'
+        ? reasoningStatus.model
+        : null,
+    failure_code: embeddedFailed
+      ? (reasoningStatus.failure_code ?? 'provider_unavailable')
+      : (reasoningStatus?.embedded_failure_code ?? null),
+  };
   const [bridgeAvailable, setBridgeAvailable] = useState<NativeBridgeState>('checking');
   useEffect(() => {
     const controller = new AbortController();
@@ -276,7 +298,7 @@ export function ReportView({
       <section className="summary panel" aria-labelledby="conclusion-heading">
         <div className="section-heading">
           <span className="eyebrow">Investigation result · {report.status}</span>
-          <span className="tag">Rules-only</span>
+          <span className="tag">{aiStatusLabel(statusForReport)}</span>
         </div>
         <h2 id="conclusion-heading">
           {conclusion.type === 'insufficient_evidence'

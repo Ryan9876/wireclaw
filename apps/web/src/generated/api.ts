@@ -242,6 +242,23 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AIStatusResponse */
+        AIStatusResponse: {
+            /**
+             * Effective Provider Mode
+             * @enum {string}
+             */
+            effective_provider_mode: "none" | "openai_compatible_cloud" | "openai_compatible_local" | "embedded_local";
+            /**
+             * Embedded Availability
+             * @enum {string}
+             */
+            embedded_availability: "ready" | "unavailable" | "not_applicable";
+            /** Model */
+            model: string | null;
+            /** Failure Code */
+            failure_code: string | null;
+        };
         /** ArtifactResponse */
         ArtifactResponse: {
             /** Id */
@@ -272,6 +289,24 @@ export interface components {
             bridge_origin: string;
             /** Expires Unix */
             expires_unix: number;
+        };
+        /** CapabilitiesResponse */
+        CapabilitiesResponse: {
+            /** Capabilities */
+            capabilities: string[];
+            /** Provider Mode */
+            provider_mode: string;
+            /** Provider Modes Supported By Interface */
+            provider_modes_supported_by_interface: string[];
+            /** Bridge */
+            bridge: {
+                [key: string]: string;
+            };
+            /** Limits */
+            limits: {
+                [key: string]: number;
+            };
+            ai: components["schemas"]["AIStatusResponse"];
         };
         /** CapabilityRequest */
         CapabilityRequest: {
@@ -317,6 +352,7 @@ export interface components {
             gate_boundary: string;
             /** Provider Mode */
             provider_mode: string;
+            ai_status: components["schemas"]["AIStatusResponse"];
         };
         /** CreateCase */
         CreateCase: {
@@ -382,6 +418,16 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthResponse */
+        HealthResponse: {
+            /** Status */
+            status: string;
+            /** Gate */
+            gate: number;
+            /** Provider Mode */
+            provider_mode: string;
+            ai: components["schemas"]["AIStatusResponse"];
         };
         /** HistoryResponse */
         HistoryResponse: {
@@ -460,7 +506,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };
@@ -480,7 +526,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CapabilitiesResponse"];
                 };
             };
         };

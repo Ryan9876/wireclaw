@@ -1,8 +1,13 @@
-# Wireclaw V1 for macOS
+# Wireclaw post-V1 package for macOS
 
-This bundle is the macOS V1 release package. It runs the compiled web UI, API,
-SQLite metadata, and deterministic analyzer in one Docker core container. The
-Go host bridge runs natively and opens approved captures in native Wireshark.
+This package runs the compiled web UI, API, SQLite metadata, and deterministic
+analyzer in one Docker core container. The Go host bridge runs natively and
+opens approved captures in native Wireshark. It also includes the pinned native
+macOS arm64 llama.cpp runtime and Qwen model for optional local reasoning.
+
+## Post-V1 acceptance status
+
+The embedded AI implementation and performance benchmark are recorded in `docs/post-v1-embedded-ai-acceptance.md`. A full 16-check packaged native acceptance and final CI/review/PR workflow remain pending; this candidate must not be described as release-qualified until the acceptance record reports EAI.14 and EAI.15 as PASS.
 
 ## Requirements
 
@@ -14,6 +19,13 @@ Python, Node/npm, Go, TShark, capinfos, editcap, and mergecap are not needed on
 the Mac for normal operation. Analyzer tools run inside the core image. Zeek is
 not installed because no accepted V1 capability invokes it.
 
+No separate Ollama, LM Studio, llama.cpp, model selection, or model download is
+needed. The release contains `ai/model-manifest.json`,
+`ai/runtime-manifest.json`, the Qwen3-4B-Instruct-2507 Q4_K_M GGUF, the native
+`ai/macos-arm64/` runtime and its libraries, and both upstream licenses.
+`release-metadata.json` records the locked model/runtime identities and file
+hashes.
+
 ## First start
 
 1. Copy or unzip this complete `wireclaw-release` directory to a user-writable
@@ -24,11 +36,20 @@ not installed because no accepted V1 capability invokes it.
 
 The packaged `darwin-arm64` bridge binary is in `host-bridge/macos/`.
 
-On first start the launcher copies `.env.example` to `.env`. Defaults use
-rules-only mode and store data under `~/Library/Application Support/Wireclaw/data`.
-Edit `.env` to change ports, data location, or opt into a provider. The launcher
-reads only the documented keys as data; it never sources or evaluates `.env`.
-Paths containing spaces are supported.
+On first start the launcher copies `.env.example` to `.env`. The packaged
+default starts embedded local AI and stores data under
+`~/Library/Application Support/Wireclaw/data`. The launcher verifies the
+packaged assets, starts the model runtime on numeric loopback, and creates an
+ephemeral authentication secret for that launch. The secret is not written to
+`.env` or case data. Normal startup performs no model or runtime download.
+
+To run without reasoning, set `WIRECLAW_PROVIDER_MODE=none` in `.env`. The
+deterministic analyzer remains available if the model/runtime is unavailable or
+cannot be reached. The UI reports that state instead of describing a fallback
+report as AI-assisted. You can configure an administrator-selected
+OpenAI-compatible local or cloud provider using the documented API settings.
+The launcher reads only documented keys as data; it never sources or evaluates
+`.env`. Paths containing spaces are supported.
 
 For an OpenAI-compatible model server running on this Mac, set the base URL to
 `http://host.docker.internal:<port>/v1`. Cloud mode requires an HTTPS endpoint.
@@ -52,4 +73,29 @@ loaded image ID and never rebuilds the release image during normal startup.
 `release-metadata.json` records the archive hash, source identity, pinned base
 images, tool versions, compiled web hash, core image ID, and bridge SHA-256.
 
-Windows and Linux are future qualification targets, not supported V1 hosts.
+This post-V1 embedded-AI package is qualified for macOS arm64 only. Windows and
+Linux embedded-AI implementation and qualification are outside this stage.
+
+## Signed macOS app
+
+The release packager builds `ai/WireclawAI.app` from the verified staged model
+and runtime assets, then signs nested runtime code before the helper and parent
+app. The default `--signing-mode adhoc` is for local development qualification
+only. It ad-hoc signs the app and nested executable code without Hardened
+Runtime, while verifying the exact parent/helper entitlement sets. This keeps
+local inference qualification compatible with bundled non-platform llama.cpp
+libraries; ad-hoc mode is not production signing acceptance. Developer ID,
+Hardened Runtime, notarization, and stapling are recorded as `NOT_RUN` in this
+mode.
+
+For a protected production release environment, use
+`--signing-mode developer-id` with `WIRECLAW_DEVELOPER_IDENTITY` set to the
+Developer ID Application identity and `WIRECLAW_NOTARY_PROFILE` set to a
+preconfigured `notarytool` Keychain profile. The package submits, staples, and
+validates the app. It records signing mode and notarization status in
+`release-metadata.json`; all nested code uses that same Developer ID Team ID,
+Hardened Runtime remains enabled with library validation, and credentials are
+never written into the bundle or metadata. Missing Developer ID credentials
+stop production packaging with `NOT_RUN`; a missing notary profile leaves
+notarization, stapling, and overall production qualification `NOT_RUN`. The
+package never falls back to ad-hoc signing.

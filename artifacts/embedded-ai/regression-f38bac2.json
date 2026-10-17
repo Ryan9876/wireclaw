@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "stage": "EAI.13",
+  "source_sha": "f38bac27cb893aec2530931c93cc2d1806a1b1d5",
+  "verdict": "PASS",
+  "local": {
+    "python": {"status": "PASS_WITH_SKIPS", "result": "405 passed, 147 skipped, 1 warning", "skip_reason": "requires real TShark and capinfos"},
+    "web_unit": {"status": "PASS", "result": "54 passed"},
+    "web_lint_typecheck_build_format": {"status": "PASS"},
+    "bridge_go_test_vet": {"status": "PASS"},
+    "ruff_check_and_modified_python_format": {"status": "PASS"},
+    "shell_syntax": {"status": "PASS"},
+    "git_diff_check": {"status": "PASS"},
+    "repository_wide_ruff_format": {"status": "PREEXISTING_UNRELATED_FAILURE", "details": "Untouched specs/v1/solution.md:318; intentionally not reformatted."}
+  },
+  "exact_head_ci": {
+    "run_id": "38802955931",
+    "url": "https://github.com/Ryan9876/wireclaw/actions/runs/38802955931",
+    "jobs": {
+      "linux-full": "PASS",
+      "docker-release": "PASS",
+      "bridge-platform (ubuntu-24.04)": "PASS",
+      "bridge-platform (macos-14)": "PASS",
+      "bridge-platform (windows-2025)": "PASS"
+    },
+    "docker_dependent_api_and_packet_tool_coverage": "PASS_IN_CI"
+  }
+}

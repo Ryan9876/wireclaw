@@ -1,0 +1,20 @@
+COMMAND     PID   USER   FD   TYPE DEVICE   SIZE/OFF                NODE NAME
+llama-ser 30976 smithr  txt    REG   1,16      33472           112714076 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/llama-server
+llama-ser 30976 smithr  txt    REG   1,16      60224           112714062 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libggml.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16      58776           112714079 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libggml-blas.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16      77540           112354460 /private/var/db/diagnostics/logd/.plist-cache.l01RgDeN
+llama-ser 30976 smithr  txt    REG   1,16        110 1152921500312109332 /System/Library/CoreServices/SystemVersion.bundle/English.lproj/SystemVersion.strings
+llama-ser 30976 smithr  txt    REG   1,16    1390080           112714057 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libmtmd.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16     737096           112714078 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libggml-base.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16    4129840 1152921500312609216 /usr/lib/dyld
+llama-ser 30976 smithr  txt    REG   1,16     990672           112714080 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libggml-cpu.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16    6492856           112714064 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libllama-server-impl.dylib
+llama-ser 30976 smithr  txt    REG   1,16    5098280           112714071 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libllama-common.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16    3360464           112714055 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libllama.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16     170314           112352436 /private/var/db/analyticsd/events.allowlist
+llama-ser 30976 smithr  txt    REG   1,16    5521624           112714068 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/macos-arm64/libggml-metal.0.dylib
+llama-ser 30976 smithr  txt    REG   1,16   36103568 1152921500312619766 /usr/share/icu/icudt78l.dat
+llama-ser 30976 smithr  txt    REG   1,16   19809872 1152921500312136235 /System/Library/Extensions/AGXMetalG15X_M1.bundle/Contents/Resources/ds.binary.metallib.g15s-b1
+llama-ser 30976 smithr  txt    REG   1,16  683032576            81827792 /private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/32024/libraries.data
+llama-ser 30976 smithr  txt    REG   1,16    6815744            81827830 /private/var/folders/gj/w_rsm4vn67s99sjqjqvlbnm40000gp/C/com.apple.metal/16777235_419/functions.data
+llama-ser 30976 smithr  txt    REG   1,16 2497279040           112714053 /private/tmp/Wireclaw Acceptance Candidate 647/wireclaw release/ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf

@@ -23,6 +23,33 @@ NEXT_EVIDENCE = {
     "repeat_capture": "Repeat a complete bidirectional capture during a representative reproduction.",
 }
 
+NEXT_EVIDENCE_DOMAINS = {
+    "server_side_capture": {"server_application", "network_path"},
+    "application_logs": {"server_application"},
+    "browser_har": {"client"},
+    "interface_counters": {"local_network", "network_path"},
+    "repeat_capture": {
+        "client",
+        "local_network",
+        "network_path",
+        "server_application",
+        "dns",
+        "capture_observability",
+        "unknown",
+    },
+}
+
+REMAINING_CATEGORY_DOMAINS = {
+    "server.application_wait": {"server_application"},
+    "dns.timing": {"dns"},
+    "tcp.establishment_delay": {"local_network", "network_path", "server_application"},
+    "tcp.retransmission": {"local_network", "network_path", "capture_observability"},
+    "tcp.rtt": {"network_path"},
+    "tcp.receive_window": {"client", "server_application"},
+    "tls.handshake": {"network_path", "server_application"},
+    "capture.quality": {"capture_observability"},
+}
+
 
 def make_provider(policy):
     if policy.provider_mode is ProviderMode.NONE:
@@ -90,7 +117,27 @@ def _validated_proposals(
             for domain in item.fault_domains
         ):
             continue
-        next_codes.extend(code for code in item.next_evidence if code in NEXT_EVIDENCE)
+        category_domains = set(
+            findings.get(item.category, {}).get("fault_domains", [])
+            or REMAINING_CATEGORY_DOMAINS.get(item.category, set())
+        )
+        proposed_domains = set(item.fault_domains)
+        for deterministic in report["remaining_hypotheses"]:
+            deterministic_evidence_ids = set(deterministic.get("evidence_ids", []))
+            if item.evidence_ids and any(
+                evidence_id not in deterministic_evidence_ids for evidence_id in item.evidence_ids
+            ):
+                continue
+            supported_domains = (
+                category_domains & proposed_domains & set(deterministic.get("fault_domains", []))
+            )
+            if not supported_domains:
+                continue
+            next_codes.extend(
+                code
+                for code in item.next_evidence
+                if code in NEXT_EVIDENCE and NEXT_EVIDENCE_DOMAINS[code] & supported_domains
+            )
     return list(dict.fromkeys(ranking)), list(dict.fromkeys(next_codes))
 
 
