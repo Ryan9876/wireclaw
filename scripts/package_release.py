@@ -158,7 +158,6 @@ def build_signed_ai_app(release_root: Path, *, signing_mode: str, identity: str 
             archive.unlink()
             result["notarization"] = "PASS"
             result["stapling"] = "PASS"
-            result["production_qualification"] = "PASS"
     result["bundle_sha256"] = tree_sha256(app)
     shutil.rmtree(wrapper.parent)
     return result

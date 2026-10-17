@@ -97,7 +97,16 @@ def test_compose_key_is_runtime_environment_only_and_docker_metadata_is_document
         "WIRECLAW_PROVIDER_API_KEY": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     }
     result = subprocess.run(
-        ["docker", "compose", "--env-file", ".env.example", "-f", "compose.yaml", "config", "--quiet"],
+        [
+            "docker",
+            "compose",
+            "--env-file",
+            ".env.example",
+            "-f",
+            "compose.yaml",
+            "config",
+            "--quiet",
+        ],
         cwd=ROOT,
         env=compose_env,
         capture_output=True,

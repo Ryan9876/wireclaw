@@ -5,11 +5,13 @@ There is a numeric-PID TOCTOU interval after each identity check and before
 os.kill. These checks reduce accidental/reused-PID targeting; they are not an
 atomic PID-bound signaling primitive.
 """
+
 import ctypes
 import hashlib
 import json
 import os
 import re
+import signal as signal_module
 import stat
 import sys
 import tempfile
@@ -28,9 +30,14 @@ class LifecycleError(Exception):
 
 def _fixed_helper(path):
     value = Path(path)
-    if (not value.is_absolute() or str(value) != os.path.normpath(path)
-            or value.name != "llama-server" or value.parent.name != "MacOS"
-            or value.parent.parent.name != "Contents" or value.parent.parent.parent.name != "WireclawAI.app"):
+    if (
+        not value.is_absolute()
+        or str(value) != os.path.normpath(path)
+        or value.name != "llama-server"
+        or value.parent.name != "MacOS"
+        or value.parent.parent.name != "Contents"
+        or value.parent.parent.parent.name != "WireclawAI.app"
+    ):
         raise LifecycleError("invalid fixed helper")
     current = Path(value.anchor)
     for part in value.parts[1:]:
@@ -55,15 +62,24 @@ def _digest(path):
 def _validate(identity, fixed_helper):
     if not isinstance(identity, dict) or set(identity) != FIELDS:
         raise LifecycleError("invalid receipt fields")
-    pid, start, executable, digest = (identity[key] for key in
-                                       ("pid", "process_start", "executable", "executable_sha256"))
+    pid, start, executable, digest = (
+        identity[key] for key in ("pid", "process_start", "executable", "executable_sha256")
+    )
     if type(pid) is not int or not 0 < pid <= 999999:
         raise LifecycleError("invalid PID")
     if not isinstance(start, str) or not START_RE.fullmatch(start):
         raise LifecycleError("invalid process start")
-    if not isinstance(executable, str) or len(executable) > 512 or executable != _fixed_helper(fixed_helper):
+    if (
+        not isinstance(executable, str)
+        or len(executable) > 512
+        or executable != _fixed_helper(fixed_helper)
+    ):
         raise LifecycleError("invalid executable")
-    if not isinstance(digest, str) or not DIGEST_RE.fullmatch(digest) or digest != _digest(executable):
+    if (
+        not isinstance(digest, str)
+        or not DIGEST_RE.fullmatch(digest)
+        or digest != _digest(executable)
+    ):
         raise LifecycleError("invalid helper digest")
     return identity
 
@@ -76,6 +92,7 @@ def _parse_json(raw):
                 raise LifecycleError("duplicate receipt field")
             result[key] = value
         return result
+
     return json.loads(raw, object_pairs_hook=unique)
 
 
@@ -103,7 +120,11 @@ def write_receipt(path, identity, fixed_helper, *, replace_stale=False):
     if path.exists():
         if replace_stale:
             info = path.lstat()
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o777 != 0o600:
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.getuid()
+                or info.st_mode & 0o777 != 0o600
+            ):
                 raise LifecycleError("unsafe existing receipt")
         else:
             read_receipt(path, fixed_helper)
@@ -127,14 +148,22 @@ def _read_receipt_with_file_id(path, fixed_helper):
     path = _safe_receipt_path(path)
     try:
         info = path.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o777 != 0o600 or info.st_size > MAX_RECEIPT:
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_mode & 0o777 != 0o600
+            or info.st_size > MAX_RECEIPT
+        ):
             raise LifecycleError("unsafe receipt")
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(fd, "rb") as stream:
             opened = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(opened.st_mode) or opened.st_uid != os.getuid()
-                    or opened.st_mode & 0o777 != 0o600
-                    or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino)):
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_uid != os.getuid()
+                or opened.st_mode & 0o777 != 0o600
+                or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino)
+            ):
                 raise LifecycleError("receipt replaced")
             raw = stream.read(MAX_RECEIPT + 1)
         if len(raw) > MAX_RECEIPT:
@@ -151,17 +180,30 @@ def read_receipt(path, fixed_helper):
 
 
 class _ProcBSDInfo(ctypes.Structure):
-    _fields_ = [("flags", ctypes.c_uint32), ("status", ctypes.c_uint32),
-                ("xstatus", ctypes.c_uint32), ("pid", ctypes.c_uint32),
-                ("ppid", ctypes.c_uint32), ("uid", ctypes.c_uint32),
-                ("gid", ctypes.c_uint32), ("ruid", ctypes.c_uint32),
-                ("rgid", ctypes.c_uint32), ("svuid", ctypes.c_uint32),
-                ("svgid", ctypes.c_uint32), ("rfu", ctypes.c_uint32),
-                ("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32),
-                ("nfiles", ctypes.c_uint32), ("pgid", ctypes.c_uint32),
-                ("pjobc", ctypes.c_uint32), ("tdev", ctypes.c_uint32),
-                ("tpgid", ctypes.c_uint32), ("nice", ctypes.c_int32),
-                ("start_sec", ctypes.c_uint64), ("start_usec", ctypes.c_uint64)]
+    _fields_ = [
+        ("flags", ctypes.c_uint32),
+        ("status", ctypes.c_uint32),
+        ("xstatus", ctypes.c_uint32),
+        ("pid", ctypes.c_uint32),
+        ("ppid", ctypes.c_uint32),
+        ("uid", ctypes.c_uint32),
+        ("gid", ctypes.c_uint32),
+        ("ruid", ctypes.c_uint32),
+        ("rgid", ctypes.c_uint32),
+        ("svuid", ctypes.c_uint32),
+        ("svgid", ctypes.c_uint32),
+        ("rfu", ctypes.c_uint32),
+        ("comm", ctypes.c_char * 16),
+        ("name", ctypes.c_char * 32),
+        ("nfiles", ctypes.c_uint32),
+        ("pgid", ctypes.c_uint32),
+        ("pjobc", ctypes.c_uint32),
+        ("tdev", ctypes.c_uint32),
+        ("tpgid", ctypes.c_uint32),
+        ("nice", ctypes.c_int32),
+        ("start_sec", ctypes.c_uint64),
+        ("start_usec", ctypes.c_uint64),
+    ]
 
 
 def inspect_process(pid):
@@ -181,7 +223,7 @@ def inspect_process(pid):
         used = libproc.proc_listpids(1, 0, entries, ctypes.sizeof(entries))
         if used <= 0 or used >= ctypes.sizeof(entries):
             raise LifecycleError("process list incomplete")
-        if pid not in entries[:used // ctypes.sizeof(ctypes.c_int)]:
+        if pid not in entries[: used // ctypes.sizeof(ctypes.c_int)]:
             return None
         raise LifecycleError("process identity unavailable")
     path = ctypes.create_string_buffer(4096)
@@ -189,8 +231,12 @@ def inspect_process(pid):
     if count <= 0 or count >= len(path):
         raise LifecycleError("process path unavailable")
     executable = os.fsdecode(path.value)
-    return {"pid": pid, "process_start": f"{info.start_sec}:{info.start_usec}",
-            "executable": executable, "executable_sha256": _digest(executable)}
+    return {
+        "pid": pid,
+        "process_start": f"{info.start_sec}:{info.start_usec}",
+        "executable": executable,
+        "executable_sha256": _digest(executable),
+    }
 
 
 def _verified(identity, fixed_helper, inspect):
@@ -204,7 +250,11 @@ def _verified(identity, fixed_helper, inspect):
 
 
 def recover_receipt(path, status, fixed_helper, inspect=inspect_process):
-    if not isinstance(status, dict) or status.get("state") != "running" or set(status) != FIELDS | {"state"}:
+    if (
+        not isinstance(status, dict)
+        or status.get("state") != "running"
+        or set(status) != FIELDS | {"state"}
+    ):
         raise LifecycleError("invalid status receipt")
     identity = {key: status[key] for key in FIELDS}
     if not _verified(identity, fixed_helper, inspect):
@@ -212,9 +262,15 @@ def recover_receipt(path, status, fixed_helper, inspect=inspect_process):
     write_receipt(path, identity, fixed_helper, replace_stale=True)
 
 
-def stop_verified(path, fixed_helper, inspect=inspect_process, signal=None, wait=time.sleep, attempts=10):
+def stop_verified(
+    path, fixed_helper, inspect=inspect_process, signal=None, wait=time.sleep, attempts=10
+):
     if signal is None:
-        signal = lambda pid, name: os.kill(pid, getattr(__import__("signal"), "SIG" + name))
+
+        def signal_process(pid, name):
+            os.kill(pid, getattr(signal_module, "SIG" + name))
+
+        signal = signal_process
     if type(attempts) is not int or not 0 <= attempts <= 10:
         raise LifecycleError("invalid wait bound")
     identity, receipt_file_id = _read_receipt_with_file_id(path, fixed_helper)
@@ -228,7 +284,11 @@ def stop_verified(path, fixed_helper, inspect=inspect_process, signal=None, wait
     # Read authoritative state again and reverify every field immediately
     # before KILL. Any replacement or partial observation fails closed.
     fresh, fresh_file_id = _read_receipt_with_file_id(path, fixed_helper)
-    if fresh_file_id != receipt_file_id or fresh != identity or not _verified(fresh, fixed_helper, inspect):
+    if (
+        fresh_file_id != receipt_file_id
+        or fresh != identity
+        or not _verified(fresh, fixed_helper, inspect)
+    ):
         raise LifecycleError("identity changed before KILL")
     signal(identity["pid"], "KILL")
     for _ in range(attempts):
@@ -271,7 +331,10 @@ def main(argv):
             remove_receipt(receipt, fixed_helper)
         return 0
     except LifecycleError:
-        print("Wireclaw: AI lifecycle identity unavailable; no unverified process signaled.", file=sys.stderr)
+        print(
+            "Wireclaw: AI lifecycle identity unavailable; no unverified process signaled.",
+            file=sys.stderr,
+        )
         return 1
 
 

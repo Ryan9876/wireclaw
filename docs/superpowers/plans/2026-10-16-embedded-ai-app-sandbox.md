@@ -296,6 +296,14 @@ Compose resolves the transient key in memory to create Core. The launcher invoke
 
 After implementation tasks complete, run focused tests first, then full practical regression: full Python suite, web tests/lint/typecheck/build, bridge Go tests/vet, packaging tests, shell syntax, Ruff check/format, and `git diff --check`. Require exact-head CI on the implementation commit. Do not claim release signing acceptance from ad-hoc CI.
 
+Local verification follow-up (2026-10-16):
+
+- Playwright's API command exited 3 inside the enclosing command sandbox because loopback bind returned `EPERM`; port 8765 was also occupied. Outside the sandbox, with Wireshark CLI tools on `PATH`, this exact command passed 9/9: `WIRECLAW_E2E_PORT=28765 PYTHONPATH=../../services/api/src PATH="/Applications/Wireshark.app/Contents/MacOS:../../.venv/bin:$PATH" npm run test:e2e`.
+- Python suite: 524 passed, 147 skipped with TShark absent from PATH. Packaging: 192 passed; launcher tests: 35 passed; web tests: 41 passed; web lint/typecheck/build, both Go modules' tests/vet, shell syntax, changed-file Ruff/format, and `git diff --check` passed.
+- Host TShark is 4.6.9; `docker/analyzer-versions.lock` pins 4.2.2. Adding the host version to PATH exposed four Gate 2/Gate 4 golden mismatches in unchanged analyzer/test files. Docker Engine access is denied in this environment, preventing a pinned-container rerun.
+- Baseline comparison used `57136b7d1f780b4b4cba9dc9711080c00cba1bfe`. Its `ruff check .` finding was `I001 tests/packaging/test_macos_ai_bundle.py:1:1`; its format findings were `specs/v1/solution.md:318` and `tests/packaging/test_macos_ai_bundle.py:61`. The bundle test file was changed by this branch and now passes both checks. Current repo-wide Ruff passes; current repo-wide format reports only unchanged `specs/v1/solution.md:318`. All current implementation Ruff findings were in branch-changed files and have been fixed; all 13 changed Python files pass Ruff and format.
+- Fresh whole-implementation review approved after adding the missing macOS WireclawAI Go test/vet CI step, branch workflow trigger, blocking premature production qualification PASS, and fixing a YAML parse error in the signing-status step. Exact-head CI remains pending.
+
 Only after exact-head CI passes, freeze a new immutable candidate from that exact commit. On that same candidate run three complete unchanged 22-scenario official benchmark runs, all 16 EAI.14 checks from the beginning, and all new App Sandbox isolation checks. Verify Developer ID/Hardened Runtime/notarized final package in the native credentialed environment. Any failure stops qualification and acceptance editing. After all pass, obtain fresh whole-branch and security reviews, then update acceptance in a separate documentation/evidence commit. No previous candidate's benchmark/EAI.14 results count.
 
 ## Self-Review Against the Approved Spec

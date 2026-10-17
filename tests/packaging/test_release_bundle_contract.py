@@ -317,13 +317,25 @@ def test_release_signing_pipeline_distinguishes_adhoc_from_production_acceptance
     assert '"hardened_runtime": signing_mode == "developer-id"' in PACKAGER
     assert '"developer_id_validation": "NOT_RUN" if signing_mode == "adhoc" else "PASS"' in PACKAGER
     assert '"production_qualification": "NOT_RUN"' in PACKAGER
-    assert 'result["production_qualification"] = "PASS"' in PACKAGER
+    assert 'result["production_qualification"] = "PASS"' not in PACKAGER
     assert '"stapling": "NOT_RUN"' in PACKAGER
     assert (
         "production signing qualification: NOT_RUN (Developer ID identity unavailable)" in PACKAGER
     )
     assert "Developer ID and notarization release qualification: NOT_RUN" in workflow
     assert "--signing-mode developer-id" not in workflow
+
+
+def test_exact_branch_runs_wireclawai_go_tests_and_vet_in_macos_ci():
+    workflow = (ROOT / ".github/workflows/gate6-validation.yml").read_text(encoding="utf-8")
+    assert "post-v1-embedded-ai-impl" in workflow
+    job = workflow.split("  macos-ai-sandbox-qualification:", 1)[1].split("\n  docker-release:", 1)[
+        0
+    ]
+    assert "working-directory: ai/macos/WireclawAI" in job
+    assert "go test ./..." in job
+    assert "go vet ./..." in job
+    assert "run: |\n          echo 'Developer ID and notarization release qualification:" in job
 
 
 def test_container_acceptance_reuses_frozen_image_for_mounted_tls_privacy_test():
