@@ -228,6 +228,8 @@ Compose resolves the transient key in memory to create Core. The launcher invoke
 
 **Interfaces:** Tests inspect entitlements from the signed code, run probes inside the actual inherited sandbox, and emit bounded PASS/FAIL evidence without secrets. vmnetd is informational only; no protocol messages are sent.
 
+Native qualification must be repeatable on the same macOS arm64 reference account; a separate account is not required. Before Task 9, the qualification-only residue reset may clear only an owner-verified, mode-0600, regular zero-byte `runtime.log` in the owner/mode-verified mode-0700 private directory, and only after confirming no helper, listener, host receipt, key, process record, symlink, or unknown state. It records bounded non-secret file metadata and SHA-256 before unlinking; it never signals, removes the container, or deletes arbitrary state. Manual container deletion is prohibited. The trusted host lifecycle remains the only authority for stopping a live helper.
+
 - [ ] Add failing native checks for denied discovered Docker Engine sockets (including both known Docker Desktop paths), Wireclaw data/state and bridge-state reads, trusted host lifecycle receipt read/write, Core API/bridge/arbitrary outbound connections, and inability to obtain a bridge grant.
 - [ ] Add positive checks for packaged model/runtime/private-key reads, bounded private temp/runtime writes, successful inbound Core request, and normal listener exactly `127.0.0.1:8767` with no wildcard/LAN listener.
 - [ ] Add signed-entitlement checks that reject broader-than-approved parent/helper entitlements and confirm helper inheritance; assert no network.client.

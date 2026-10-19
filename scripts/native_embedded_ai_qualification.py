@@ -1378,9 +1378,36 @@ def _mark_not_run(row: dict, reason: str) -> None:
     ]
 
 
-def _run_task9_probe() -> tuple[str, str | None, str]:
+def _run_task9_probe(evidence_root: Path | None = None) -> tuple[str, str | None, str]:
     if sys.platform != "darwin" or platform.machine() != "arm64":
         return "NOT_RUN", "native_host_required", ""
+    try:
+        reset_evidence = {}
+
+        def record_reset(value, phase="before"):
+            reset_evidence.update(value)
+            if evidence_root is not None:
+                evidence_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+                evidence_stat = evidence_root.lstat()
+                if (
+                    not stat.S_ISDIR(evidence_stat.st_mode)
+                    or evidence_stat.st_uid != os.getuid()
+                    or stat.S_IMODE(evidence_stat.st_mode) != 0o700
+                ):
+                    raise ValueError("task9_evidence_directory_invalid")
+                target = evidence_root / f"task9-reset-{phase}.json"
+                descriptor = os.open(
+                    target,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                    0o600,
+                )
+                with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                    json.dump(value, output, sort_keys=True, separators=(",", ":"))
+                    output.write("\n")
+
+        residue = reset_task9_diagnostic_residue(record=record_reset)
+    except (OSError, ValueError):
+        return "NOT_RUN", "task9_reset_precondition_unmet", ""
     command = [sys.executable, str(ROOT / "scripts/qualify_macos_embedded_ai.py")]
     environment = {
         key: value
@@ -1405,7 +1432,141 @@ def _run_task9_probe() -> tuple[str, str | None, str]:
         return "NOT_RUN", "native_probe_precondition_unmet", output
     if result.returncode or "Task 9 signed App Sandbox isolation: PASS" not in output:
         return "FAIL", None, "native_task9_probe_failed"
+    try:
+        post_residue = reset_task9_diagnostic_residue(
+            record=lambda value: record_reset(value, "after")
+        )
+    except (OSError, ValueError):
+        return "FAIL", None, "task9_post_probe_reset_failed"
+    output += "\nTASK9_RESET_EVIDENCE=" + json.dumps(
+        {"before": residue, "after": post_residue}, sort_keys=True, separators=(",", ":")
+    )
+    if len(output.encode("utf-8", errors="replace")) > 8192:
+        return "FAIL", None, "native_probe_output_unbounded"
     return "PASS", None, output
+
+
+def reset_task9_diagnostic_residue(
+    *, home: Path | None = None, record=None, runner=subprocess.run
+) -> dict:
+    """Remove only an approved empty historical runtime log after a full safe preflight."""
+    home = Path.home() if home is None else Path(home)
+    uid = os.getuid()
+    container = home / "Library/Containers/com.wireclaw.WireclawAI"
+    if container.is_symlink():
+        raise ValueError("task9_container_symlink")
+    private = container / "Data/Library/Application Support/WireclawAI"
+    host_run = home / "Library/Application Support/Wireclaw/run"
+    host_receipt = host_run / "ai-host-receipt.json"
+    for path in (home, *private.parents, private, *host_run.parents, host_run, host_receipt):
+        if path.is_symlink():
+            raise ValueError("task9_state_symlink")
+    if host_receipt.exists() or host_receipt.is_symlink():
+        raise ValueError("task9_host_receipt_present")
+    for name in ("WireclawAI", "llama-server"):
+        result = runner(["pgrep", "-x", name], capture_output=True, text=True, check=False)
+        if result.returncode == 0 or result.returncode not in (1,):
+            raise ValueError("task9_live_process_or_process_check_failed")
+    listener = runner(
+        ["lsof", "-nP", "-iTCP@127.0.0.1:8767", "-sTCP:LISTEN"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listener.returncode == 0 or listener.returncode not in (1,):
+        raise ValueError("task9_listener_or_listener_check_failed")
+    if not private.exists():
+        return {"action": "clean", "residue": []}
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    directory_fd = os.open(private, flags)
+    try:
+        info = os.fstat(directory_fd)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != uid
+            or stat.S_IMODE(info.st_mode) != 0o700
+        ):
+            raise ValueError("task9_private_directory_metadata_invalid")
+        names = os.listdir(directory_fd)
+        if any(name != "runtime.log" for name in names):
+            raise ValueError("task9_unapproved_private_state")
+        if not names:
+            return {"action": "clean", "residue": []}
+        log_fd = os.open(
+            "runtime.log", os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory_fd
+        )
+        try:
+            log_info = os.fstat(log_fd)
+            if (
+                not stat.S_ISREG(log_info.st_mode)
+                or log_info.st_uid != uid
+                or stat.S_IMODE(log_info.st_mode) != 0o600
+                or log_info.st_size != 0
+                or log_info.st_nlink != 1
+            ):
+                raise ValueError("task9_diagnostic_residue_invalid")
+            if hasattr(os, "listxattr") and os.listxattr(log_fd):
+                raise ValueError("task9_diagnostic_residue_invalid")
+            path = private.resolve(strict=True) / "runtime.log"
+            evidence = {
+                "canonical_path": str(path),
+                "file_type": "regular",
+                "size_bytes": log_info.st_size,
+                "owner_uid": log_info.st_uid,
+                "mode": stat.S_IMODE(log_info.st_mode),
+                "atime_ns": log_info.st_atime_ns,
+                "mtime_ns": log_info.st_mtime_ns,
+                "ctime_ns": log_info.st_ctime_ns,
+                "sha256": hashlib.sha256(b"").hexdigest(),
+            }
+            reset_evidence = {"action": "reset", "residue": [evidence]}
+            if record is not None:
+                record(reset_evidence)
+            # Recheck external state and pathname binding immediately before unlink.
+            if host_receipt.exists() or host_receipt.is_symlink():
+                raise ValueError("task9_host_receipt_present")
+            if host_run.exists() and (not host_run.is_dir() or any(host_run.iterdir())):
+                raise ValueError("task9_host_lifecycle_state_present")
+            for name in ("WireclawAI", "llama-server"):
+                result = runner(["pgrep", "-x", name], capture_output=True, text=True, check=False)
+                if result.returncode == 0 or result.returncode not in (1,):
+                    raise ValueError("task9_live_process_or_process_check_failed")
+            listener = runner(
+                ["lsof", "-nP", "-iTCP@127.0.0.1:8767", "-sTCP:LISTEN"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if listener.returncode == 0 or listener.returncode not in (1,):
+                raise ValueError("task9_listener_or_listener_check_failed")
+            if private.is_symlink():
+                raise ValueError("task9_state_symlink")
+            path_info = os.stat(private, follow_symlinks=False)
+            if (path_info.st_dev, path_info.st_ino) != (info.st_dev, info.st_ino):
+                raise ValueError("task9_private_directory_changed")
+            # Revalidate the directory entry against the opened inode immediately before unlink.
+            current = os.stat("runtime.log", dir_fd=directory_fd, follow_symlinks=False)
+            current_directory = os.fstat(directory_fd)
+            if (
+                current_directory.st_uid != uid
+                or stat.S_IMODE(current_directory.st_mode) != 0o700
+                or not stat.S_ISDIR(current_directory.st_mode)
+                or (current.st_dev, current.st_ino) != (log_info.st_dev, log_info.st_ino)
+                or current.st_size != 0
+                or current.st_uid != uid
+                or stat.S_IMODE(current.st_mode) != 0o600
+                or current.st_nlink != 1
+                or current.st_mtime_ns != log_info.st_mtime_ns
+                or current.st_ctime_ns != log_info.st_ctime_ns
+                or os.listdir(directory_fd) != ["runtime.log"]
+            ):
+                raise ValueError("task9_diagnostic_residue_changed")
+            os.unlink("runtime.log", dir_fd=directory_fd)
+            return reset_evidence
+        finally:
+            os.close(log_fd)
+    finally:
+        os.close(directory_fd)
 
 
 def task9_fixture_provenance(identity: dict) -> dict:
@@ -1819,6 +1980,16 @@ def run_supported_checks(
                 "probe_output_sha256": hashlib.sha256(task9_output.encode()).hexdigest(),
                 "candidate_signed_entitlements_checked_separately": True,
             }
+            reset_line = next(
+                (
+                    line.partition("=")[2]
+                    for line in task9_output.splitlines()
+                    if line.startswith("TASK9_RESET_EVIDENCE=")
+                ),
+                None,
+            )
+            if reset_line is not None:
+                task9_observations["qualification_reset"] = json.loads(reset_line)
             for index, check_id in enumerate(SANDBOX_CHECKS[1:7], start=1):
                 if check_id == "docker_engine_control_sockets_denied" and not re.search(
                     r"docker\.sock: DENIED", task9_output
@@ -2281,6 +2452,7 @@ def main(argv: list[str] | None = None) -> int:
             args.evidence_dir,
             source_match=source_before,
             operator_evidence_dir=args.operator_evidence_dir,
+            task9_probe=lambda: _run_task9_probe(args.evidence_dir),
         )
         _require_source_checkout_stable(identity, source_before)
         # Live/UI/destructive checks without fixed safe handlers remain NOT_RUN.

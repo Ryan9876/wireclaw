@@ -520,6 +520,332 @@ def test_task10_preflight_allows_only_empty_private_directory_left_by_task9(tmp_
     assert len(calls) == 3
 
 
+def test_task9_reset_removes_only_approved_empty_runtime_log_after_recording_evidence(
+    tmp_path, monkeypatch
+):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    log = private / "runtime.log"
+    log.touch(mode=0o600)
+    evidence = []
+    monkeypatch.setattr(qualification.os, "getuid", lambda: log.stat().st_uid)
+
+    def safe_runner(argv, **_kwargs):
+        return SimpleNamespace(returncode=1, stdout="")
+
+    def record_before_unlink(value):
+        assert log.exists()
+        evidence.append(value)
+
+    result = qualification.reset_task9_diagnostic_residue(
+        home=home, record=record_before_unlink, runner=safe_runner
+    )
+    assert result["action"] == "reset"
+    assert len(evidence) == 1
+    residue = evidence[0]["residue"][0]
+    assert residue["canonical_path"] == str(log.resolve())
+    assert residue["file_type"] == "regular"
+    assert residue["size_bytes"] == 0
+    assert residue["sha256"] == hashlib.sha256(b"").hexdigest()
+    assert all(key in residue for key in ("owner_uid", "mode", "atime_ns", "mtime_ns", "ctime_ns"))
+    assert not log.exists()
+
+
+@pytest.mark.parametrize("state_name", ["process.json", "api-key", "unknown", "runtime.log"])
+def test_task9_reset_blocks_unapproved_private_state_without_mutation(tmp_path, state_name):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    target = private / state_name
+    target.write_bytes(b"unsafe residue" if state_name != "runtime.log" else b"not empty")
+    evidence = []
+
+    def safe_runner(argv, **_kwargs):
+        return SimpleNamespace(returncode=1, stdout="")
+
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(
+            home=home, record=evidence.append, runner=safe_runner
+        )
+    assert target.exists()
+    assert target.read_bytes()
+    assert evidence == []
+
+
+def test_task9_reset_is_idempotent_for_empty_private_directory(tmp_path):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+
+    def safe_runner(argv, **_kwargs):
+        return SimpleNamespace(returncode=1, stdout="")
+
+    assert (
+        qualification.reset_task9_diagnostic_residue(home=home, runner=safe_runner)["action"]
+        == "clean"
+    )
+    assert (
+        qualification.reset_task9_diagnostic_residue(home=home, runner=safe_runner)["action"]
+        == "clean"
+    )
+
+
+@pytest.mark.parametrize(
+    ("blocked_command", "expected_calls"),
+    [
+        (["pgrep", "-x", "WireclawAI"], 1),
+        (["pgrep", "-x", "llama-server"], 2),
+        (["lsof", "-nP", "-iTCP@127.0.0.1:8767", "-sTCP:LISTEN"], 3),
+    ],
+)
+def test_task9_reset_blocks_live_process_or_listener_without_mutation(
+    tmp_path, blocked_command, expected_calls
+):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    log = private / "runtime.log"
+    log.touch(mode=0o600)
+    calls = []
+
+    def runner(argv, **_kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0 if argv == blocked_command else 1, stdout="pid\n")
+
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(home=home, runner=runner)
+    assert len(calls) == expected_calls
+    assert log.exists()
+
+
+@pytest.mark.parametrize("name", ["api-key", "process.json", "unexpected"])
+def test_task9_reset_blocks_sensitive_or_unknown_files_without_mutation(tmp_path, name):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    item = private / name
+    item.write_bytes(b"secret-or-unknown")
+
+    def safe_runner(argv, **_kwargs):
+        return SimpleNamespace(returncode=1, stdout="")
+
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(home=home, runner=safe_runner)
+    assert item.exists()
+
+
+def test_task9_reset_blocks_symlinks_wrong_owner_and_wrong_mode(tmp_path, monkeypatch):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    log = private / "runtime.log"
+    log.symlink_to(tmp_path / "outside")
+
+    def safe_runner(argv, **_kwargs):
+        return SimpleNamespace(returncode=1, stdout="")
+
+    with pytest.raises(OSError):
+        qualification.reset_task9_diagnostic_residue(home=home, runner=safe_runner)
+    assert log.is_symlink()
+    log.unlink()
+    log.touch(mode=0o600)
+    private.chmod(0o755)
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(home=home, runner=safe_runner)
+    private.chmod(0o700)
+    monkeypatch.setattr(qualification.os, "getuid", lambda: log.stat().st_uid + 1)
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(home=home, runner=safe_runner)
+    assert log.exists()
+
+
+def test_task9_reset_blocks_symlinked_private_directory(tmp_path):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    target = tmp_path / "outside"
+    target.mkdir()
+    containers = home / "Library/Containers"
+    containers.mkdir(parents=True)
+    (containers / "com.wireclaw.WireclawAI").symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(home=home)
+
+
+def test_task9_reset_blocks_runtime_log_with_unsafe_mode(tmp_path):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    log = private / "runtime.log"
+    log.touch(mode=0o644)
+    log.chmod(0o644)
+
+    def safe_runner(argv, **_kwargs):
+        return SimpleNamespace(returncode=1, stdout="")
+
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(home=home, runner=safe_runner)
+    assert log.exists()
+
+
+def test_task9_reset_blocks_host_receipt_and_preserves_log(tmp_path):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    log = private / "runtime.log"
+    log.touch(mode=0o600)
+    receipt = home / "Library/Application Support/Wireclaw/run/ai-host-receipt.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text("receipt")
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(home=home)
+    assert log.exists()
+
+
+def test_task9_reset_failure_while_recording_evidence_leaves_residue(tmp_path):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    log = private / "runtime.log"
+    log.touch(mode=0o600)
+
+    def safe_runner(argv, **_kwargs):
+        return SimpleNamespace(returncode=1, stdout="")
+
+    def failed_record(_value):
+        raise OSError("evidence write failed")
+
+    with pytest.raises(OSError):
+        qualification.reset_task9_diagnostic_residue(
+            home=home, record=failed_record, runner=safe_runner
+        )
+    assert log.exists()
+
+
+def test_task9_reset_late_process_change_leaves_recorded_residue_untouched(tmp_path):
+    qualification = qualification_module()
+    home = tmp_path / "home"
+    private = (
+        home
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    log = private / "runtime.log"
+    log.touch(mode=0o600)
+    calls = 0
+    evidence = []
+
+    def runner(argv, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(returncode=0 if calls == 4 else 1, stdout="pid\n")
+
+    with pytest.raises(ValueError):
+        qualification.reset_task9_diagnostic_residue(
+            home=home, record=evidence.append, runner=runner
+        )
+    assert log.exists()
+    assert evidence[0]["residue"][0]["sha256"] == hashlib.sha256(b"").hexdigest()
+
+
+def test_task9_runner_persists_reset_evidence_before_native_probe(tmp_path, monkeypatch):
+    qualification = qualification_module()
+    evidence_root = tmp_path / "evidence"
+    residue = {
+        "canonical_path": "/private/test/runtime.log",
+        "file_type": "regular",
+        "size_bytes": 0,
+        "owner_uid": 502,
+        "mode": 0o600,
+        "atime_ns": 1,
+        "mtime_ns": 2,
+        "ctime_ns": 3,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+    }
+    calls = 0
+
+    def reset(*, record):
+        nonlocal calls
+        calls += 1
+        record({"action": "reset", "residue": [residue]})
+        return {"action": "reset", "residue": [residue]}
+
+    def native_probe(*_args, **_kwargs):
+        assert (
+            json.loads((evidence_root / "task9-reset-before.json").read_text())["residue"][0]
+            == residue
+        )
+        return SimpleNamespace(
+            stdout=b"Task 9 signed App Sandbox isolation: PASS\n", stderr=b"", returncode=0
+        )
+
+    monkeypatch.setattr(qualification, "reset_task9_diagnostic_residue", reset)
+    monkeypatch.setattr(qualification.sys, "platform", "darwin")
+    monkeypatch.setattr(qualification.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(qualification.subprocess, "run", native_probe)
+    status, reason, output = qualification._run_task9_probe(evidence_root)
+    assert status == "PASS" and reason is None
+    assert "TASK9_RESET_EVIDENCE=" in output
+    assert (
+        json.loads((evidence_root / "task9-reset-after.json").read_text())["residue"][0] == residue
+    )
+    assert calls == 2
+
+
+def test_task9_reset_has_no_process_signaling_authority():
+    source = SCRIPT.read_text(encoding="utf-8")
+    start = source.index("def reset_task9_diagnostic_residue(")
+    end = source.index("\ndef task9_fixture_provenance", start)
+    body = source[start:end]
+    assert not any(token in body for token in ("kill(", "SIGTERM", "SIGKILL", "os.kill", "signal."))
+
+
 def test_task10_preflight_refuses_unsafe_empty_private_directory(tmp_path):
     qualification = qualification_module()
     bundle, archive = candidate_fixture(tmp_path)

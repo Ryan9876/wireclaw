@@ -252,6 +252,10 @@ Native lifecycle evidence: a separate signed status invocation verified process 
 
 ## 15. Qualification reset
 
+Task 9/EAI.14 qualification must be repeatable on the same macOS arm64 reference account; a separate macOS account is not required. Qualification-only reset may remove only explicitly approved sandbox-private diagnostic residue after proving there is no live `WireclawAI` or `llama-server`, no listener on `127.0.0.1:8767`, no trusted host receipt/lifecycle state, no sandbox `process.json` or `api-key`, and no unsafe directory/file metadata, symlink, or unknown file. The private directory must be owned by the expected account and mode `0700`.
+
+The only approved removable residue is a regular, single-link, zero-byte `runtime.log` owned by the expected account with mode `0600`. Before unlinking, the qualification runner records canonical path, file type, size, UID, mode, timestamps, and SHA-256 in restricted evidence without persisting contents. The reset sends no signals and cannot remove the container, lifecycle receipt, `process.json`, `api-key`, or unknown files; any failed or ambiguous precondition leaves state untouched. Arbitrary/manual App Sandbox container deletion is prohibited. Trusted host lifecycle recovery remains the only authority for stopping a live helper.
+
 When production implementation changes source or packaged runtime architecture, the previously qualified `bae67a0996afa7ca34c2890295e72de0acd02221` candidate is superseded for final qualification. Freeze a new immutable candidate and require exact-head CI. Against that same new candidate:
 
 - rerun three complete, unchanged official 22-scenario benchmark runs;

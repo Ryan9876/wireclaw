@@ -223,7 +223,7 @@ func TestNativeTask9Isolation(t *testing.T) {
 						return false
 					}
 				}
-				for _, name := range []string{"runtime.log", "task9-probe.json", "task9-private-write"} {
+				for _, name := range []string{"task9-probe.json", "task9-private-write"} {
 					path := filepath.Join(stateDir, name)
 					if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 						return false
@@ -409,7 +409,7 @@ func TestNativeTask9Isolation(t *testing.T) {
 			t.Fatalf("private lifecycle material remains: %s", filepath.Base(path))
 		}
 	}
-	for _, name := range []string{"runtime.log", "task9-probe.json", "task9-private-write"} {
+	for _, name := range []string{"task9-probe.json", "task9-private-write"} {
 		if err := os.Remove(filepath.Join(stateDir, name)); err != nil && !os.IsNotExist(err) {
 			t.Fatalf("private test artifact cleanup failed: %s", filepath.Base(name))
 		}
