@@ -1432,8 +1432,35 @@ def task10_shared_state_preflight(
         home
         / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
     )
-    if private.is_symlink() or private.exists():
+    if home.is_symlink() or private.is_symlink():
         return "existing_ai_private_state"
+    if private.exists():
+        # Task 9 uses the real bundle-ID container, then removes every file it
+        # created after verified helper exit. macOS leaves the now-empty state
+        # directory behind. Permit only that exact inert remainder; any file,
+        # unsafe mode/owner, or symlink remains a fail-closed preflight result.
+        relative = private.relative_to(home)
+        current = home
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                return "existing_ai_private_state"
+        try:
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(private, flags)
+            try:
+                info = os.fstat(descriptor)
+                if (
+                    not stat.S_ISDIR(info.st_mode)
+                    or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) != 0o700
+                    or os.listdir(descriptor)
+                ):
+                    return "existing_ai_private_state"
+            finally:
+                os.close(descriptor)
+        except OSError:
+            return "existing_ai_private_state"
     run_dir = home / "Library/Application Support/Wireclaw/run"
     if run_dir.is_symlink() or (
         run_dir.exists() and (not run_dir.is_dir() or any(run_dir.iterdir()))

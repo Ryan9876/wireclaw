@@ -467,7 +467,10 @@ def test_task9_fixture_provenance_is_not_reported_as_candidate_runtime(tmp_path)
     assert len(provenance["probe_script_sha256"]) == 64
 
 
-def test_task10_preflight_refuses_existing_app_state_without_deleting_it(tmp_path, monkeypatch):
+@pytest.mark.parametrize("log_content", [b"", b"pre-existing"])
+def test_task10_preflight_refuses_existing_app_state_without_deleting_it(
+    tmp_path, monkeypatch, log_content
+):
     qualification = qualification_module()
     bundle, archive = candidate_fixture(tmp_path)
     identity = qualification.candidate_identity(bundle, archive)
@@ -477,7 +480,7 @@ def test_task10_preflight_refuses_existing_app_state_without_deleting_it(tmp_pat
     )
     private.mkdir(parents=True)
     existing_log = private / "runtime.log"
-    existing_log.write_bytes(b"pre-existing")
+    existing_log.write_bytes(log_content)
     calls = []
 
     def fake_run(argv, **kwargs):
@@ -488,7 +491,127 @@ def test_task10_preflight_refuses_existing_app_state_without_deleting_it(tmp_pat
         bundle, identity, home=tmp_path, runner=fake_run
     )
     assert reason == "existing_ai_private_state"
-    assert existing_log.read_bytes() == b"pre-existing"
+    assert existing_log.read_bytes() == log_content
+    assert calls == []
+
+
+def test_task10_preflight_allows_only_empty_private_directory_left_by_task9(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    private = (
+        tmp_path
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:2] == ["pgrep", "-x"]:
+            return SimpleNamespace(returncode=1, stdout="")
+        return SimpleNamespace(returncode=0, stdout="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle, identity, home=tmp_path, runner=fake_run
+    )
+    assert reason is None
+    assert len(calls) == 3
+
+
+def test_task10_preflight_refuses_unsafe_empty_private_directory(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    private = (
+        tmp_path
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o755)
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=1, stdout="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle, identity, home=tmp_path, runner=fake_run
+    )
+    assert reason == "existing_ai_private_state"
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "state_name", ["api-key", "process.json", "task9-probe.json", "task9-private-write"]
+)
+def test_task10_preflight_refuses_existing_private_lifecycle_state(tmp_path, state_name):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    private = (
+        tmp_path
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    (private / state_name).write_bytes(b"existing")
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=1, stdout="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle, identity, home=tmp_path, runner=fake_run
+    )
+    assert reason == "existing_ai_private_state"
+    assert calls == []
+
+
+def test_task10_preflight_refuses_live_helper_after_empty_private_directory(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    private = (
+        tmp_path
+        / "Library/Containers/com.wireclaw.WireclawAI/Data/Library/Application Support/WireclawAI"
+    )
+    private.mkdir(parents=True, mode=0o700)
+    private.chmod(0o700)
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        if argv == ["pgrep", "-x", "WireclawAI"]:
+            return SimpleNamespace(returncode=0, stdout="12345\n")
+        return SimpleNamespace(returncode=1, stdout="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle, identity, home=tmp_path, runner=fake_run
+    )
+    assert reason == "existing_ai_process"
+    assert calls == [["pgrep", "-x", "WireclawAI"]]
+
+
+def test_task10_preflight_refuses_trusted_host_receipt(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    run_dir = tmp_path / "Library/Application Support/Wireclaw/run"
+    run_dir.mkdir(parents=True, mode=0o700)
+    (run_dir / "ai-host-receipt.json").write_text("receipt", encoding="utf-8")
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=1, stdout="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle, identity, home=tmp_path, runner=fake_run
+    )
+    assert reason == "existing_wireclaw_lifecycle_state"
     assert calls == []
 
 
