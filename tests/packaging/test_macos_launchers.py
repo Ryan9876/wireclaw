@@ -5,6 +5,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 LAUNCH = ROOT / "launch/macos"
 START_SOURCE = (LAUNCH / "start.sh").read_text(encoding="utf-8")
@@ -131,6 +133,36 @@ def test_release_loads_the_exact_packaged_image_and_skips_an_existing_match(tmp_
     assert "load --input" not in Path(env["WIRECLAW_TEST_DOCKER_LOG"]).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("missing", ("core-image.tar", "core-image-id"))
+def test_release_image_missing_packaged_artifact_fails_without_acquisition(tmp_path, missing):
+    release = make_release(tmp_path, "WIRECLAW_PORT=8765\nWIRECLAW_BRIDGE_PORT=8766\n")
+    (release / missing).unlink()
+    env, log = make_fake_tools(tmp_path)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; load_release_image "$1"',
+        str(release),
+        env=env,
+    )
+    assert result.returncode != 0
+    assert not log.exists() or log.read_text(encoding="utf-8") == ""
+
+
+def test_release_image_identity_mismatch_fails_without_external_recovery(tmp_path):
+    release = make_release(tmp_path, "WIRECLAW_PORT=8765\nWIRECLAW_BRIDGE_PORT=8766\n")
+    (release / "core-image-id").write_text("sha256:" + "b" * 64 + "\n", encoding="utf-8")
+    env, log = make_fake_tools(tmp_path)
+    result = run_bash(
+        '. "$1/launch/macos/common.sh"; load_release_image "$1"',
+        str(release),
+        env=env,
+    )
+    assert result.returncode != 0
+    calls = log.read_text(encoding="utf-8")
+    assert "load --input" in calls
+    assert "pull" not in calls
+    assert "build" not in calls
+
+
 def test_bridge_health_probe_uses_the_approved_application_origin():
     assert 'curl --silent --fail --header "Origin: http://127.0.0.1:$APP_PORT"' in START_SOURCE
     assert '"http://127.0.0.1:$BRIDGE_PORT/v1/health"' in START_SOURCE
@@ -177,9 +209,14 @@ def test_ai_stop_without_state_is_idempotent(tmp_path):
 
 
 def test_start_loads_and_uses_the_packaged_image_without_rebuilding():
+    common = (LAUNCH / "common.sh").read_text(encoding="utf-8")
     assert 'load_release_image "$RELEASE_DIR"' in START_SOURCE
     assert 'compose_start_core "$RELEASE_DIR" "$ENV_FILE" "$PROVIDER_MODE"' in START_SOURCE
-    assert "up -d --force-recreate" in (LAUNCH / "common.sh").read_text(encoding="utf-8")
+    assert 'image_archive="$release_dir/core-image.tar"' in common
+    assert 'docker load --input "$image_archive"' in common
+    assert "docker pull" not in START_SOURCE + common
+    assert "docker build" not in START_SOURCE + common
+    assert "up -d --force-recreate" in common
     assert "up -d --build" not in START_SOURCE
 
 

@@ -592,6 +592,65 @@ def test_source_suite_handler_cannot_pass_candidate_qualification(tmp_path, monk
     assert evidence["status"] == "PASS"
 
 
+def test_startup_acquisition_check_allows_only_fixed_loopback_probe_and_packaged_load(
+    tmp_path, monkeypatch
+):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    assert (
+        qualification.verify_no_startup_download_path(bundle, identity)[
+            "external_download_commands_found"
+        ]
+        is False
+    )
+    launch = tmp_path / "launch/macos"
+    launch.mkdir(parents=True)
+    (launch / "start.sh").write_text(
+        'if curl --silent --fail --header "Origin: http://127.0.0.1:$APP_PORT" '
+        '"http://127.0.0.1:$BRIDGE_PORT/v1/health" >/dev/null 2>&1; then\n',
+        encoding="utf-8",
+    )
+    (launch / "common.sh").write_text(
+        'docker load --input "$release_dir/core-image.tar"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(qualification, "ROOT", tmp_path)
+
+    for forbidden in (
+        "curl --fail https://example.invalid/core.tar",
+        "wget https://example.invalid/core.tar",
+        "docker pull wireclaw-core:latest",
+        "docker image pull wireclaw-core:latest",
+        "docker buildx build .",
+        "git -C /tmp clone https://example.invalid/release",
+        "docker compose build wireclaw-core",
+        "docker compose --profile packaged build wireclaw-core",
+        "docker compose up -d --pull always",
+        "python3 scripts/build_embedded_ai.py",
+    ):
+        (launch / "start.sh").write_text(forbidden + "\n", encoding="utf-8")
+        try:
+            qualification.verify_no_startup_download_path(bundle, identity)
+        except ValueError as error:
+            assert str(error) == "startup_download_path_detected", forbidden
+        else:
+            pytest.fail(f"startup acquisition was accepted: {forbidden}")
+
+
+def test_fixed_source_suite_uses_repository_venv_when_current_python_lacks_pytest(
+    tmp_path, monkeypatch
+):
+    qualification = qualification_module()
+    monkeypatch.setattr(qualification.importlib.util, "find_spec", lambda _name: None)
+    identity = {"candidate_identity_sha256": "c" * 64}
+    row = {"evidence": []}
+    evidence_root = tmp_path / "evidence"
+    qualification.run_fixed_source_suite("eai14-02", row, identity, evidence_root)
+    evidence = json.loads((evidence_root / "source-regressions/eai14-02.json").read_text())
+    assert evidence["status"] == "PASS"
+    assert evidence["candidate_identity_sha256"] == identity["candidate_identity_sha256"]
+
+
 def test_orchestrator_runs_fixed_source_and_static_handlers_without_native_host(
     tmp_path, monkeypatch
 ):

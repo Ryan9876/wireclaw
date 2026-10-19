@@ -1239,7 +1239,20 @@ def run_fixed_source_suite(
         if not re.search(r"(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", key, re.IGNORECASE)
     }
     environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-    argv = [sys.executable, "-m", "pytest", "-q", *test_ids]
+    try:
+        has_pytest = importlib.util.find_spec("pytest") is not None
+    except (ImportError, ValueError):
+        has_pytest = False
+    if has_pytest:
+        test_python = sys.executable
+    else:
+        venv_candidates = (
+            ROOT / ".venv/bin/python",
+            ROOT / ".venv/Scripts/python.exe",
+        )
+        test_python_path = next((path for path in venv_candidates if path.is_file()), None)
+        test_python = str(test_python_path) if test_python_path else sys.executable
+    argv = [test_python, "-m", "pytest", "-q", *test_ids]
     try:
         result = runner(
             argv,
@@ -1288,7 +1301,18 @@ def verify_no_startup_download_path(bundle: Path, identity: dict) -> dict:
     if not isinstance(policy, dict) or policy.get("network_downloads") is not False:
         raise ValueError("packaged_runtime_network_policy_invalid")
     startup_sources = (ROOT / "launch/macos/start.sh", ROOT / "launch/macos/common.sh")
-    forbidden = re.compile(r"\b(?:curl|wget)\b|\bgit\s+clone\b|build_embedded_ai\.py")
+    forbidden = re.compile(
+        r"\bwget\b|\bgit\b[^\n]*\bclone\b"
+        r"|\bdocker\s+(?:image\s+)?(?:pull|build(?:x)?)\b"
+        r"|\bdocker\s+compose\b[^\n]*(?:\bpull\b|\bbuild\b)"
+        r"|(?:^|\s)--(?:build|pull)\b|build_embedded_ai\.py"
+    )
+    approved_bridge_health_probe = re.compile(
+        r"^\s*if\s+curl\s+--silent\s+--fail\s+--header "
+        r'"Origin: http://127\.0\.0\.1:\$APP_PORT"\s+'
+        r'"http://127\.0\.0\.1:\$BRIDGE_PORT/v1/health" '
+        r">/dev/null 2>&1; then\s*$"
+    )
     for path in startup_sources:
         try:
             text = path.read_text(encoding="utf-8")
@@ -1296,6 +1320,10 @@ def verify_no_startup_download_path(bundle: Path, identity: dict) -> dict:
             raise ValueError("startup_source_unavailable") from None
         if forbidden.search(text):
             raise ValueError("startup_download_path_detected")
+        logical_lines = re.sub(r"\\\r?\n[ \t]*", " ", text).splitlines()
+        for line in logical_lines:
+            if re.search(r"\bcurl\b", line) and not approved_bridge_health_probe.fullmatch(line):
+                raise ValueError("startup_download_path_detected")
     return {
         "candidate_identity_sha256": identity["candidate_identity_sha256"],
         "runtime_download_policy": False,
