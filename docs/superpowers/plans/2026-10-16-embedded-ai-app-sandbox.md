@@ -287,6 +287,17 @@ Native qualification must be repeatable on the same macOS arm64 reference accoun
 
 **Interfaces:** Candidate freeze records source, signed-app bundle/tree/archive identity, nested code/signature/entitlement identities, image/model/runtime/manifests, and fixed runtime policy. Native runner executes all 16 EAI.14 checks plus sandbox isolation against one immutable candidate and stores each result/evidence separately. Benchmark remains the unchanged 22-scenario harness.
 
+Task 10 uses the frozen candidate only as its provenance anchor. The runner
+creates a private copy, verifies its initial tree against the candidate, then
+creates `.env` from the copied `.env.example` with an isolated data root and
+mode `0600`. It runs the trusted qualification script from the exact source
+checkout against that private copy. A unique `COMPOSE_PROJECT_NAME` scopes the
+Compose-state preflight and the test run; configured host ports are checked
+independently so project isolation cannot hide a real bind conflict. Do not
+expect `.env` or qualification scripts in the release bundle, edit the frozen
+candidate, query/clean unrelated Compose projects, or use Docker labels as
+host-process signaling authority.
+
 - [x] Add failing tests requiring exactly the 16 named EAI.14 checks, one candidate identity across native evidence, and required sandbox tests; reject missing/duplicate checks or mixed candidate hashes.
 - [x] Add tooling tests for immutable bundle/archive verification before/after qualification and fixture isolation for destructive tamper/port-conflict checks.
 - [x] Run tests and confirm the current repository's lack of a checked-in native EAI.14 runner is exposed.

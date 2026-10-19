@@ -493,6 +493,19 @@ Before post-V1 embedded-AI acceptance can pass:
 
 A real macOS arm64 desktop acceptance run must use one immutable packaged post-V1 candidate and verify:
 
+The frozen candidate archive and bundle remain the evidence anchor throughout
+qualification. Task 10 and destructive qualification scenarios run against a
+disposable private copy whose provenance is verified against that candidate
+before the copy is changed. Runtime `.env` configuration is created only in
+that private copy from the packaged `.env.example`, uses a private data root,
+and has restrictive permissions; the per-launch AI key is never stored there.
+Each Task 10 run uses a unique `COMPOSE_PROJECT_NAME`. Its preflight checks
+containers only in that exact Compose project and checks configured host ports
+independently. Unrelated Compose projects do not block or become cleanup
+targets. Qualification invokes its trusted runner from the exact source
+checkout; qualification tooling is not expected inside the release bundle.
+The frozen candidate is never edited to supply runtime configuration.
+
 1. no separately installed model runtime is required;
 2. no network model download occurs on first normal launch;
 3. packaged model/runtime hashes match release metadata;

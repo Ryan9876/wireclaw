@@ -188,6 +188,7 @@ NATIVE_NOT_RUN_REASONS = {
     "existing_wireclaw_lifecycle_state",
     "existing_ai_process",
     "existing_compose_state",
+    "existing_host_port_conflict",
 }
 
 
@@ -658,6 +659,7 @@ def task10_observations_for_check(check_id: str, observations: dict) -> dict:
         fields = (
             "candidate_identity_sha256",
             "private_candidate_copy",
+            "compose_project_name",
             "copy_path_contains_spaces",
             "task10_start_status_stop_runs",
         )
@@ -1584,10 +1586,16 @@ def task10_shared_state_preflight(
     bundle: Path,
     identity: dict,
     *,
+    project_name: str,
     home: Path | None = None,
     runner=subprocess.run,
 ) -> str | None:
     """Fail closed before launching the same-bundle-ID app on a shared host."""
+    bundle = Path(bundle)
+    env_file = bundle / ".env"
+    compose_file = bundle / "compose.yaml"
+    if not re.fullmatch(r"wireclaw-qualification-[a-f0-9]{12}", project_name):
+        return "native_probe_precondition_unmet"
     home = Path.home() if home is None else Path(home)
     private = (
         home
@@ -1630,8 +1638,10 @@ def task10_shared_state_preflight(
     environment = {
         key: value
         for key, value in os.environ.items()
-        if not re.search(r"(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", key, re.IGNORECASE)
+        if not key.startswith(("WIRECLAW_", "COMPOSE_"))
+        and not re.search(r"(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", key, re.IGNORECASE)
     }
+    environment["COMPOSE_PROJECT_NAME"] = project_name
     for process_name in ("WireclawAI", "llama-server"):
         try:
             process = runner(
@@ -1650,15 +1660,66 @@ def task10_shared_state_preflight(
             return "native_probe_dependency_unavailable"
         if process.returncode not in (0, 1):
             return "native_probe_dependency_unavailable"
+    if (
+        env_file.is_symlink()
+        or not env_file.is_file()
+        or compose_file.is_symlink()
+        or not compose_file.is_file()
+    ):
+        return "native_probe_precondition_unmet"
+    try:
+        values = {}
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            values[key] = value.strip().strip("\"'")
+        ports = []
+        for name, default in (
+            ("WIRECLAW_PORT", "8765"),
+            ("WIRECLAW_BRIDGE_PORT", "8766"),
+            ("WIRECLAW_AI_PORT", "8767"),
+        ):
+            value = values.get(name, default) or default
+            if not value.isascii() or not value.isdecimal() or not 1 <= int(value) <= 65535:
+                return "native_probe_precondition_unmet"
+            ports.append(int(value))
+        if len(set(ports)) != len(ports):
+            return "native_probe_precondition_unmet"
+    except (OSError, UnicodeError, ValueError):
+        return "native_probe_precondition_unmet"
+    for port in ports:
+        try:
+            listener = runner(
+                ["/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return "native_probe_dependency_unavailable"
+        if listener.returncode == 0:
+            return "existing_host_port_conflict"
+        if (
+            listener.returncode != 1
+            or listener.stdout
+            or listener.stderr
+            or len(listener.stdout) > 4096
+            or len(listener.stderr) > 4096
+        ):
+            return "native_probe_dependency_unavailable"
     try:
         containers = runner(
             [
                 "docker",
                 "compose",
                 "--env-file",
-                str(Path(bundle) / ".env"),
+                str(env_file),
                 "-f",
-                str(Path(bundle) / "compose.yaml"),
+                str(compose_file),
                 "ps",
                 "-aq",
                 "wireclaw-core",
@@ -1698,9 +1759,6 @@ def verify_vmnetd_probe_boundary() -> dict:
 def _task10_result_in_copy(bundle: Path, identity: dict) -> tuple[str, str | None, dict]:
     if sys.platform != "darwin" or platform.machine() != "arm64":
         return "NOT_RUN", "native_host_required", {}
-    preflight = task10_shared_state_preflight(bundle, identity)
-    if preflight is not None:
-        return "NOT_RUN", preflight, {}
     temporary_root = Path(tempfile.mkdtemp(prefix="Wireclaw qualification with spaces-"))
     temporary_root.chmod(0o700)
     fixture_root = None
@@ -1708,8 +1766,11 @@ def _task10_result_in_copy(bundle: Path, identity: dict) -> tuple[str, str | Non
     try:
         fixture_root = copy_destructive_fixture(bundle, temporary_root, "task10") / "bundle"
         env_file = fixture_root / ".env"
-        if not env_file.is_file() or env_file.is_symlink():
+        env_example = fixture_root / ".env.example"
+        if env_example.is_symlink() or not env_example.is_file() or env_file.exists():
             return "NOT_RUN", "native_probe_dependency_unavailable", {}
+        shutil.copyfile(env_example, env_file)
+        env_file.chmod(0o600)
         raw = env_file.read_text(encoding="utf-8")
         if re.search(r"(?m)^WIRECLAW_PROVIDER_API_KEY=.+$", raw):
             return "NOT_RUN", "native_probe_precondition_unmet", {}
@@ -1731,18 +1792,26 @@ def _task10_result_in_copy(bundle: Path, identity: dict) -> tuple[str, str | Non
             return "NOT_RUN", "native_probe_precondition_unmet", {}
         env_file.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
         env_file.chmod(0o600)
-        qualifier = fixture_root / "scripts/qualify_macos_embedded_ai.py"
-        if not qualifier.is_file():
-            return "NOT_RUN", "native_probe_dependency_unavailable", {}
-        environment = {
-            key: value
-            for key, value in os.environ.items()
-            if not re.search(r"(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", key, re.IGNORECASE)
-        }
         project_name = (
             "wireclaw-qualification-"
             + hashlib.sha256(str(temporary_root).encode()).hexdigest()[:12]
         )
+        preflight = task10_shared_state_preflight(fixture_root, identity, project_name=project_name)
+        if preflight is not None:
+            return "NOT_RUN", preflight, {}
+        # Qualification code is trusted source tooling, not a release asset.
+        # Run it from the exact source checkout against the private candidate copy.
+        qualifier = ROOT / "scripts/qualify_macos_embedded_ai.py"
+        if not qualifier.is_file():
+            return "NOT_RUN", "native_probe_dependency_unavailable", {}
+        # Do not let host configuration override the isolated .env created
+        # above when Compose interpolates the private candidate copy.
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("WIRECLAW_", "COMPOSE_"))
+            and not re.search(r"(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", key, re.IGNORECASE)
+        }
         environment["COMPOSE_PROJECT_NAME"] = project_name
 
         def run_once() -> tuple[str, str | None]:
@@ -1783,6 +1852,7 @@ def _task10_result_in_copy(bundle: Path, identity: dict) -> tuple[str, str | Non
             {
                 "candidate_identity_sha256": identity["candidate_identity_sha256"],
                 "private_candidate_copy": True,
+                "compose_project_name": project_name,
                 "copy_path_contains_spaces": " " in str(fixture_root),
                 "private_case_sentinel_preserved": True,
                 "task10_start_status_stop_runs": 2,

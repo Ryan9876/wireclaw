@@ -166,6 +166,20 @@ def candidate_fixture(tmp_path):
         ),
         encoding="utf-8",
     )
+    (bundle / "compose.yaml").write_text(
+        "services:\n  wireclaw-core:\n    image: wireclaw-core:gate8\n",
+        encoding="utf-8",
+    )
+    (bundle / ".env.example").write_text(
+        "WIRECLAW_PORT=8765\n"
+        "WIRECLAW_BRIDGE_PORT=8766\n"
+        "WIRECLAW_AI_PORT=8767\n"
+        'WIRECLAW_DATA_ROOT="${HOME}/Library/Application Support/Wireclaw/data"\n'
+        "WIRECLAW_PROVIDER_MODE=embedded_local\n"
+        "WIRECLAW_PROVIDER_BASE_URL=\n"
+        "WIRECLAW_PROVIDER_MODEL=\n",
+        encoding="utf-8",
+    )
     archive = tmp_path / "candidate.tar"
     with tarfile.open(archive, "w", format=tarfile.PAX_FORMAT) as stream:
         stream.add(bundle, arcname=".")
@@ -488,7 +502,11 @@ def test_task10_preflight_refuses_existing_app_state_without_deleting_it(
         return SimpleNamespace(returncode=0, stdout="")
 
     reason = qualification.task10_shared_state_preflight(
-        bundle, identity, home=tmp_path, runner=fake_run
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
     )
     assert reason == "existing_ai_private_state"
     assert existing_log.read_bytes() == log_content
@@ -505,19 +523,28 @@ def test_task10_preflight_allows_only_empty_private_directory_left_by_task9(tmp_
     )
     private.mkdir(parents=True, mode=0o700)
     private.chmod(0o700)
+    (bundle / ".env").write_text(
+        (bundle / ".env.example").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     calls = []
 
     def fake_run(argv, **kwargs):
         calls.append(argv)
         if argv[:2] == ["pgrep", "-x"]:
             return SimpleNamespace(returncode=1, stdout="")
+        if argv[0] == "/usr/sbin/lsof":
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
         return SimpleNamespace(returncode=0, stdout="")
 
     reason = qualification.task10_shared_state_preflight(
-        bundle, identity, home=tmp_path, runner=fake_run
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
     )
     assert reason is None
-    assert len(calls) == 3
+    assert len(calls) == 6
 
 
 def test_task9_reset_removes_only_approved_empty_runtime_log_after_recording_evidence(
@@ -863,7 +890,11 @@ def test_task10_preflight_refuses_unsafe_empty_private_directory(tmp_path):
         return SimpleNamespace(returncode=1, stdout="")
 
     reason = qualification.task10_shared_state_preflight(
-        bundle, identity, home=tmp_path, runner=fake_run
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
     )
     assert reason == "existing_ai_private_state"
     assert calls == []
@@ -890,7 +921,11 @@ def test_task10_preflight_refuses_existing_private_lifecycle_state(tmp_path, sta
         return SimpleNamespace(returncode=1, stdout="")
 
     reason = qualification.task10_shared_state_preflight(
-        bundle, identity, home=tmp_path, runner=fake_run
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
     )
     assert reason == "existing_ai_private_state"
     assert calls == []
@@ -915,7 +950,11 @@ def test_task10_preflight_refuses_live_helper_after_empty_private_directory(tmp_
         return SimpleNamespace(returncode=1, stdout="")
 
     reason = qualification.task10_shared_state_preflight(
-        bundle, identity, home=tmp_path, runner=fake_run
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
     )
     assert reason == "existing_ai_process"
     assert calls == [["pgrep", "-x", "WireclawAI"]]
@@ -935,7 +974,11 @@ def test_task10_preflight_refuses_trusted_host_receipt(tmp_path):
         return SimpleNamespace(returncode=1, stdout="")
 
     reason = qualification.task10_shared_state_preflight(
-        bundle, identity, home=tmp_path, runner=fake_run
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
     )
     assert reason == "existing_wireclaw_lifecycle_state"
     assert calls == []
@@ -945,43 +988,284 @@ def test_task10_preflight_refuses_existing_compose_container_state(tmp_path):
     qualification = qualification_module()
     bundle, archive = candidate_fixture(tmp_path)
     identity = qualification.candidate_identity(bundle, archive)
+    env_file = bundle / ".env.example"
+    (bundle / ".env").write_text(env_file.read_text(encoding="utf-8"), encoding="utf-8")
     calls = []
 
     def fake_run(argv, **kwargs):
         calls.append(argv)
         if argv[:2] == ["pgrep", "-x"]:
             return SimpleNamespace(returncode=1, stdout="")
+        if argv[0] == "/usr/sbin/lsof":
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
         return SimpleNamespace(returncode=0, stdout="existing-container-id\n")
 
     reason = qualification.task10_shared_state_preflight(
-        bundle, identity, home=tmp_path, runner=fake_run
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
     )
     assert reason == "existing_compose_state"
-    assert len(calls) == 3
-    assert calls[-1][-3:] == ["ps", "-aq", "wireclaw-core"]
+    compose_call = calls[-1]
+    assert compose_call[-3:] == ["ps", "-aq", "wireclaw-core"]
+    assert compose_call[compose_call.index("--env-file") + 1] == str(bundle / ".env")
 
 
-def test_task10_copy_runner_stops_before_copy_when_shared_state_exists(tmp_path, monkeypatch):
+def test_task10_preflight_queries_only_exact_project_and_checks_ports(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    env_file = bundle / ".env"
+    env_file.write_text((bundle / ".env.example").read_text(encoding="utf-8"), encoding="utf-8")
+    project_name = "wireclaw-qualification-a1b2c3d4e5f6"
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if argv[:2] == ["pgrep", "-x"]:
+            return SimpleNamespace(returncode=1, stdout="")
+        if argv[0] == "/usr/sbin/lsof":
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name=project_name,
+        runner=fake_run,
+    )
+
+    assert reason is None
+    lsof_calls = [argv for argv, _kwargs in calls if argv[0] == "/usr/sbin/lsof"]
+    assert len(lsof_calls) == 3
+    assert {argv[2] for argv in lsof_calls} == {
+        "-iTCP:8765",
+        "-iTCP:8766",
+        "-iTCP:8767",
+    }
+    compose_argv, compose_kwargs = calls[-1]
+    assert compose_argv[0:2] == ["docker", "compose"]
+    assert compose_argv[compose_argv.index("--env-file") + 1] == str(env_file)
+    assert compose_argv[compose_argv.index("-f") + 1] == str(bundle / "compose.yaml")
+    assert compose_argv[-3:] == ["ps", "-aq", "wireclaw-core"]
+    assert compose_kwargs["env"]["COMPOSE_PROJECT_NAME"] == project_name
+
+
+def test_task10_preflight_ignores_inherited_wireclaw_compose_overrides(tmp_path, monkeypatch):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    (bundle / ".env").write_text(
+        (bundle / ".env.example").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setenv("WIRECLAW_DATA_ROOT", "/outside/private/data")
+    monkeypatch.setenv("WIRECLAW_PORT", "9999")
+    monkeypatch.setenv("WIRECLAW_AI_PORT", "9888")
+    monkeypatch.setenv("COMPOSE_PROFILES", "unexpected")
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if argv[:2] == ["pgrep", "-x"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        if argv[0] == "/usr/sbin/lsof":
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
+    )
+
+    assert reason is None
+    lsof_calls = [argv for argv, _kwargs in calls if argv[0] == "/usr/sbin/lsof"]
+    assert {argv[2] for argv in lsof_calls} == {
+        "-iTCP:8765",
+        "-iTCP:8766",
+        "-iTCP:8767",
+    }
+    for _argv, kwargs in calls:
+        assert "WIRECLAW_DATA_ROOT" not in kwargs["env"]
+        assert "WIRECLAW_PORT" not in kwargs["env"]
+        assert "WIRECLAW_AI_PORT" not in kwargs["env"]
+        assert "COMPOSE_PROFILES" not in kwargs["env"]
+
+
+def test_task10_preflight_blocks_port_conflict_independent_of_compose_project(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    (bundle / ".env").write_text(
+        (bundle / ".env.example").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:2] == ["pgrep", "-x"]:
+            return SimpleNamespace(returncode=1, stdout="")
+        if argv[0] == "/usr/sbin/lsof" and "-iTCP:8765" in argv:
+            return SimpleNamespace(returncode=0, stdout="listener\n", stderr="")
+        return SimpleNamespace(returncode=1, stdout="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
+    )
+
+    assert reason == "existing_host_port_conflict"
+    assert not any(argv[:2] == ["docker", "compose"] for argv in calls)
+
+
+def test_task10_preflight_fails_closed_when_lsof_cannot_check_host_ports(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    (bundle / ".env").write_text(
+        (bundle / ".env.example").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:2] == ["pgrep", "-x"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        if argv[0] == "/usr/sbin/lsof":
+            return SimpleNamespace(returncode=1, stdout="", stderr="permission denied")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    reason = qualification.task10_shared_state_preflight(
+        bundle,
+        identity,
+        home=tmp_path,
+        project_name="wireclaw-qualification-a1b2c3d4e5f6",
+        runner=fake_run,
+    )
+
+    assert reason == "native_probe_dependency_unavailable"
+    assert not any(argv[:2] == ["docker", "compose"] for argv in calls)
+
+
+def test_task10_runner_materializes_private_config_before_scoped_preflight(tmp_path, monkeypatch):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    original_tree_hash = qualification.tree_sha256(bundle)
+    temporary_root = tmp_path / "Wireclaw qualification with spaces-run"
+    temporary_root.mkdir(mode=0o700)
+    temporary_root.chmod(0o700)
+    monkeypatch.setattr(qualification.sys, "platform", "darwin")
+    monkeypatch.setattr(qualification.platform, "machine", lambda: "arm64")
+    monkeypatch.setenv("WIRECLAW_DATA_ROOT", "/outside/private/data")
+    monkeypatch.setenv("WIRECLAW_PORT", "9999")
+    monkeypatch.setenv("COMPOSE_PROFILES", "unexpected")
+
+    def private_mkdtemp(*, prefix, dir=None):
+        if dir is None:
+            return str(temporary_root)
+        private_copy_root = Path(dir) / "task10-private-copy"
+        private_copy_root.mkdir(mode=0o700)
+        return str(private_copy_root)
+
+    monkeypatch.setattr(qualification.tempfile, "mkdtemp", private_mkdtemp)
+    preflight_observed = {}
+    command_observed = []
+
+    def fake_preflight(copy, candidate_identity, *, project_name):
+        env_file = copy / ".env"
+        assert copy != bundle
+        assert env_file.is_file()
+        assert env_file.stat().st_mode & 0o777 == 0o600
+        raw = env_file.read_text(encoding="utf-8")
+        assert "WIRECLAW_PROVIDER_API_KEY=" not in raw
+        assert f'WIRECLAW_DATA_ROOT="{temporary_root / "isolated case data"}"' in raw
+        assert project_name.startswith("wireclaw-qualification-")
+        assert candidate_identity == identity
+        assert qualification.tree_sha256(bundle) == original_tree_hash
+        preflight_observed.update(
+            copy=copy,
+            project_name=project_name,
+            env=raw,
+        )
+        return None
+
+    monkeypatch.setattr(qualification, "task10_shared_state_preflight", fake_preflight)
+
+    def fake_run(argv, **kwargs):
+        command_observed.append((argv, kwargs))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=b"Task 10 packaged inference/Core integration: PASS\n",
+            stderr=b"",
+        )
+
+    monkeypatch.setattr(qualification.subprocess, "run", fake_run)
+    status, reason, observations = qualification._task10_result_in_copy(bundle, identity)
+
+    assert (status, reason) == ("PASS", None)
+    assert preflight_observed["copy"] != bundle
+    assert len(command_observed) == 1
+    assert all(
+        kwargs["env"]["COMPOSE_PROJECT_NAME"] == preflight_observed["project_name"]
+        for _argv, kwargs in command_observed
+    )
+    for _argv, kwargs in command_observed:
+        assert "WIRECLAW_DATA_ROOT" not in kwargs["env"]
+        assert "WIRECLAW_PORT" not in kwargs["env"]
+        assert "COMPOSE_PROFILES" not in kwargs["env"]
+    assert all(
+        argv[1] == str(ROOT / "scripts/qualify_macos_embedded_ai.py")
+        for argv, _ in command_observed
+    )
+    assert all(argv[-1] == str(preflight_observed["copy"]) for argv, _ in command_observed)
+    assert observations["private_candidate_copy"] is True
+    assert observations["compose_project_name"] == preflight_observed["project_name"]
+    assert not (bundle / ".env").exists()
+    assert qualification.tree_sha256(bundle) == original_tree_hash
+
+
+def test_task10_copy_runner_stops_after_private_copy_preflight_when_shared_state_exists(
+    tmp_path, monkeypatch
+):
     qualification = qualification_module()
     bundle, archive = candidate_fixture(tmp_path)
     identity = qualification.candidate_identity(bundle, archive)
     monkeypatch.setattr(qualification.sys, "platform", "darwin")
     monkeypatch.setattr(qualification.platform, "machine", lambda: "arm64")
-    monkeypatch.setattr(
-        qualification,
-        "task10_shared_state_preflight",
-        lambda *_args: "existing_ai_private_state",
-    )
-    monkeypatch.setattr(
-        qualification.tempfile,
-        "mkdtemp",
-        lambda **_kwargs: pytest.fail("must not create a destructive fixture"),
-    )
+    temporary_root = tmp_path / "qualification-copy"
+    temporary_root.mkdir(mode=0o700)
+
+    def private_mkdtemp(*, prefix, dir=None):
+        if dir is None:
+            return str(temporary_root)
+        private_copy_root = Path(dir) / "task10-private-copy"
+        private_copy_root.mkdir(mode=0o700)
+        return str(private_copy_root)
+
+    monkeypatch.setattr(qualification.tempfile, "mkdtemp", private_mkdtemp)
+    copied = {}
+
+    def preflight(copy, *_args, **_kwargs):
+        copied["path"] = copy
+        return "existing_ai_private_state"
+
+    monkeypatch.setattr(qualification, "task10_shared_state_preflight", preflight)
     assert qualification._task10_result_in_copy(bundle, identity) == (
         "NOT_RUN",
         "existing_ai_private_state",
         {},
     )
+    assert copied["path"] != bundle
+    assert not temporary_root.exists()
 
 
 @pytest.mark.parametrize(
@@ -991,6 +1275,7 @@ def test_task10_copy_runner_stops_before_copy_when_shared_state_exists(tmp_path,
         "existing_wireclaw_lifecycle_state",
         "existing_ai_process",
         "existing_compose_state",
+        "existing_host_port_conflict",
     ),
 )
 def test_task10_preflight_reason_produces_valid_not_run_report(tmp_path, monkeypatch, reason):
@@ -1146,6 +1431,7 @@ def test_task10_evidence_only_passes_candidate_bound_persistence_and_space_check
     observations = {
         "candidate_identity_sha256": identity["candidate_identity_sha256"],
         "private_candidate_copy": True,
+        "compose_project_name": "wireclaw-qualification-a1b2c3d4e5f6",
         "copy_path_contains_spaces": True,
         "private_case_sentinel_preserved": True,
         "task10_start_status_stop_runs": 2,
@@ -1185,6 +1471,7 @@ def test_task10_evidence_only_passes_candidate_bound_persistence_and_space_check
     assert set(paths) == {
         "candidate_identity_sha256",
         "private_candidate_copy",
+        "compose_project_name",
         "copy_path_contains_spaces",
         "task10_start_status_stop_runs",
     }
@@ -1709,6 +1996,7 @@ def test_task10_check_observations_are_narrowly_mapped_to_candidate_evidence():
         {
             "candidate_identity_sha256": identity_sha,
             "private_candidate_copy": True,
+            "compose_project_name": "wireclaw-qualification-a1b2c3d4e5f6",
             "copy_path_contains_spaces": True,
             "private_case_sentinel_preserved": True,
             "task10_start_status_stop_runs": 2,
@@ -1726,6 +2014,7 @@ def test_task10_check_observations_are_narrowly_mapped_to_candidate_evidence():
         {
             "candidate_identity_sha256": identity_sha,
             "private_candidate_copy": True,
+            "compose_project_name": "wireclaw-qualification-a1b2c3d4e5f6",
             "copy_path_contains_spaces": True,
             "private_case_sentinel_preserved": True,
             "task10_start_status_stop_runs": 2,
@@ -1735,6 +2024,7 @@ def test_task10_check_observations_are_narrowly_mapped_to_candidate_evidence():
     assert path_spaces == {
         "candidate_identity_sha256": identity_sha,
         "private_candidate_copy": True,
+        "compose_project_name": "wireclaw-qualification-a1b2c3d4e5f6",
         "copy_path_contains_spaces": True,
         "task10_start_status_stop_runs": 2,
     }
