@@ -68,6 +68,34 @@ class RenameCase(StrictModel):
         return plain_label(value)
 
 
+class FollowupRequest(StrictModel):
+    question: Annotated[str, Field(min_length=1, max_length=2000)]
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def trim_question(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class FollowupResponse(StrictModel):
+    answer: Annotated[str, Field(min_length=1, max_length=4000)]
+    evidence_ids: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=256)]], Field(max_length=200)
+    ]
+
+    @field_validator("answer")
+    @classmethod
+    def nonblank_answer(cls, value):
+        if not value.strip():
+            raise ValueError("invalid_answer")
+        return value
+
+    @field_validator("evidence_ids")
+    @classmethod
+    def unique_evidence_ids(cls, value):
+        return list(dict.fromkeys(value))
+
+
 class RecentCaseResponse(StrictModel):
     id: str
     name: str

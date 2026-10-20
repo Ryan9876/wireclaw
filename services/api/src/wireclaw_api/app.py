@@ -25,10 +25,13 @@ from .models import (
     DeletionResponse,
     EvidenceCaptureRequest,
     EvidenceCaptureResponse,
+    FollowupRequest,
+    FollowupResponse,
     HealthResponse,
     RecentCaseResponse,
     RenameCase,
 )
+from .reasoning.followup import answer_followup
 from .storage import ApiError
 from .web import register_web
 
@@ -239,6 +242,11 @@ def create_app(data_root: Path, policy: Policy | None = None):
     def investigate(case_id: str):
         with service().admission():
             return service().investigate(case_id)
+
+    @app.post("/api/cases/{case_id}/followups", response_model=FollowupResponse)
+    def followup(case_id: str, body: FollowupRequest):
+        with service().admission():
+            return answer_followup(service(), case_id, body.question)
 
     @app.post("/api/cases/{case_id}/capabilities")
     def capability(case_id: str, body: CapabilityRequest):

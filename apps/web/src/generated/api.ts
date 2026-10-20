@@ -104,6 +104,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{case_id}/followups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Followup */
+        post: operations["followup_api_cases__case_id__followups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cases/{case_id}/capabilities": {
         parameters: {
             query?: never;
@@ -423,6 +440,18 @@ export interface components {
             /** Bytes */
             bytes: number;
             provenance: components["schemas"]["EvidenceCaptureProvenance"];
+        };
+        /** FollowupRequest */
+        FollowupRequest: {
+            /** Question */
+            question: string;
+        };
+        /** FollowupResponse */
+        FollowupResponse: {
+            /** Answer */
+            answer: string;
+            /** Evidence Ids */
+            evidence_ids: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -775,6 +804,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    followup_api_cases__case_id__followups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FollowupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowupResponse"];
                 };
             };
             /** @description Validation Error */

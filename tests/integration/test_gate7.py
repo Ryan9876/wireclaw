@@ -1025,3 +1025,442 @@ def test_provider_timeout_persists_bounded_audit_and_keeps_report_usable(tmp_pat
         assert service.evidence_records(case_id)
     finally:
         service.close()
+
+
+# Follow-up turns are explanatory, stateless, and never part of persisted reasoning.
+def followup_client(tmp_path, monkeypatch, result=None, *, mode=ProviderMode.LOCAL):
+    policy = Policy(
+        provider_mode=mode,
+        provider_base_url="http://127.0.0.1:1234/v1" if mode is not ProviderMode.NONE else None,
+        provider_model="followup-model" if mode is not ProviderMode.NONE else None,
+    )
+    service, case_id = prepared_service(tmp_path, policy)
+    # Seed a completed deterministic report without making any provider request.
+    Gate6Service._assemble_report(service, case_id)
+    requests = []
+
+    class Provider:
+        def propose(self, request):
+            requests.append(request)
+            if isinstance(result, Exception):
+                raise result
+            return result or ProviderResult(
+                content=json.dumps(
+                    {
+                        "answer": "The available evidence cannot answer this question.",
+                        "evidence_ids": [],
+                    }
+                )
+            )
+
+    monkeypatch.setattr(loop, "make_provider", lambda _policy: Provider())
+    monkeypatch.setattr(api_module, "Service", lambda *_args: service)
+    return (
+        TestClient(create_app(tmp_path, policy), base_url="http://127.0.0.1:8765"),
+        service,
+        case_id,
+        requests,
+    )
+
+
+def assert_followup_error(client, case_id, status, code, body=None):
+    response = client.post(f"/api/cases/{case_id}/followups", json=body or {"question": "Why?"})
+    assert response.status_code == status, response.text
+    assert response.json() == {"error": {"code": code}}
+
+
+def test_followup_unknown_case_returns_404_case_not_found(tmp_path, monkeypatch):
+    client, _, _, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+        assert_followup_error(client, "f" * 32, 404, "case_not_found")
+
+
+def test_followup_incomplete_report_returns_409_report_not_ready(tmp_path, monkeypatch):
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+        service.transition(case_id, State.BASELINE_ANALYSIS)
+        assert_followup_error(client, case_id, 409, "report_not_ready")
+
+
+def test_followup_missing_report_returns_404_report_not_found(tmp_path, monkeypatch):
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+        with service.db.connect() as conn:
+            conn.execute("DELETE FROM artifacts WHERE case_id=? AND kind='report'", (case_id,))
+        assert_followup_error(client, case_id, 404, "report_not_found")
+
+
+def test_followup_rules_only_returns_409_followup_unavailable(tmp_path, monkeypatch):
+    client, _, case_id, requests = followup_client(tmp_path, monkeypatch, mode=ProviderMode.NONE)
+    with client:
+        assert_followup_error(client, case_id, 409, "followup_unavailable")
+        assert requests == []
+
+
+def test_followup_provider_unavailable_returns_503_without_details(tmp_path, monkeypatch):
+    client, _, case_id, _ = followup_client(tmp_path, monkeypatch, RuntimeError("PRIVATE_SECRET"))
+    with client:
+        assert_followup_error(client, case_id, 503, "provider_unavailable")
+
+
+def test_followup_provider_timeout_returns_504_provider_timeout(tmp_path, monkeypatch):
+    client, _, case_id, _ = followup_client(
+        tmp_path, monkeypatch, ProviderResult(failure_code="provider_timeout")
+    )
+    with client:
+        assert_followup_error(client, case_id, 504, "provider_timeout")
+
+
+def test_followup_malformed_provider_response_returns_502_followup_response_invalid(
+    tmp_path, monkeypatch
+):
+    client, _, case_id, _ = followup_client(
+        tmp_path, monkeypatch, ProviderResult(content="SECRET_NOT_JSON")
+    )
+    with client:
+        assert_followup_error(client, case_id, 502, "followup_response_invalid")
+
+
+def test_followup_invalid_citations_return_502_followup_response_invalid(tmp_path, monkeypatch):
+    client, _, case_id, _ = followup_client(
+        tmp_path,
+        monkeypatch,
+        ProviderResult(content=json.dumps({"answer": "Claim", "evidence_ids": ["other-case-id"]})),
+    )
+    with client:
+        assert_followup_error(client, case_id, 502, "followup_response_invalid")
+
+
+def test_followup_invalid_question_returns_422_invalid_request(tmp_path, monkeypatch):
+    client, _, case_id, requests = followup_client(tmp_path, monkeypatch)
+    with client:
+        for body in (
+            {},
+            {"question": " "},
+            {"question": "q" * 2001},
+            {"question": 1},
+            {"question": "Why", "history": []},
+        ):
+            response = client.post(f"/api/cases/{case_id}/followups", json=body)
+            assert response.status_code == 422
+            assert response.json() == {"error": {"code": "invalid_request"}}
+        assert not requests
+
+
+def test_followup_uses_only_normalized_active_case_context(tmp_path, monkeypatch):
+    client, service, case_id, requests = followup_client(tmp_path, monkeypatch)
+    with client:
+        other = service.create("OTHER_CASE_PRIVATE_SYMPTOM")
+        with service.db.connect() as conn:
+            conn.execute(
+                "UPDATE cases SET symptom=? WHERE id=?",
+                ("slow token=SECRET /private/capture.pcap", case_id),
+            )
+            record = service.evidence_records(case_id)[0]
+            record["payload"] = "RAW_PAYLOAD_SENTINEL"
+            record["value"]["payload"] = "RAW_PAYLOAD_SENTINEL"
+            conn.execute(
+                "UPDATE evidence SET record=? WHERE case_id=? AND id=?",
+                (json.dumps(record), case_id, record["id"]),
+            )
+        response = client.post(f"/api/cases/{case_id}/followups", json={"question": "Why?"})
+        assert response.status_code == 200, response.text
+        context = json.loads(requests[0].context_json)
+        assert set(context) == {"case_id", "symptom", "report", "evidence", "question"}
+        assert context["case_id"] == case_id
+        assert context["question"] == "Why?"
+        assert context["report"]["capture_quality"]
+        for sentinel in (
+            other["id"],
+            "OTHER_CASE_PRIVATE_SYMPTOM",
+            "RAW_PAYLOAD_SENTINEL",
+            "SECRET",
+            "/private/capture.pcap",
+        ):
+            assert sentinel not in requests[0].context_json
+
+
+def test_followup_request_excludes_previous_turns(tmp_path, monkeypatch):
+    client, _, case_id, requests = followup_client(tmp_path, monkeypatch)
+    with client:
+        for question in ("FIRST_QUESTION_SENTINEL", "SECOND_QUESTION_SENTINEL"):
+            assert (
+                client.post(
+                    f"/api/cases/{case_id}/followups", json={"question": question}
+                ).status_code
+                == 200
+            )
+        assert "FIRST_QUESTION_SENTINEL" not in requests[1].context_json
+        assert "cannot answer" not in requests[1].context_json
+        assert "history" not in json.loads(requests[1].context_json)
+
+
+def test_followup_does_not_mutate_report_or_evidence(tmp_path, monkeypatch):
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+        report = service.report(case_id)
+        evidence = service.evidence_records(case_id)
+        with service.db.connect() as conn:
+            before = "\n".join(conn.iterdump())
+        assert (
+            client.post(
+                f"/api/cases/{case_id}/followups", json={"question": "UNPERSISTED_QUESTION"}
+            ).status_code
+            == 200
+        )
+        assert service.report(case_id) == report
+        assert service.evidence_records(case_id) == evidence
+        with service.db.connect() as conn:
+            assert "\n".join(conn.iterdump()) == before
+
+
+def test_followup_bounds_question_and_answer(tmp_path, monkeypatch):
+    client, _, case_id, requests = followup_client(
+        tmp_path,
+        monkeypatch,
+        ProviderResult(content=json.dumps({"answer": "x" * 4001, "evidence_ids": []})),
+    )
+    with client:
+        assert_followup_error(
+            client, case_id, 502, "followup_response_invalid", {"question": " " + "q" * 2000 + " "}
+        )
+        assert len(json.loads(requests[0].context_json)["question"]) == 2000
+
+
+def test_followup_reports_provider_failure_without_logging_content(tmp_path, monkeypatch, caplog):
+    client, _, case_id, _ = followup_client(
+        tmp_path, monkeypatch, RuntimeError("ANSWER_SECRET API_KEY_SECRET")
+    )
+    with client:
+        assert_followup_error(
+            client, case_id, 503, "provider_unavailable", {"question": "QUESTION_SECRET"}
+        )
+    for sentinel in ("QUESTION_SECRET", "ANSWER_SECRET", "API_KEY_SECRET"):
+        assert sentinel not in caplog.text
+
+
+def test_followup_rejects_unknown_and_cross_case_evidence_ids(tmp_path, monkeypatch):
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+        other_case = service.create("Other case")
+        own_id = service.evidence_records(case_id)[0]["id"]
+        other_id = "ev_other_case"
+        run_id, _ = service.start(other_case["id"], "seed", {})
+        with service.db.connect() as conn:
+            conn.execute(
+                "INSERT INTO evidence(case_id,id,run_id,record) VALUES(?,?,?,?)",
+                (other_case["id"], other_id, run_id, json.dumps({"id": other_id})),
+            )
+
+        class Provider:
+            citation = own_id
+
+            def propose(self, _request):
+                return ProviderResult(
+                    content=json.dumps(
+                        {
+                            "answer": "Capture quality is derived from deterministic evidence.",
+                            "evidence_ids": [self.citation, self.citation],
+                        }
+                    )
+                )
+
+        provider = Provider()
+        monkeypatch.setattr(loop, "make_provider", lambda _policy: provider)
+        response = client.post(
+            f"/api/cases/{case_id}/followups", json={"question": "Capture quality?"}
+        )
+        assert response.status_code == 200
+        assert response.json()["evidence_ids"] == [own_id]
+        for citation in ("ev_invented", other_id):
+            provider.citation = citation
+            assert_followup_error(client, case_id, 502, "followup_response_invalid")
+
+
+def test_followup_context_contains_completed_conclusion_and_uncertainty(tmp_path, monkeypatch):
+    client, service, case_id, requests = followup_client(tmp_path, monkeypatch)
+    with client:
+        assert (
+            client.post(
+                f"/api/cases/{case_id}/followups", json={"question": "What is concluded?"}
+            ).status_code
+            == 200
+        )
+        report = service.report(case_id)
+        projected = json.loads(requests[0].context_json)["report"]
+        assert projected["conclusion"] == report["conclusion"]
+        assert (
+            projected["remaining_hypotheses"][0]["statement"]
+            == report["remaining_hypotheses"][0]["statement"]
+        )
+
+
+def test_followup_rejects_uncited_assertions_and_tool_responses(tmp_path, monkeypatch):
+    client, _, case_id, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+
+        class Provider:
+            content = None
+
+            def propose(self, _request):
+                return ProviderResult(content=json.dumps(self.content))
+
+        provider = Provider()
+        monkeypatch.setattr(loop, "make_provider", lambda _policy: provider)
+        for output in (
+            {"answer": "The server caused the delay.", "evidence_ids": []},
+            {"answer": " ", "evidence_ids": []},
+            {"action": "request_capability", "capability": "analyze_dns", "parameters": {}},
+            {
+                "answer": "The available evidence cannot answer.",
+                "evidence_ids": [],
+                "command": "sh",
+            },
+        ):
+            provider.content = output
+            assert_followup_error(client, case_id, 502, "followup_response_invalid")
+
+
+def test_followup_enforces_http_and_provider_byte_bounds(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    client, service, case_id, requests = followup_client(tmp_path, monkeypatch)
+    with client:
+        response = client.post(
+            f"/api/cases/{case_id}/followups", content=b"x" * (service.policy.max_json_bytes + 1)
+        )
+        assert response.status_code == 413
+        assert response.json() == {"error": {"code": "request_size_limit"}}
+        service.policy = replace(service.policy, max_provider_request_bytes=64)
+        assert_followup_error(client, case_id, 503, "provider_unavailable")
+        assert not requests
+
+
+def test_followup_provider_failure_codes_are_safe_and_exact(tmp_path, monkeypatch, caplog):
+    client, _, case_id, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+
+        class Provider:
+            code = None
+
+            def propose(self, _request):
+                return ProviderResult(failure_code=self.code)
+
+        provider = Provider()
+        monkeypatch.setattr(loop, "make_provider", lambda _policy: provider)
+        for code, status, expected in (
+            ("provider_invalid_response", 502, "followup_response_invalid"),
+            ("provider_response_too_large", 502, "followup_response_invalid"),
+            ("provider_auth_failed", 503, "provider_unavailable"),
+            ("provider_protocol_error", 503, "provider_unavailable"),
+            ("PRIVATE_SENTINEL_API_KEY", 503, "provider_unavailable"),
+        ):
+            provider.code = code
+            assert_followup_error(client, case_id, status, expected)
+        assert "PRIVATE_SENTINEL_API_KEY" not in caplog.text
+
+
+def test_followup_embedded_unavailable_does_not_call_provider(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    client, service, case_id, requests = followup_client(tmp_path, monkeypatch)
+    service.policy = replace(
+        service.policy,
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model="wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        provider_api_key="x" * 40,
+    )
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "unavailable:runtime-unhealthy")
+    with client:
+        assert_followup_error(client, case_id, 503, "provider_unavailable")
+        assert not requests
+
+
+def test_followup_embedded_provider_uses_answer_schema(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    service.policy = replace(
+        service.policy,
+        provider_mode=ProviderMode.EMBEDDED,
+        provider_base_url="http://host.docker.internal:8767/v1",
+        provider_model="wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+        provider_api_key="x" * 40,
+    )
+    monkeypatch.setenv("WIRECLAW_EMBEDDED_AI_STATUS", "ready")
+    monkeypatch.setattr(gate7_module, "embedded_runtime_available", lambda _policy: True)
+    monkeypatch.setattr(
+        loop,
+        "make_provider",
+        lambda policy: openai_compatible.OpenAICompatibleProvider(
+            mode=policy.provider_mode,
+            base_url=policy.provider_base_url,
+            model=policy.provider_model,
+            timeout_seconds=policy.provider_timeout_seconds,
+            api_key=policy.provider_api_key,
+        ),
+    )
+    wire_requests = []
+    original = httpx.AsyncClient
+
+    def handler(request):
+        wire_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "answer": "The available evidence cannot answer this question.",
+                                    "evidence_ids": [],
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    with client:
+        response = client.post(f"/api/cases/{case_id}/followups", json={"question": "Why?"})
+        assert response.status_code == 200
+        body = json.loads(wire_requests[0].content)
+        schema = body["response_format"]["json_schema"]["schema"]
+        assert set(schema["properties"]) == {"answer", "evidence_ids"}
+        assert schema["additionalProperties"] is False
+        assert len(body["messages"]) == 2
+        assert "action" not in schema["properties"]
+
+
+def test_followup_accepts_maximum_answer_and_caps_provider_response_bytes(
+    tmp_path, monkeypatch, caplog
+):
+    from dataclasses import replace
+
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    with client:
+        evidence_id = service.evidence_records(case_id)[0]["id"]
+
+        class Provider:
+            content = json.dumps({"answer": "x" * 4000, "evidence_ids": [evidence_id]})
+
+            def propose(self, _request):
+                return ProviderResult(content=self.content)
+
+        provider = Provider()
+        monkeypatch.setattr(loop, "make_provider", lambda _policy: provider)
+        response = client.post(f"/api/cases/{case_id}/followups", json={"question": "Why?"})
+        assert response.status_code == 200
+        assert len(response.json()["answer"]) == 4000
+        service.policy = replace(service.policy, max_provider_response_bytes=256)
+        provider.content = "PRIVATE_RESPONSE_SENTINEL" * 300
+        assert_followup_error(client, case_id, 502, "followup_response_invalid")
+        assert "PRIVATE_RESPONSE_SENTINEL" not in caplog.text

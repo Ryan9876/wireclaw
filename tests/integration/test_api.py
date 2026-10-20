@@ -790,3 +790,24 @@ def test_rename_invalid_display_name_returns_422_invalid_request(environment, bo
         assert response.status_code == 422, response.text
         assert response.json() == {"error": {"code": "invalid_request"}}
         assert client.get(f"/api/cases/{case_id}").json() == before
+
+
+def test_followup_request_validation_and_size_errors_are_code_only(tmp_path, caplog):
+    with client_for(tmp_path / "followup-boundary") as client:
+        case_id = case(client)
+        for body in (
+            {},
+            {"question": ""},
+            {"question": " "},
+            {"question": "q" * 2001},
+            {"question": "QUESTION_PRIVATE_SENTINEL", "messages": []},
+        ):
+            response = client.post(f"/api/cases/{case_id}/followups", json=body)
+            assert response.status_code == 422
+            assert response.json() == {"error": {"code": "invalid_request"}}
+        response = client.post(
+            f"/api/cases/{case_id}/followups", content=b"x" * (Policy().max_json_bytes + 1)
+        )
+        assert response.status_code == 413
+        assert response.json() == {"error": {"code": "request_size_limit"}}
+        assert "QUESTION_PRIVATE_SENTINEL" not in caplog.text

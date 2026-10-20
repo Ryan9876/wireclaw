@@ -84,9 +84,13 @@ class OpenAICompatibleProvider:
             request_body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "wireclaw_reasoning_action",
+                    "name": "wireclaw_followup"
+                    if request.response_schema is not None
+                    else "wireclaw_reasoning_action",
                     "strict": True,
-                    "schema": ACTION_ADAPTER.json_schema(),
+                    "schema": request.response_schema
+                    if request.response_schema is not None
+                    else ACTION_ADAPTER.json_schema(),
                 },
             }
         body = json.dumps(
