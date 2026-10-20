@@ -841,13 +841,115 @@ export interface operations {
                     "application/json": components["schemas"]["FollowupResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Code-only error: case_not_found, report_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "case_not_found" | "report_not_found";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: report_not_ready, followup_unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "report_not_ready" | "followup_unavailable";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_size_limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_size_limit";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: invalid_request */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_request";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: followup_response_invalid */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "followup_response_invalid";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: provider_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "provider_unavailable";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: provider_timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "provider_timeout";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
                 };
             };
         };

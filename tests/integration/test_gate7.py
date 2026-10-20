@@ -1464,3 +1464,39 @@ def test_followup_accepts_maximum_answer_and_caps_provider_response_bytes(
         provider.content = "PRIVATE_RESPONSE_SENTINEL" * 300
         assert_followup_error(client, case_id, 502, "followup_response_invalid")
         assert "PRIVATE_RESPONSE_SENTINEL" not in caplog.text
+
+
+def test_followup_openapi_documents_code_only_error_matrix(tmp_path):
+    from jsonschema import Draft202012Validator
+
+    responses = create_app(tmp_path).openapi()["paths"]["/api/cases/{case_id}/followups"]["post"][
+        "responses"
+    ]
+    expected = {
+        "404": {"case_not_found", "report_not_found"},
+        "409": {"report_not_ready", "followup_unavailable"},
+        "413": {"request_size_limit"},
+        "422": {"invalid_request"},
+        "502": {"followup_response_invalid"},
+        "503": {"provider_unavailable"},
+        "504": {"provider_timeout"},
+    }
+    for status, codes in expected.items():
+        assert status in responses
+        schema = responses[status]["content"]["application/json"]["schema"]
+        assert schema["additionalProperties"] is False
+        assert schema["required"] == ["error"]
+        error_schema = schema["properties"]["error"]
+        assert error_schema["additionalProperties"] is False
+        assert error_schema["required"] == ["code"]
+        assert set(error_schema["properties"]["code"]["enum"]) == codes
+        validator = Draft202012Validator(schema)
+        for code in codes:
+            validator.validate({"error": {"code": code}})
+        assert not validator.is_valid({"detail": "PRIVATE_PROVIDER_OUTPUT"})
+        assert not validator.is_valid(
+            {"error": {"code": next(iter(codes)), "message": "PRIVATE_PROVIDER_OUTPUT"}}
+        )
+    assert "HTTPValidationError" not in json.dumps(responses)
+    shared_schema = responses["default"]["content"]["application/json"]["schema"]
+    Draft202012Validator(shared_schema).validate({"error": {"code": "service_busy"}})

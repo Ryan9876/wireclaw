@@ -35,6 +35,43 @@ from .reasoning.followup import answer_followup
 from .storage import ApiError
 from .web import register_web
 
+FOLLOWUP_ERROR_CODES = {
+    404: ("case_not_found", "report_not_found"),
+    409: ("report_not_ready", "followup_unavailable"),
+    413: ("request_size_limit",),
+    422: ("invalid_request",),
+    502: ("followup_response_invalid",),
+    503: ("provider_unavailable",),
+    504: ("provider_timeout",),
+}
+
+
+def code_only_error_response(codes=()):
+    """Describe the existing safe handler envelope without FastAPI's detail field."""
+    code_schema = {"type": "string"}
+    if codes:
+        code_schema["enum"] = list(codes)
+    return {
+        "description": "Code-only error" + (": " + ", ".join(codes) if codes else ""),
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["error"],
+                    "properties": {
+                        "error": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["code"],
+                            "properties": {"code": code_schema},
+                        }
+                    },
+                }
+            }
+        },
+    }
+
 
 class Boundary:
     def __init__(self, app, policy):
@@ -243,7 +280,18 @@ def create_app(data_root: Path, policy: Policy | None = None):
         with service().admission():
             return service().investigate(case_id)
 
-    @app.post("/api/cases/{case_id}/followups", response_model=FollowupResponse)
+    @app.post(
+        "/api/cases/{case_id}/followups",
+        response_model=FollowupResponse,
+        responses={
+            **{
+                status: code_only_error_response(codes)
+                for status, codes in FOLLOWUP_ERROR_CODES.items()
+            },
+            # Other shared boundary and admission errors also use this envelope.
+            "default": code_only_error_response(),
+        },
+    )
     def followup(case_id: str, body: FollowupRequest):
         with service().admission():
             return answer_followup(service(), case_id, body.question)
