@@ -51,6 +51,10 @@ button.primary {
   background: var(--ink);
   border-color: var(--ink);
 }
+button.primary:hover:not(:disabled) {
+  background: #1e3e61;
+  border-color: #1e3e61;
+}
 button.primary:disabled {
   color: #fff;
   background: #697786;
@@ -66,6 +70,10 @@ button.danger {
 button.solid {
   color: white;
   background: #a32527;
+}
+button.solid:hover:not(:disabled) {
+  background: #861e20;
+  border-color: #861e20;
 }
 :focus-visible {
   outline: 3px solid #427da7;

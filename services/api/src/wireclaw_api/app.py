@@ -46,6 +46,17 @@ FOLLOWUP_ERROR_CODES = {
 }
 
 
+CASE_METADATA_ERROR_CODES = {
+    400: ("invalid_content_length",),
+    403: ("host_rejected", "origin_rejected"),
+    408: ("request_timeout",),
+    413: ("request_size_limit",),
+    422: ("invalid_request",),
+    500: ("operation_failed",),
+    503: ("persistence_failure",),
+}
+
+
 def code_only_error_response(codes=()):
     """Describe the existing safe handler envelope without FastAPI's detail field."""
     code_schema = {"type": "string"}
@@ -219,11 +230,36 @@ def create_app(data_root: Path, policy: Policy | None = None):
         with service().admission():
             return service().create(body.symptom, body.capture_name)
 
-    @app.get("/api/cases", response_model=list[RecentCaseResponse])
+    @app.get(
+        "/api/cases",
+        response_model=list[RecentCaseResponse],
+        responses={
+            **{
+                status: code_only_error_response(codes)
+                for status, codes in CASE_METADATA_ERROR_CODES.items()
+            },
+            "default": code_only_error_response(),
+        },
+    )
     def recent_cases(limit: int = Query(default=10, ge=1, le=10)):
         return service().recent(limit)
 
-    @app.patch("/api/cases/{case_id}", response_model=CaseResponse)
+    @app.patch(
+        "/api/cases/{case_id}",
+        response_model=CaseResponse,
+        responses={
+            **{
+                status: code_only_error_response(codes)
+                for status, codes in {
+                    **CASE_METADATA_ERROR_CODES,
+                    404: ("case_not_found",),
+                    422: ("invalid_request", "invalid_id"),
+                    429: ("service_busy",),
+                }.items()
+            },
+            "default": code_only_error_response(),
+        },
+    )
     def rename_case(case_id: str, body: RenameCase):
         with service().admission():
             return service().rename(case_id, body.display_name)

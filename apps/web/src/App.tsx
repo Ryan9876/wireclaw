@@ -71,7 +71,7 @@ export function App() {
           <span className="separator">/</span> {aiStatusLabel(currentAIStatus)}
         </div>
         <RecentCaptures
-          key={`${id}-${historyVersion}`}
+          key={historyVersion}
           activeId={id}
           disabled={busy}
           onOpen={(caseId) => {

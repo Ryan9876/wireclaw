@@ -610,13 +610,115 @@ export interface operations {
                     "application/json": components["schemas"]["RecentCaseResponse"][];
                 };
             };
-            /** @description Validation Error */
+            /** @description Code-only error: invalid_content_length */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_content_length";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: host_rejected, origin_rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "host_rejected" | "origin_rejected";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_timeout */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_timeout";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_size_limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_size_limit";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: invalid_request */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_request";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: operation_failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "operation_failed";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: persistence_failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "persistence_failure";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
                 };
             };
         };
@@ -740,13 +842,143 @@ export interface operations {
                     "application/json": components["schemas"]["CaseResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Code-only error: invalid_content_length */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_content_length";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: host_rejected, origin_rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "host_rejected" | "origin_rejected";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: case_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "case_not_found";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_timeout */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_timeout";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_size_limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_size_limit";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: invalid_request, invalid_id */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_request" | "invalid_id";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: service_busy */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "service_busy";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: operation_failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "operation_failed";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: persistence_failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "persistence_failure";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
                 };
             };
         };

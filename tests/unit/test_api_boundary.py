@@ -162,3 +162,86 @@ def test_launcher_never_selects_wildcard_bind(tmp_path):
     assert run.call_args.kwargs["host"] == "127.0.0.1"
     assert run.call_args.kwargs["workers"] == 1
     assert run.call_args.kwargs["access_log"] is False
+
+
+@pytest.mark.parametrize("method,path", [("get", "/api/cases"), ("patch", "/api/cases/{case_id}")])
+def test_case_metadata_openapi_documents_code_only_errors(tmp_path, method, path):
+    from jsonschema import Draft202012Validator
+
+    responses = create_app(tmp_path).openapi()["paths"][path][method]["responses"]
+    expected = {
+        "400": {"invalid_content_length"},
+        "403": {"host_rejected", "origin_rejected"},
+        "408": {"request_timeout"},
+        "413": {"request_size_limit"},
+        "422": {"invalid_request"},
+        "500": {"operation_failed"},
+        "503": {"persistence_failure"},
+    }
+    if method == "patch":
+        expected.update(
+            {
+                "404": {"case_not_found"},
+                "422": {"invalid_request", "invalid_id"},
+                "429": {"service_busy"},
+            }
+        )
+    assert set(responses) == {"200", "default", *expected}
+    for status, codes in expected.items():
+        schema = responses[status]["content"]["application/json"]["schema"]
+        assert schema["additionalProperties"] is False
+        assert schema["required"] == ["error"]
+        error_schema = schema["properties"]["error"]
+        assert error_schema["additionalProperties"] is False
+        assert error_schema["required"] == ["code"]
+        assert set(error_schema["properties"]["code"]["enum"]) == codes
+        validator = Draft202012Validator(schema)
+        for code in codes:
+            validator.validate({"error": {"code": code}})
+        assert not validator.is_valid({"detail": "PRIVATE_REQUEST"})
+        assert not validator.is_valid(
+            {"error": {"code": next(iter(codes)), "message": "PRIVATE_REQUEST"}}
+        )
+        assert not validator.is_valid({"error": {"code": "undocumented"}})
+    shared_schema = responses["default"]["content"]["application/json"]["schema"]
+    Draft202012Validator(shared_schema).validate({"error": {"code": "operation_failed"}})
+    assert "HTTPValidationError" not in str(responses)
+
+
+def test_case_metadata_validation_errors_match_documented_envelope(tmp_path):
+    from jsonschema import Draft202012Validator
+
+    with TestClient(create_app(tmp_path), base_url="http://127.0.0.1:8765") as client:
+        paths = client.app.openapi()["paths"]
+        requests = [
+            (
+                "get",
+                "/api/cases",
+                {"params": {"limit": "PRIVATE_REQUEST"}},
+                "/api/cases",
+                "invalid_request",
+            ),
+            (
+                "patch",
+                f"/api/cases/{'f' * 32}",
+                {"json": {"display_name": ""}},
+                "/api/cases/{case_id}",
+                "invalid_request",
+            ),
+            (
+                "patch",
+                "/api/cases/not-an-id",
+                {"json": {"display_name": "Capture"}},
+                "/api/cases/{case_id}",
+                "invalid_id",
+            ),
+        ]
+        for method, url, kwargs, path, code in requests:
+            response = client.request(method, url, **kwargs)
+            assert response.status_code == 422
+            assert response.json() == {"error": {"code": code}}
+            schema = paths[path][method]["responses"]["422"]["content"]["application/json"][
+                "schema"
+            ]
+            assert "$ref" not in schema
+            Draft202012Validator(schema).validate(response.json())

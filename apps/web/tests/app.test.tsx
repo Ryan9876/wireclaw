@@ -719,6 +719,41 @@ describe('recent captures', () => {
     expect(api.investigate).not.toHaveBeenCalled();
     expect(window.location.hash).toBe(`#case=${row.id}`);
   });
+  it.each([false, true])(
+    'history opening retains keyboard focus with an active case: %s',
+    async (active) => {
+      if (active) {
+        openExisting();
+        await screen.findByRole('heading', { name: 'Supported finding' });
+      } else {
+        fixture();
+        render(<App />);
+      }
+      current = {
+        ...current,
+        id: 'b'.repeat(32),
+        name: 'other.pcap',
+        state: 'BASELINE_ANALYSIS',
+        runs: [],
+      } as Case;
+      vi.spyOn(api, 'recent').mockResolvedValue([
+        { ...row, id: current.id, name: current.name, state: current.state },
+      ]);
+      const user = userEvent.setup();
+      const trigger = screen.getByRole('button', { name: 'Recent captures' });
+      trigger.focus();
+      await user.keyboard('{Enter}');
+      const popover = await screen.findByRole('dialog', { name: 'Recent captures' });
+      const open = await within(popover).findByRole('button', { name: 'Open other.pcap' });
+      open.focus();
+      await user.keyboard('{Enter}');
+      expect(await screen.findByRole('button', { name: 'Continue investigation' })).toBeVisible();
+      expect(screen.queryByRole('dialog', { name: 'Recent captures' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Recent captures' })).toHaveFocus();
+      await user.keyboard('{Enter}');
+      expect(await screen.findByRole('dialog', { name: 'Recent captures' })).toBeVisible();
+    },
+  );
   it('opening the active history row retains follow-up turns and the unsent draft', async () => {
     const enabled = structuredClone(supported);
     enabled.case.provider_mode = 'openai_compatible_local';

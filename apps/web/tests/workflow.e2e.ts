@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -13,11 +13,37 @@ async function analyze(page: Page, capture: string, symptom = 'application is sl
   await expect(page).toHaveURL(/#case=[a-f0-9]{32}$/);
   return new URL(page.url()).hash.slice(6);
 }
-async function axe(page: Page) {
+async function axe(page: Page, soft = false) {
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();
-  expect(results.violations).toEqual([]);
+  (soft ? expect.soft : expect)(results.violations).toEqual([]);
+}
+async function hoveredContrast(page: Page, button: Locator) {
+  await button.hover();
+  const contrast = await button.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const luminance = (color: string) => {
+      const channels = color
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map((value) => {
+          const channel = Number(value) / 255;
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    };
+    const values = [luminance(style.color), luminance(style.backgroundColor)].sort((a, b) => b - a);
+    return (values[0] + 0.05) / (values[1] + 0.05);
+  });
+  // Axe omits the Send arrow as non-text; check its computed foreground/background too.
+  expect
+    .soft(
+      contrast,
+      `${(await button.getAttribute('aria-label')) ?? (await button.innerText())} hover contrast`,
+    )
+    .toBeGreaterThanOrEqual(4.5);
+  await axe(page, true);
 }
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
@@ -236,12 +262,40 @@ for (const width of [390, 768, 1024]) {
 }
 
 for (const width of [1440, 390]) {
+  test(`filled buttons preserve accessible contrast while hovered at ${width}px`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/');
+    const choose = page.getByRole('button', { name: 'Choose file', exact: true });
+    await hoveredContrast(page, choose);
+    await page.getByLabel('Select capture').setInputFiles(resolve(captures, 'high_rtt.pcap'));
+    await page.getByLabel('Symptom / problem description').fill('application is slow');
+    const send = page.getByRole('button', { name: 'Send', exact: true });
+    await expect(send).toBeEnabled();
+    await hoveredContrast(page, send);
+    await send.click();
+    await expect(
+      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+    ).toBeVisible();
+    const id = new URL(page.url()).hash.slice(6);
+    await page.getByText('Case details', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete case', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Delete this case?', exact: true });
+    await hoveredContrast(
+      page,
+      dialog.getByRole('button', { name: 'Delete case and stored files', exact: true }),
+    );
+    await dialog.getByRole('button', { name: 'Keep case', exact: true }).click();
+    expect((await request.delete(`/api/cases/${id}`)).ok()).toBe(true);
+  });
   test(`recent history opens, renames, and confirms deletion at ${width}px`, async ({
     page,
     request,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    const captureName = `history-${width}.pcap`;
+    const captureName = `history-${width}-${Date.now()}.pcap`;
     const displayName = `Office capture ${width}`;
     const createdResponse = await request.post('/api/cases', {
       data: { symptom: 'application is slow', capture_name: captureName },
@@ -260,7 +314,13 @@ for (const width of [1440, 390]) {
         browserMutations.push({ method: event.method(), body: event.postDataJSON() });
       }
     });
-    await page.goto('/');
+    const previousResponse = await request.post('/api/cases', {
+      data: { symptom: 'previous investigation' },
+    });
+    expect(previousResponse.ok()).toBe(true);
+    const previous = await previousResponse.json();
+    await page.goto(`/#case=${previous.id}`);
+    await expect(page.locator('.symptom')).toHaveText('previous investigation');
     const historyButton = page.getByRole('button', { name: 'Recent captures', exact: true });
     await historyButton.press('Enter');
     let popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
@@ -272,6 +332,7 @@ for (const width of [1440, 390]) {
     await expect(
       page.getByRole('heading', { name: 'Supported finding', exact: true }),
     ).toBeVisible();
+    await expect(historyButton).toBeFocused();
     expect(browserMutations).toEqual([]);
     await expect(page).toHaveURL(new RegExp(`#case=${created.id}$`));
     const beforeRename = await (await request.get(`/api/cases/${created.id}`)).json();
@@ -308,6 +369,7 @@ for (const width of [1440, 390]) {
       page.getByRole('heading', { name: 'Supported finding', exact: true }),
     ).toBeVisible();
     expect(browserMutations).toHaveLength(1);
+    await expect(historyButton).toBeFocused();
     await historyButton.press('Enter');
     popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
     await popover.getByLabel(`Actions for ${displayName}`, { exact: true }).press('Enter');
@@ -342,6 +404,7 @@ for (const width of [1440, 390]) {
     await page.keyboard.press('Escape');
     await expect(historyButton).toBeFocused();
     await noOverflow(page);
+    expect((await request.delete(`/api/cases/${previous.id}`)).ok()).toBe(true);
   });
 }
 
