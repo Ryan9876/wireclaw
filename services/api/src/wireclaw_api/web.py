@@ -57,6 +57,18 @@ def register_web(app, *, bridge_port: int):
     def index():
         return web_file(bridge_port=bridge_port)
 
+    @app.get("/brand/wireclaw-logo.jpeg", include_in_schema=False)
+    def brand_logo():
+        # The approved logo is the sole public non-hashed asset; never browse brand/.
+        path = WEB_DIST / "brand" / "wireclaw-logo.jpeg"
+        if (
+            any(p.is_symlink() for p in (WEB_DIST, path.parent, path))
+            or not path.resolve().is_relative_to(WEB_DIST.resolve())
+            or not path.is_file()
+        ):
+            raise ApiError("web_asset_not_found", 404)
+        return FileResponse(path, media_type="image/jpeg", headers=security_headers(bridge_port))
+
     @app.get("/assets/{name}", include_in_schema=False)
     def asset(name: str):
         return web_file(name, bridge_port=bridge_port)

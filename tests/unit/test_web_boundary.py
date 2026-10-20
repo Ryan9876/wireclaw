@@ -98,3 +98,55 @@ def test_missing_web_build_is_explicit_without_breaking_api(tmp_path):
         assert client.get("/").status_code == 503
         assert client.get("/").json()["error"]["code"] == "web_build_required"
         assert client.get("/api/health").status_code == 200
+
+
+def test_web_serves_only_exact_brand_logo_with_security_headers(web_client):
+    client, dist = web_client
+    (dist / "brand").mkdir()
+    logo = b"\xff\xd8approved-logo-bytes\xff\xd9"
+    (dist / "brand/wireclaw-logo.jpeg").write_bytes(logo)
+    response = client.get("/brand/wireclaw-logo.jpeg")
+    assert response.status_code == 200
+    assert response.content == logo
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "img-src 'self'" in response.headers["content-security-policy"]
+    for url in (
+        "/brand/",
+        "/brand/secret.txt",
+        "/brand/other.jpeg",
+        "/brand/..%2Fsecret.txt",
+        "/brand/..%5Csecret.txt",
+    ):
+        assert client.get(url).status_code == 404
+    assert "/brand/wireclaw-logo.jpeg" not in client.app.openapi()["paths"]
+
+
+@pytest.mark.parametrize("component", ["file", "brand", "dist"])
+def test_web_rejects_symlinked_brand_logo_components(web_client, tmp_path, component):
+    client, dist = web_client
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "wireclaw-logo.jpeg").write_bytes(b"PRIVATE")
+    if component == "dist":
+        dist.rename(tmp_path / "original-web")
+        dist.symlink_to(tmp_path / "original-web", target_is_directory=True)
+        (dist / "brand").mkdir()
+        (dist / "brand/wireclaw-logo.jpeg").write_bytes(b"PRIVATE")
+    elif component == "brand":
+        (dist / "brand").symlink_to(outside, target_is_directory=True)
+    else:
+        (dist / "brand").mkdir()
+        (dist / "brand/wireclaw-logo.jpeg").symlink_to(outside / "wireclaw-logo.jpeg")
+    response = client.get("/brand/wireclaw-logo.jpeg")
+    assert response.status_code == 404
+    assert "PRIVATE" not in response.text
+
+
+def test_web_missing_brand_logo_is_not_found_without_breaking_api(web_client):
+    client, _ = web_client
+    response = client.get("/brand/wireclaw-logo.jpeg")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "web_asset_not_found"
+    assert client.get("/api/health").status_code == 200

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const captures = resolve('../../artifacts/web-captures');
-const visuals = resolve('../../docs/gate5-visual');
+const visuals = resolve('test-results');
 async function analyze(page: Page, capture: string, symptom = 'application is slow') {
   await page.goto('/');
   await page.getByLabel('Select capture').setInputFiles(resolve(captures, `${capture}.pcap`));
@@ -174,6 +174,9 @@ test('malformed capture fails clearly, recovers across reload, and can be delete
     page.getByRole('heading', { name: 'Investigation failed', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Backend error:', { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Investigation failed' }),
+  ).toHaveAttribute('aria-live', 'polite');
   expect((await (await request.get(`/api/cases/${id}`)).json()).state).toBe('FAILED');
   await page.reload();
   await expect(
@@ -259,13 +262,13 @@ for (const width of [1440, 390]) {
     });
     await page.goto('/');
     const historyButton = page.getByRole('button', { name: 'Recent captures', exact: true });
-    await historyButton.click();
+    await historyButton.press('Enter');
     let popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
     await expect(
       popover.getByRole('button', { name: `Open ${captureName}`, exact: true }),
     ).toBeVisible();
     await noOverflow(page);
-    await popover.getByRole('button', { name: `Open ${captureName}`, exact: true }).click();
+    await popover.getByRole('button', { name: `Open ${captureName}`, exact: true }).press('Enter');
     await expect(
       page.getByRole('heading', { name: 'Supported finding', exact: true }),
     ).toBeVisible();
@@ -273,12 +276,14 @@ for (const width of [1440, 390]) {
     await expect(page).toHaveURL(new RegExp(`#case=${created.id}$`));
     const beforeRename = await (await request.get(`/api/cases/${created.id}`)).json();
     const beforeReport = await (await request.get(`/api/cases/${created.id}/report`)).json();
-    await historyButton.click();
+    await historyButton.press('Enter');
     popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
-    await popover.getByLabel(`Actions for ${captureName}`, { exact: true }).click();
-    await popover.getByRole('button', { name: 'Rename', exact: true }).click();
+    await popover.getByLabel(`Actions for ${captureName}`, { exact: true }).press('Enter');
+    await popover.getByRole('button', { name: 'Rename', exact: true }).press('Enter');
+    await expect(popover.getByLabel('Display name', { exact: true })).toBeFocused();
     await popover.getByLabel('Display name', { exact: true }).fill(displayName);
-    await popover.getByRole('button', { name: 'Save name', exact: true }).click();
+    await axe(page);
+    await popover.getByRole('button', { name: 'Save name', exact: true }).press('Enter');
     await expect(
       popover.getByRole('button', { name: `Open ${displayName}`, exact: true }),
     ).toBeVisible();
@@ -295,37 +300,41 @@ for (const width of [1440, 390]) {
       beforeReport,
     );
     expect(browserMutations).toEqual([{ method: 'PATCH', body: { display_name: displayName } }]);
-    await page.getByRole('button', { name: 'New case', exact: true }).click();
-    await historyButton.click();
+    await page.getByRole('button', { name: 'New case', exact: true }).press('Enter');
+    await historyButton.press('Enter');
     popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
-    await popover.getByRole('button', { name: `Open ${displayName}`, exact: true }).click();
+    await popover.getByRole('button', { name: `Open ${displayName}`, exact: true }).press('Enter');
     await expect(
       page.getByRole('heading', { name: 'Supported finding', exact: true }),
     ).toBeVisible();
     expect(browserMutations).toHaveLength(1);
-    await historyButton.click();
+    await historyButton.press('Enter');
     popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
-    await popover.getByLabel(`Actions for ${displayName}`, { exact: true }).click();
-    await popover.getByRole('button', { name: 'Delete', exact: true }).click();
+    await popover.getByLabel(`Actions for ${displayName}`, { exact: true }).press('Enter');
+    await popover.getByRole('button', { name: 'Delete', exact: true }).press('Enter');
     let confirmation = page.getByRole('dialog', { name: 'Delete this case?', exact: true });
     await expect(confirmation).toContainText('stored original capture');
+    await expect(
+      confirmation.getByRole('button', { name: 'Keep case', exact: true }),
+    ).toBeFocused();
+    await axe(page);
     expect(browserMutations).toHaveLength(1);
-    await confirmation.getByRole('button', { name: 'Keep case', exact: true }).click();
+    await confirmation.getByRole('button', { name: 'Keep case', exact: true }).press('Enter');
     await expect(confirmation).not.toBeVisible();
     await noOverflow(page);
     await page.screenshot({
       path: resolve('test-results', `recent-history-${width}.png`),
       fullPage: true,
     });
-    await popover.getByRole('button', { name: 'Delete', exact: true }).click();
+    await popover.getByRole('button', { name: 'Delete', exact: true }).press('Enter');
     confirmation = page.getByRole('dialog', { name: 'Delete this case?', exact: true });
     await confirmation
       .getByRole('button', { name: 'Delete case and stored files', exact: true })
-      .click();
+      .press('Enter');
     await expect(page.getByText(/deleted, including its stored original capture/)).toBeVisible();
     expect((await request.get(`/api/cases/${created.id}`)).status()).toBe(404);
     expect(browserMutations.map((event) => event.method)).toEqual(['PATCH', 'DELETE']);
-    await historyButton.click();
+    await historyButton.press('Enter');
     popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
     await expect(
       popover.getByRole('button', { name: `Open ${displayName}`, exact: true }),
@@ -333,5 +342,264 @@ for (const width of [1440, 390]) {
     await page.keyboard.press('Escape');
     await expect(historyButton).toBeFocused();
     await noOverflow(page);
+  });
+}
+
+// These regressions exercise the compiled UI and real case/report/evidence API.
+test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ page, request }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  const logo = page.getByRole('img', { name: 'Wireclaw', exact: true });
+  await expect(logo).toBeVisible();
+  await expect
+    .poll(() => logo.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(page.getByRole('navigation')).toHaveCount(0);
+  await expect(page.locator('aside')).toHaveCount(0);
+  await page.screenshot({ path: resolve(visuals, 'task6-desktop-empty.png'), fullPage: true });
+  // Activate the native file picker through the keyboard, then submit through the composer.
+  await page.getByRole('button', { name: 'Choose file', exact: true }).focus();
+  const chooser = page.waitForEvent('filechooser');
+  await page.keyboard.press('Enter');
+  await (await chooser).setFiles(resolve(captures, 'high_rtt.pcap'));
+  await expect(page.getByRole('status').filter({ hasText: 'high_rtt.pcap' })).toBeVisible();
+  await page.getByLabel('Symptom / problem description').fill('application is slow');
+  let releaseInvestigation!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    releaseInvestigation = resolve;
+  });
+  await page.route('**/api/cases/*/investigate', async (route) => {
+    await waiting;
+    await route.continue();
+  });
+  await page.getByRole('button', { name: 'Send', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  const processing = page
+    .getByRole('status')
+    .filter({ hasText: 'Assessing capture quality and baseline' });
+  await expect(processing).toBeVisible();
+  await expect(processing).toHaveAttribute('aria-live', 'polite');
+  expect(
+    await page.locator('.activity').evaluate((element) => getComputedStyle(element).animationName),
+  ).toBe('none');
+  releaseInvestigation();
+  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  const id = new URL(page.url()).hash.slice(6);
+  const before = await (await request.get(`/api/cases/${id}`)).json();
+  const sourceBytes = readFileSync(resolve(captures, 'high_rtt.pcap'));
+  const storedOriginal = resolve(
+    '../../artifacts/gate5-e2e/cases',
+    id,
+    'analyzer/cases',
+    before.capture_sha,
+    'original/capture',
+  );
+  // External-API qualification uses API provenance; source-run E2E also compares the actual stored bytes.
+  if (process.env.WIRECLAW_E2E_EXTERNAL_API !== '1')
+    expect(readFileSync(storedOriginal)).toEqual(sourceBytes);
+  const report = await (await request.get(`/api/cases/${id}/report`)).json();
+  await expect(page.locator('.selected-file')).toContainText('high_rtt.pcap');
+  await expect(page.getByLabel('Question about this report')).toBeDisabled();
+  await expect(page.getByText(/Follow-up is unavailable in rules-only mode/)).toBeVisible();
+  for (const name of ['Open Full Capture in Wireshark', 'Open Evidence Capture in Wireshark']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
+  }
+  const finding = report.findings.find(
+    (item: { wireshark: { applicable: boolean } }) => item.wireshark.applicable,
+  );
+  await expect(page.locator('.validation-actions')).toContainText(finding.wireshark.display_filter);
+  await axe(page);
+  await noOverflow(page);
+  await page.screenshot({ path: resolve(visuals, 'task6-desktop-analysis.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Show Packet Evidence', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: 'Expert evidence' });
+  const evidenceId = await drawer.getByLabel('Evidence record', { exact: true }).inputValue();
+  const evidence = await (await request.get(`/api/cases/${id}/evidence/${evidenceId}`)).json();
+  await expect(drawer.getByRole('article', { name: 'Evidence record' })).toContainText(evidenceId);
+  await expect(drawer).toContainText(evidence.summary);
+  await expect(drawer.getByText('Packet frames', { exact: true })).toBeVisible();
+  await expect(drawer.getByRole('heading', { name: 'Scope', exact: true })).toBeVisible();
+  await expect(
+    drawer.getByRole('heading', { name: 'Normalized values', exact: true }),
+  ).toBeVisible();
+  if (evidence.frame_refs?.length)
+    await expect(drawer).toContainText(evidence.frame_refs.join(', '));
+  for (const text of [evidence.source.capability, evidence.source.tool, evidence.source.version]) {
+    await expect(drawer).toContainText(text);
+  }
+  const leaves = (value: unknown): string[] =>
+    value === null
+      ? ['Unknown / unobserved']
+      : typeof value === 'object'
+        ? Object.values(value).flatMap(leaves)
+        : [String(value)];
+  for (const value of [...leaves(evidence.scope), ...leaves(evidence.value)])
+    await expect(drawer).toContainText(value);
+  if (evidence.display_filter) await expect(drawer).toContainText(evidence.display_filter);
+  for (const limitation of evidence.limitations) await expect(drawer).toContainText(limitation);
+  await axe(page);
+  await page.keyboard.press('Escape');
+  await page
+    .getByRole('button', { name: 'Create evidence capture without opening Wireshark' })
+    .click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Focused evidence capture created locally' }),
+  ).toBeVisible();
+  const after = await (await request.get(`/api/cases/${id}`)).json();
+  expect(after.capture_sha).toBe(before.capture_sha);
+  expect(after.original_id).toBe(before.original_id);
+  expect(readFileSync(resolve(captures, 'high_rtt.pcap'))).toEqual(sourceBytes);
+  if (process.env.WIRECLAW_E2E_EXTERNAL_API !== '1')
+    expect(readFileSync(storedOriginal)).toEqual(sourceBytes);
+  expect(after.artifacts.find((item: { id: string }) => item.id === after.original_id)).toEqual(
+    before.artifacts.find((item: { id: string }) => item.id === before.original_id),
+  );
+  await remove(page);
+});
+
+test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_focus', async ({
+  page,
+}) => {
+  await analyze(page, 'high_rtt');
+  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  const history = page.getByRole('button', { name: 'Recent captures', exact: true });
+  await history.focus();
+  await page.keyboard.press('Enter');
+  const popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
+  await expect(popover).toBeVisible();
+  await expect(
+    popover.getByRole('button', { name: 'Open high_rtt.pcap', exact: true }),
+  ).toBeVisible();
+  await axe(page);
+  await page.screenshot({ path: resolve(visuals, 'task6-history-popover.png'), fullPage: true });
+  await page.keyboard.press('Escape');
+  await expect(popover).not.toBeVisible();
+  await expect(history).toBeFocused();
+  const evidence = page.getByRole('button', { name: 'Show Packet Evidence', exact: true });
+  await evidence.focus();
+  await page.keyboard.press('Enter');
+  const drawer = page.getByRole('dialog', { name: 'Expert evidence' });
+  await expect(drawer.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press('Tab');
+    expect(await drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(drawer).not.toBeVisible();
+  await expect(evidence).toBeFocused();
+  await remove(page);
+});
+
+test('conversation_report_and_actions_have_no_overflow_at_390px', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await analyze(page, 'high_rtt');
+  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await expect(page.locator('.selected-file')).toContainText('high_rtt.pcap');
+  await noOverflow(page);
+  for (const name of ['Open Full Capture in Wireshark', 'Open Evidence Capture in Wireshark']) {
+    const bounds = await page.getByRole('button', { name, exact: true }).boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  }
+  await page.getByLabel('Question about this report').scrollIntoViewIfNeeded();
+  const composer = await page.locator('.composer').boundingBox();
+  expect(composer!.x).toBeGreaterThanOrEqual(0);
+  expect(composer!.x + composer!.width).toBeLessThanOrEqual(390);
+  expect(composer!.y + composer!.height).toBeLessThanOrEqual(844);
+  await axe(page);
+  await page.screenshot({ path: resolve(visuals, 'task6-mobile-390.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Show Packet Evidence', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
+  await noOverflow(page);
+  await axe(page);
+  await page.keyboard.press('Escape');
+  await remove(page);
+});
+
+for (const width of [1440, 390]) {
+  test(`followup browser fixture preserves report and opens real evidence at ${width}px`, async ({
+    page,
+    request,
+  }) => {
+    // Provider transport is a browser fixture; case/report/evidence stay on the real local API.
+    await page.setViewportSize({ width, height: 900 });
+    const id = await analyze(page, 'high_rtt');
+    await expect(
+      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+    ).toBeVisible();
+    const report = await (await request.get(`/api/cases/${id}/report`)).json();
+    const evidenceId = report.findings[0].evidence_ids[0];
+    const status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    await page.route(`**/api/cases/${id}`, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const record = await response.json();
+      await route.fulfill({
+        response,
+        json: { ...record, provider_mode: 'openai_compatible_local', ai_status: status },
+      });
+    });
+    const questions: unknown[] = [];
+    await page.route(`**/api/cases/${id}/followups`, async (route) => {
+      questions.push(route.request().postDataJSON());
+      await route.fulfill({
+        json: {
+          answer:
+            'The capture does not identify the exact device. Validate with a capture at the other endpoint.',
+          evidence_ids: [evidenceId],
+        },
+      });
+    });
+    await page.reload();
+    await expect(page.getByLabel('Question about this report')).toBeEnabled();
+    for (const question of ['Which device?', 'What would validate this?']) {
+      await page.getByLabel('Question about this report').fill(question);
+      await page.getByRole('button', { name: 'Send', exact: true }).focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByText(question, { exact: true })).toBeVisible();
+      await expect(page.getByRole('status').filter({ hasText: 'Explanation ready.' })).toHaveText(
+        'Explanation ready.',
+      );
+    }
+    expect(questions).toEqual([
+      { question: 'Which device?' },
+      { question: 'What would validate this?' },
+    ]);
+    await expect(page.getByRole('article', { name: 'Explanation about this report' })).toHaveCount(
+      2,
+    );
+    await axe(page);
+    await noOverflow(page);
+    await page.screenshot({
+      path: resolve(
+        visuals,
+        width === 1440 ? 'task6-followup-browser-fixture.png' : 'task6-followup-mobile-fixture.png',
+      ),
+      fullPage: true,
+    });
+    await page
+      .getByRole('article', { name: 'Explanation about this report' })
+      .last()
+      .getByRole('button', { name: evidenceId, exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole('dialog', { name: 'Expert evidence' })
+        .getByRole('heading', { name: 'Normalized values' }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    expect(await (await request.get(`/api/cases/${id}/report`)).json()).toEqual(report);
+    await remove(page);
   });
 }
