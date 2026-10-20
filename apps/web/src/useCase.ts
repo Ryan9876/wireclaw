@@ -106,20 +106,24 @@ export function useCase() {
     return () => window.removeEventListener('hashchange', onHash);
   }, [select]);
 
-  async function mutate(task: () => Promise<void>) {
+  async function mutate(task: () => Promise<void>, invalidateReport = true) {
     if (operation.current) return;
     operation.current = true;
     setBusy(true);
     setError('');
     setNotice('');
-    generation.current++;
-    abort.current?.abort();
-    publishedRevision.current = '';
-    setReport(null);
+    if (invalidateReport) {
+      generation.current++;
+      abort.current?.abort();
+      publishedRevision.current = '';
+      setReport(null);
+    }
     try {
       await task();
+      return true;
     } catch (failure) {
       setError(errorMessage(failure));
+      return false;
     } finally {
       operation.current = false;
       setBusy(false);
@@ -128,7 +132,7 @@ export function useCase() {
 
   async function start(file: File, symptom: string) {
     await mutate(async () => {
-      const created = await api.create(symptom);
+      const created = await api.create(symptom, file.name);
       select(created.id);
       setRecord(created);
       try {
@@ -165,18 +169,18 @@ export function useCase() {
     });
   }
 
-  async function remove() {
-    const caseId = currentId.current;
+  async function remove(target = currentId.current) {
+    const caseId = target;
     if (!caseId) return;
-    await mutate(async () => {
+    return mutate(async () => {
       const result = await api.delete(caseId);
-      select(null);
+      if (caseId === currentId.current) select(null);
       setNotice(
         result.cleanup_pending
           ? `Case ${caseId} removed from the case registry. Stored capture/artifact cleanup is pending; the service will retry cleanup on restart.`
           : `Case ${caseId} deleted, including its stored original capture, normalized evidence, and report. Your source file is unchanged.`,
       );
-    });
+    }, caseId === currentId.current);
   }
 
   function recover(value: string) {
@@ -210,5 +214,18 @@ export function useCase() {
     remove,
     recover,
     newCase,
+    updateMetadata: (value: Case) => {
+      if (value.id === currentId.current) {
+        setRecord((before) =>
+          before && before.id === value.id
+            ? {
+                ...before,
+                name: value.name,
+                display_name: value.display_name,
+              }
+            : before,
+        );
+      }
+    },
   };
 }

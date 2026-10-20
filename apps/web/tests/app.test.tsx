@@ -168,7 +168,7 @@ describe('primary intake and recovery workflow', () => {
     expect(screen.getByText('trace.pcap')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
-    expect(api.create).toHaveBeenCalledWith('application is slow');
+    expect(api.create).toHaveBeenCalledWith('application is slow', 'trace.pcap');
     expect(api.upload).toHaveBeenCalledTimes(1);
     expect(api.investigate).toHaveBeenCalledTimes(1);
     expect(window.location.hash).toBe(`#case=${supported.case.id}`);
@@ -687,4 +687,219 @@ it('uses_validated_file_intake_when_attaching_a_new_capture_from_a_report', asyn
   expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
   expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
   expect(api.create).not.toHaveBeenCalled();
+});
+
+describe('recent captures', () => {
+  const row = {
+    id: supported.case.id,
+    name: 'trace.pcap',
+    capture_bytes: 127,
+    created: supported.case.created,
+    updated: supported.case.updated,
+    state: 'COMPLETE',
+  };
+  async function history() {
+    await userEvent.click(screen.getByRole('button', { name: 'Recent captures' }));
+    return screen.findByRole('dialog', { name: 'Recent captures' });
+  }
+  it('history_popover_lists_bounded_cases_and_opens_without_reinvestigating', async () => {
+    fixture();
+    vi.spyOn(api, 'recent').mockResolvedValue([row]);
+    render(<App />);
+    const popover = await history();
+    expect(await within(popover).findByText('trace.pcap')).toBeVisible();
+    expect(within(popover).getByText('127 bytes')).toBeVisible();
+    expect(within(popover).getByText('Complete')).toBeVisible();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    await userEvent.click(within(popover).getByRole('button', { name: 'Open trace.pcap' }));
+    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(screen.queryByRole('dialog', { name: 'Recent captures' })).not.toBeInTheDocument();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.upload).not.toHaveBeenCalled();
+    expect(api.investigate).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe(`#case=${row.id}`);
+  });
+  it('rename_updates_only_case_display_name', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    openExisting(enabled);
+    vi.spyOn(api, 'recent').mockResolvedValue([row]);
+    vi.spyOn(api, 'followup').mockResolvedValue({ answer: 'Retained answer.', evidence_ids: [] });
+    vi.spyOn(api, 'rename').mockImplementation(async (_id, name) => {
+      current = { ...current, name, display_name: name, updated: '2026-10-20T20:00:00Z' };
+      return current;
+    });
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Retained answer.');
+    const popover = await history();
+    await userEvent.click(await within(popover).findByText('Actions for trace.pcap'));
+    await userEvent.click(within(popover).getByRole('button', { name: 'Rename' }));
+    await userEvent.clear(within(popover).getByLabelText('Display name'));
+    await userEvent.type(within(popover).getByLabelText('Display name'), 'Office trace');
+    await userEvent.click(within(popover).getByRole('button', { name: 'Save name' }));
+    expect(await within(popover).findByRole('button', { name: 'Open Office trace' })).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: 'Recent captures' })).toHaveFocus();
+    expect(await screen.findByText('Office trace')).toBeVisible();
+    expect(screen.getByText('Retained answer.')).toBeVisible();
+    expect(api.rename).toHaveBeenCalledWith(row.id, 'Office trace', expect.any(AbortSignal));
+    expect(api.investigate).not.toHaveBeenCalled();
+    expect(api.upload).not.toHaveBeenCalled();
+  });
+  it('cancelled rename can be dismissed with Escape and returns focus', async () => {
+    fixture();
+    vi.spyOn(api, 'recent').mockResolvedValue([row]);
+    render(<App />);
+    const popover = await history();
+    await userEvent.click(await within(popover).findByText('Actions for trace.pcap'));
+    await userEvent.click(within(popover).getByRole('button', { name: 'Rename' }));
+    await userEvent.click(within(popover).getByRole('button', { name: 'Cancel' }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Recent captures' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Recent captures' })).toHaveFocus();
+  });
+  it('history_delete_uses_existing_confirmation', async () => {
+    fixture();
+    vi.spyOn(api, 'recent').mockResolvedValue([row]);
+    render(<App />);
+    let popover = await history();
+    await userEvent.click(await within(popover).findByText('Actions for trace.pcap'));
+    await userEvent.click(within(popover).getByRole('button', { name: 'Delete' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Delete this case?' });
+    expect(dialog).toHaveTextContent('stored original capture');
+    expect(api.delete).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Keep case' }));
+    expect(api.delete).not.toHaveBeenCalled();
+    popover = screen.getByRole('dialog', { name: 'Recent captures' });
+    await userEvent.click(within(popover).getByRole('button', { name: 'Delete' }));
+    dialog = await screen.findByRole('dialog', { name: 'Delete this case?' });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete case and stored files' }),
+    );
+    expect(await screen.findByText(/deleted, including its stored original capture/)).toBeVisible();
+    expect(api.delete).toHaveBeenCalledWith(row.id);
+    expect(screen.queryByRole('button', { name: 'Open trace.pcap' })).not.toBeInTheDocument();
+  });
+  it('history_popover_shows_empty_and_api_error_states', async () => {
+    fixture();
+    vi.spyOn(api, 'recent')
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new ApiError('network_unavailable'));
+    render(<App />);
+    let popover = await history();
+    expect(await within(popover).findByText('No recent captures.')).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    popover = await history();
+    expect(await within(popover).findByRole('alert')).toHaveTextContent('could not be reached');
+    expect(within(popover).queryByRole('button', { name: /^Open / })).not.toBeInTheDocument();
+  });
+  it('ignores a late list after the popover closes and reopens', async () => {
+    fixture();
+    let resolve!: (rows: (typeof row)[]) => void;
+    const list = vi
+      .spyOn(api, 'recent')
+      .mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+      )
+      .mockResolvedValueOnce([]);
+    render(<App />);
+    await history();
+    const signal = list.mock.calls[0][0];
+    await userEvent.keyboard('{Escape}');
+    const popover = await history();
+    expect(await within(popover).findByText('No recent captures.')).toBeVisible();
+    await act(async () => resolve([row]));
+    expect(signal?.aborted).toBe(true);
+    expect(screen.queryByText('trace.pcap')).not.toBeInTheDocument();
+  });
+  it('stale_history_or_followup_response_is_ignored_after_case_switch', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    openExisting(enabled);
+    let resolve!: (value: { answer: string; evidence_ids: string[] }) => void;
+    const followup = vi.spyOn(api, 'followup').mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const next = {
+      ...current,
+      id: 'b'.repeat(32),
+      name: 'other.pcap',
+      state: 'BASELINE_ANALYSIS',
+      runs: [],
+    } as Case;
+    vi.spyOn(api, 'recent').mockResolvedValue([
+      { ...row, id: next.id, name: next.name, state: next.state },
+    ]);
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const popover = await history();
+    current = next;
+    await userEvent.click(await within(popover).findByRole('button', { name: 'Open other.pcap' }));
+    expect(await screen.findByRole('button', { name: 'Continue investigation' })).toBeVisible();
+    await act(async () => resolve({ answer: 'Stale answer', evidence_ids: [] }));
+    expect(followup.mock.calls[0][2]?.aborted).toBe(true);
+    expect(screen.queryByText('Stale answer')).not.toBeInTheDocument();
+    expect(api.investigate).not.toHaveBeenCalled();
+  });
+  it('ignores a late rename result after switching cases', async () => {
+    openExisting();
+    vi.spyOn(api, 'recent').mockResolvedValue([row]);
+    let resolve!: (value: Case) => void;
+    const rename = vi.spyOn(api, 'rename').mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    const popover = await history();
+    await userEvent.click(await within(popover).findByText('Actions for trace.pcap'));
+    await userEvent.click(within(popover).getByRole('button', { name: 'Rename' }));
+    await userEvent.type(within(popover).getByLabelText('Display name'), ' changed');
+    await userEvent.click(within(popover).getByRole('button', { name: 'Save name' }));
+    current = {
+      ...current,
+      id: 'b'.repeat(32),
+      name: 'other.pcap',
+      state: 'BASELINE_ANALYSIS',
+      runs: [],
+    } as Case;
+    await act(async () => {
+      window.history.replaceState(null, '', `/#case=${current.id}`);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(await screen.findByRole('button', { name: 'Continue investigation' })).toBeVisible();
+    await act(async () => resolve({ ...supported.case, name: 'Stale renamed case' }));
+    expect(rename.mock.calls[0][2]?.aborted).toBe(true);
+    expect(screen.queryByText('Stale renamed case')).not.toBeInTheDocument();
+    expect(screen.getByText('other.pcap')).toBeVisible();
+  });
+  it('bookmarked_case_id_restores_existing_case_without_creating_a_case', async () => {
+    openExisting();
+    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.upload).not.toHaveBeenCalled();
+    expect(api.investigate).not.toHaveBeenCalled();
+  });
 });

@@ -4,6 +4,7 @@ import {
   validCase,
   validDeletion,
   validFollowup,
+  validRecentCases,
 } from './generated/validators';
 import type { components } from './generated/api';
 import type { Report } from './generated/investigation-result';
@@ -11,6 +12,7 @@ import type { Evidence } from './generated/evidence';
 
 export type { Report, Evidence };
 export type Case = components['schemas']['CaseResponse'];
+export type RecentCase = components['schemas']['RecentCaseResponse'];
 export type AIStatus = components['schemas']['AIStatusResponse'];
 export type Followup = components['schemas']['FollowupResponse'];
 export type Deletion = components['schemas']['DeletionResponse'];
@@ -170,6 +172,9 @@ function checkCase(value: unknown, id?: string): Case {
   }
   return value;
 }
+function plainName(value: string, limit: number): boolean {
+  return !!value.trim() && Array.from(value).length <= limit && !/\p{C}/u.test(value);
+}
 async function getBridgeOrigin(signal?: AbortSignal): Promise<string> {
   const data = (await request('config/capabilities', { signal })) as {
     bridge?: { origin?: unknown };
@@ -264,12 +269,47 @@ export const api = {
       return 'bridge_unavailable';
     }
   },
-  async create(symptom: string): Promise<Case> {
+  async recent(signal?: AbortSignal): Promise<RecentCase[]> {
+    const data = await request('cases?limit=10', { signal });
+    if (
+      !validRecentCases(data) ||
+      data.length > 10 ||
+      new Set(data.map((row) => row.id)).size !== data.length ||
+      !data.every(
+        (row) =>
+          validCaseId(row.id) &&
+          plainName(row.name, 255) &&
+          states.includes(row.state as (typeof states)[number]) &&
+          (row.capture_bytes === null ||
+            (Number.isSafeInteger(row.capture_bytes) && row.capture_bytes >= 0)) &&
+          Number.isFinite(Date.parse(row.created)) &&
+          Number.isFinite(Date.parse(row.updated)),
+      )
+    )
+      throw new ApiError('contract_mismatch');
+    return data;
+  },
+  async rename(id: string, displayName: string, signal?: AbortSignal): Promise<Case> {
+    if (!plainName(displayName, 120)) throw new ApiError('invalid_request');
+    return checkCase(
+      await request(casePath(id), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: displayName.trim() }),
+        signal,
+      }),
+      id,
+    );
+  },
+  async create(symptom: string, captureName?: string): Promise<Case> {
+    const name = captureName?.replace(/\\/g, '/').split('/').at(-1)?.trim();
+    if (captureName !== undefined && (!name || !plainName(name, 255) || ['.', '..'].includes(name)))
+      throw new ApiError('invalid_request');
     return checkCase(
       await request('cases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symptom }),
+        body: JSON.stringify({ symptom, ...(name ? { capture_name: name } : {}) }),
       }),
     );
   },

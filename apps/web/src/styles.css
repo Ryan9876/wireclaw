@@ -753,3 +753,112 @@ input.sr-only:focus-visible {
     scroll-behavior: auto !important;
   }
 }
+
+.recent-captures {
+  position: relative;
+  flex: 0 0 auto;
+}
+.app-header .local-status {
+  margin-left: auto;
+}
+.history-trigger {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+}
+.history-popover {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(620px, calc(100dvh - 90px));
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 12px 35px #1227461c;
+}
+.history-popover h2 {
+  font-size: 15px;
+}
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.history-list > li + li {
+  border-top: 1px solid var(--line);
+}
+.history-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 7px 0;
+}
+.history-open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.history-open strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.history-actions {
+  flex: 0 0 auto;
+  position: relative;
+}
+.history-actions > summary {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 6px;
+}
+.history-actions > summary::-webkit-details-marker {
+  display: none;
+}
+.history-actions > div {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 5px 15px #12274614;
+}
+.history-actions > div button {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.history-rename {
+  padding: 0 8px 12px;
+}
+.history-rename input {
+  width: 100%;
+  margin: 5px 0 10px;
+}
+@media (max-width: 500px) {
+  .app-header {
+    gap: 8px;
+  }
+  .app-header .local-status {
+    min-width: 0;
+    flex: 1;
+  }
+}

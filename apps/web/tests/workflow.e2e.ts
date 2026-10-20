@@ -231,3 +231,107 @@ for (const width of [390, 768, 1024]) {
     await remove(page);
   });
 }
+
+for (const width of [1440, 390]) {
+  test(`recent history opens, renames, and confirms deletion at ${width}px`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const captureName = `history-${width}.pcap`;
+    const displayName = `Office capture ${width}`;
+    const createdResponse = await request.post('/api/cases', {
+      data: { symptom: 'application is slow', capture_name: captureName },
+    });
+    expect(createdResponse.ok()).toBe(true);
+    const created = await createdResponse.json();
+    const uploaded = await request.post(`/api/cases/${created.id}/capture`, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+      data: readFileSync(resolve(captures, 'high_rtt.pcap')),
+    });
+    expect(uploaded.ok()).toBe(true);
+    expect((await request.post(`/api/cases/${created.id}/investigate`)).ok()).toBe(true);
+    const browserMutations: { method: string; body: unknown }[] = [];
+    page.on('request', (event) => {
+      if (['POST', 'PATCH', 'DELETE'].includes(event.method())) {
+        browserMutations.push({ method: event.method(), body: event.postDataJSON() });
+      }
+    });
+    await page.goto('/');
+    const historyButton = page.getByRole('button', { name: 'Recent captures', exact: true });
+    await historyButton.click();
+    let popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
+    await expect(
+      popover.getByRole('button', { name: `Open ${captureName}`, exact: true }),
+    ).toBeVisible();
+    await noOverflow(page);
+    await popover.getByRole('button', { name: `Open ${captureName}`, exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+    ).toBeVisible();
+    expect(browserMutations).toEqual([]);
+    await expect(page).toHaveURL(new RegExp(`#case=${created.id}$`));
+    const beforeRename = await (await request.get(`/api/cases/${created.id}`)).json();
+    const beforeReport = await (await request.get(`/api/cases/${created.id}/report`)).json();
+    await historyButton.click();
+    popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
+    await popover.getByLabel(`Actions for ${captureName}`, { exact: true }).click();
+    await popover.getByRole('button', { name: 'Rename', exact: true }).click();
+    await popover.getByLabel('Display name', { exact: true }).fill(displayName);
+    await popover.getByRole('button', { name: 'Save name', exact: true }).click();
+    await expect(
+      popover.getByRole('button', { name: `Open ${displayName}`, exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(popover).not.toBeVisible();
+    await expect(historyButton).toBeFocused();
+    await expect(page.locator('.selected-file')).toContainText(displayName);
+    const afterRename = await (await request.get(`/api/cases/${created.id}`)).json();
+    expect(afterRename.capture_sha).toBe(beforeRename.capture_sha);
+    expect(afterRename.original_id).toBe(beforeRename.original_id);
+    expect(afterRename.runs).toEqual(beforeRename.runs);
+    expect(afterRename.history).toEqual(beforeRename.history);
+    expect(await (await request.get(`/api/cases/${created.id}/report`)).json()).toEqual(
+      beforeReport,
+    );
+    expect(browserMutations).toEqual([{ method: 'PATCH', body: { display_name: displayName } }]);
+    await page.getByRole('button', { name: 'New case', exact: true }).click();
+    await historyButton.click();
+    popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
+    await popover.getByRole('button', { name: `Open ${displayName}`, exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+    ).toBeVisible();
+    expect(browserMutations).toHaveLength(1);
+    await historyButton.click();
+    popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
+    await popover.getByLabel(`Actions for ${displayName}`, { exact: true }).click();
+    await popover.getByRole('button', { name: 'Delete', exact: true }).click();
+    let confirmation = page.getByRole('dialog', { name: 'Delete this case?', exact: true });
+    await expect(confirmation).toContainText('stored original capture');
+    expect(browserMutations).toHaveLength(1);
+    await confirmation.getByRole('button', { name: 'Keep case', exact: true }).click();
+    await expect(confirmation).not.toBeVisible();
+    await noOverflow(page);
+    await page.screenshot({
+      path: resolve('test-results', `recent-history-${width}.png`),
+      fullPage: true,
+    });
+    await popover.getByRole('button', { name: 'Delete', exact: true }).click();
+    confirmation = page.getByRole('dialog', { name: 'Delete this case?', exact: true });
+    await confirmation
+      .getByRole('button', { name: 'Delete case and stored files', exact: true })
+      .click();
+    await expect(page.getByText(/deleted, including its stored original capture/)).toBeVisible();
+    expect((await request.get(`/api/cases/${created.id}`)).status()).toBe(404);
+    expect(browserMutations.map((event) => event.method)).toEqual(['PATCH', 'DELETE']);
+    await historyButton.click();
+    popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
+    await expect(
+      popover.getByRole('button', { name: `Open ${displayName}`, exact: true }),
+    ).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(historyButton).toBeFocused();
+    await noOverflow(page);
+  });
+}

@@ -14,13 +14,19 @@ import { EvidenceDrawer } from './EvidenceDrawer';
 import { fileSize, Intake } from './Intake';
 import { Progress } from './Progress';
 import { ReportView } from './ReportView';
+import { RecentCaptures } from './RecentCaptures';
 import { useCase } from './useCase';
 
 export function App() {
   const investigation = useCase();
   const { id, record, report, busy, error, notice } = investigation;
   const [pendingFiles, setPendingFiles] = useState<File[]>();
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    symptom?: string;
+  } | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [evidenceView, setEvidenceView] = useState<{ report: typeof report; ids: string[] } | null>(
     null,
   );
@@ -64,6 +70,17 @@ export function App() {
           <span aria-hidden="true">◉</span> Local capture analysis{' '}
           <span className="separator">/</span> {aiStatusLabel(currentAIStatus)}
         </div>
+        <RecentCaptures
+          key={`${id}-${historyVersion}`}
+          activeId={id}
+          disabled={busy}
+          onOpen={(caseId) => {
+            setPendingFiles(undefined);
+            investigation.recover(caseId);
+          }}
+          onRename={investigation.updateMetadata}
+          onDelete={(row) => setDeleteTarget(row)}
+        />
       </header>
       <main id="main" tabIndex={-1}>
         <h1 className="sr-only">Capture investigation</h1>
@@ -169,7 +186,9 @@ export function App() {
               <button
                 className="danger quiet"
                 disabled={locked}
-                onClick={() => setDeleteId(record.id)}
+                onClick={() =>
+                  setDeleteTarget({ id: record.id, name: record.name, symptom: record.symptom })
+                }
               >
                 Delete case
               </button>
@@ -220,11 +239,16 @@ export function App() {
               />
             )}
             {/* Preserve turns and draft during report recovery; the case/revision key still resets them. */}
-            {!busy && record.state === 'COMPLETE' && record.original_id && (
+            {record.state === 'COMPLETE' && record.original_id && (
               <Conversation
-                key={`${id}-${revision(record)}`}
+                key={JSON.stringify([
+                  id,
+                  record.original_id,
+                  record.history.at(-1)?.seq,
+                  record.runs.map((run) => [run.id, run.status]),
+                ])}
                 caseId={record.id}
-                verified={!!report}
+                verified={!busy && !!report}
                 enabled={!!currentAIStatus && currentAIStatus.effective_provider_mode !== 'none'}
                 onAttach={(files) => {
                   setPendingFiles(files);
@@ -267,19 +291,19 @@ export function App() {
             )}
           </>
         )}
-        {deleteId === id && record && (
+        {deleteTarget && (
           <Dialog
             title="Delete this case?"
             titleId="delete-title"
             closeDisabled={busy}
             onClose={() => {
-              if (!busy) setDeleteId(null);
+              if (!busy) setDeleteTarget(null);
             }}
           >
             <p>
-              Delete case <code>{record.id}</code>?
+              Delete {deleteTarget.name || 'case'} <code>{deleteTarget.id}</code>?
             </p>
-            <blockquote>{record.symptom}</blockquote>
+            {deleteTarget.symptom && <blockquote>{deleteTarget.symptom}</blockquote>}
             <p>
               This removes the locally stored original capture, normalized evidence, report, and any
               derived evidence captures. Your source file outside Wireclaw is unchanged. Deletion
@@ -295,14 +319,21 @@ export function App() {
                 autoFocus
                 data-initial-focus
                 disabled={busy}
-                onClick={() => setDeleteId(null)}
+                onClick={() => setDeleteTarget(null)}
               >
                 Keep case
               </button>
               <button
                 className="danger solid"
                 disabled={busy}
-                onClick={() => void investigation.remove()}
+                onClick={() =>
+                  void investigation.remove(deleteTarget.id).then((removed) => {
+                    if (removed) {
+                      setDeleteTarget(null);
+                      setHistoryVersion((value) => value + 1);
+                    }
+                  })
+                }
               >
                 {busy ? 'Deleting…' : 'Delete case and stored files'}
               </button>

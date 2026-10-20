@@ -229,3 +229,70 @@ describe('stateless follow-up client', () => {
     await expect(api.followup(supported.case.id, 'Why?')).rejects.toThrow('contract_mismatch');
   });
 });
+
+describe('recent capture metadata client', () => {
+  const row = {
+    id: supported.case.id,
+    name: 'trace.pcap',
+    capture_bytes: 127,
+    created: supported.case.created,
+    updated: supported.case.updated,
+    state: 'COMPLETE',
+  };
+  it('requests a bounded metadata-only list with cancellation', async () => {
+    const fetch = vi.fn().mockResolvedValue(response([row]));
+    vi.stubGlobal('fetch', fetch);
+    const controller = new AbortController();
+    expect(await api.recent(controller.signal)).toEqual([row]);
+    expect(fetch.mock.calls[0][0]).toBe('/api/cases?limit=10');
+    expect(fetch.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+  it.each(
+    [
+      [{ ...row, symptom: 'private context' }],
+      [{ ...row, id: '../capture' }],
+      [{ ...row, capture_bytes: -1 }],
+      [{ ...row, capture_bytes: 1.5 }],
+      [{ ...row, state: 'UNKNOWN' }],
+      [{ ...row, name: 'bad\u0000name' }],
+      [{ ...row, created: 'yesterday' }],
+      Array.from({ length: 11 }, () => row),
+      [row, row],
+      { cases: [row] },
+    ].map((value) => ({ value })),
+  )('rejects incompatible history data $value', async ({ value }) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(value)));
+    await expect(api.recent()).rejects.toThrow('contract_mismatch');
+  });
+  it('renames with only display_name and validates the returned case identity', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(response(supported.case))
+      .mockResolvedValueOnce(response({ ...supported.case, id: 'b'.repeat(32) }));
+    vi.stubGlobal('fetch', fetch);
+    const signal = new AbortController().signal;
+    await api.rename(row.id, 'Office trace', signal);
+    expect(fetch.mock.calls[0][0]).toBe(`/api/cases/${row.id}`);
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'PATCH', signal });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ display_name: 'Office trace' });
+    await expect(api.rename(row.id, 'Office trace')).rejects.toThrow('contract_mismatch');
+  });
+  it.each(['', ' ', 'x'.repeat(121), 'line\nname', 'bad\u200ename'])(
+    'rejects invalid rename before network access %s',
+    async (name) => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      await expect(api.rename(row.id, name)).rejects.toThrow('invalid_request');
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it('sends only the capture basename on creation', async () => {
+    const fetch = vi.fn().mockResolvedValue(response(supported.case));
+    vi.stubGlobal('fetch', fetch);
+    await api.create('slow', 'C:\\captures\\trace.pcap');
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      symptom: 'slow',
+      capture_name: 'trace.pcap',
+    });
+  });
+});
