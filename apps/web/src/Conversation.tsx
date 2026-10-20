@@ -6,11 +6,13 @@ type Turn = { question: string; response?: Followup; error?: string };
 export function Conversation({
   caseId,
   enabled,
+  verified,
   onEvidence,
   onAttach,
 }: {
   caseId: string;
   enabled: boolean;
+  verified: boolean;
   onEvidence: (ids: string[]) => void;
   onAttach: (files: File[]) => void;
 }) {
@@ -22,7 +24,7 @@ export function Conversation({
   useEffect(() => () => request.current?.abort(), []);
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!enabled || request.current || !question.trim()) return;
+    if (!verified || !enabled || request.current || !question.trim()) return;
     const currentQuestion = question.trim();
     const controller = new AbortController();
     request.current = controller;
@@ -49,7 +51,7 @@ export function Conversation({
   }
   return (
     <>
-      <section className="followups" aria-label="Questions about this report">
+      <section className="followups" aria-label="Questions about this report" hidden={!verified}>
         {turns.map((turn, index) => (
           <div className="turn" key={index}>
             <p className="user-question">{turn.question}</p>
@@ -75,7 +77,13 @@ export function Conversation({
         ))}
       </section>
       <p className="sr-only" role="status" aria-live="polite">
-        {busy ? 'Answering your question…' : turns.at(-1)?.response ? 'Explanation ready.' : ''}
+        {!verified
+          ? 'Recovering the verified report…'
+          : busy
+            ? 'Answering your question…'
+            : turns.at(-1)?.response
+              ? 'Explanation ready.'
+              : ''}
       </p>
       <form className="composer-wrap" onSubmit={submit}>
         <div className="composer">
@@ -85,6 +93,7 @@ export function Conversation({
             type="file"
             accept=".pcap,.pcapng,.cap,application/vnd.tcpdump.pcap"
             aria-label="Select new capture"
+            disabled={!verified}
             onChange={(event) => {
               if (event.target.files?.length) onAttach(Array.from(event.target.files));
             }}
@@ -93,6 +102,7 @@ export function Conversation({
             type="button"
             className="attach quiet"
             aria-label="Attach a new capture"
+            disabled={!verified}
             onClick={() => captureInput.current?.click()}
           >
             ＋
@@ -104,7 +114,7 @@ export function Conversation({
             id="question"
             rows={1}
             value={question}
-            disabled={!enabled}
+            disabled={!verified || !enabled}
             maxLength={2000}
             placeholder="Ask about this analysis…"
             aria-describedby="followup-help"
@@ -114,17 +124,19 @@ export function Conversation({
             className="send primary"
             type="submit"
             aria-label="Send"
-            disabled={!enabled || busy || !question.trim()}
+            disabled={!verified || !enabled || busy || !question.trim()}
           >
             <span aria-hidden="true">↑</span>
           </button>
         </div>
         <p className="composer-hint" id="followup-help">
-          {!enabled
-            ? 'Follow-up is unavailable in rules-only mode or while the provider is unavailable.'
-            : busy
-              ? 'Answering your question…'
-              : 'Answers explain this report and cited evidence. Each question is answered independently.'}
+          {!verified
+            ? 'Recovering the verified report. Your conversation is preserved.'
+            : !enabled
+              ? 'Follow-up is unavailable in rules-only mode or while the provider is unavailable.'
+              : busy
+                ? 'Answering your question…'
+                : 'Answers explain this report and cited evidence. Each question is answered independently.'}
         </p>
       </form>
     </>

@@ -219,10 +219,12 @@ export function App() {
                 }}
               />
             )}
-            {!busy && report && record.original_id && (
+            {/* Preserve turns and draft during report recovery; the case/revision key still resets them. */}
+            {!busy && record.state === 'COMPLETE' && record.original_id && (
               <Conversation
                 key={`${id}-${revision(record)}`}
                 caseId={record.id}
+                verified={!!report}
                 enabled={!!currentAIStatus && currentAIStatus.effective_provider_mode !== 'none'}
                 onAttach={(files) => {
                   setPendingFiles(files);
@@ -233,29 +235,31 @@ export function App() {
                 }}
               />
             )}
-            {!report && (locked || !!record.original_id) && (
-              <div className="composer-wrap">
-                <div className="composer">
-                  <button className="attach quiet" disabled aria-label="Attach capture">
-                    ＋
-                  </button>
-                  <textarea
-                    rows={1}
-                    disabled
-                    aria-label="Question about this report"
-                    placeholder="Waiting for the investigation report…"
-                  />
-                  <button className="send primary" disabled aria-label="Send">
-                    ↑
-                  </button>
+            {!report &&
+              (busy || record.state !== 'COMPLETE') &&
+              (locked || !!record.original_id) && (
+                <div className="composer-wrap">
+                  <div className="composer">
+                    <button className="attach quiet" disabled aria-label="Attach capture">
+                      ＋
+                    </button>
+                    <textarea
+                      rows={1}
+                      disabled
+                      aria-label="Question about this report"
+                      placeholder="Waiting for the investigation report…"
+                    />
+                    <button className="send primary" disabled aria-label="Send">
+                      ↑
+                    </button>
+                  </div>
+                  <p className="composer-hint">
+                    {locked
+                      ? 'Investigation in progress. Capture evidence remains authoritative.'
+                      : 'A completed report is required for follow-up.'}
+                  </p>
                 </div>
-                <p className="composer-hint">
-                  {locked
-                    ? 'Investigation in progress. Capture evidence remains authoritative.'
-                    : 'A completed report is required for follow-up.'}
-                </p>
-              </div>
-            )}
+              )}
             {record.state === 'COMPLETE' && !report && !error && (
               <p className="panel" role="status">
                 Retrieving and verifying the current report…

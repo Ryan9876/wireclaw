@@ -623,6 +623,36 @@ describe('follow-up recovery and case isolation', () => {
     expect(await screen.findByText('<img src=x onerror="alert(1)">')).toBeVisible();
     expect(document.querySelector('img[src="x"]')).toBeNull();
   });
+  it('retains_turns_and_draft_after_temporary_status_failure_and_recovery', async () => {
+    openExisting(enabledCase());
+    vi.spyOn(api, 'followup').mockResolvedValue({
+      answer: 'Retained explanation.',
+      evidence_ids: [],
+    });
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('Retained explanation.');
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Unsent draft');
+    vi.mocked(api.get).mockRejectedValue(new ApiError('network_unavailable'));
+    expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent(
+      'could not be reached',
+    );
+    expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Question about this report')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Attach a new capture' })).toBeDisabled();
+    expect(screen.getByText('Retained explanation.')).not.toBeVisible();
+    expect(screen.getByLabelText('Question about this report')).toHaveValue('Unsent draft');
+    vi.mocked(api.get).mockResolvedValue(current);
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    expect(screen.getByText('Retained explanation.')).toBeVisible();
+    expect(screen.getByText('Why?')).toBeVisible();
+    expect(screen.getByLabelText('Question about this report')).toHaveValue('Unsent draft');
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+    expect(api.followup).toHaveBeenCalledTimes(1);
+  });
   it('aborts and discards a late explanation when the conversation is discarded', async () => {
     openExisting(enabledCase());
     let resolve!: (value: { answer: string; evidence_ids: string[] }) => void;
