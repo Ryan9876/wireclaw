@@ -719,6 +719,43 @@ describe('recent captures', () => {
     expect(api.investigate).not.toHaveBeenCalled();
     expect(window.location.hash).toBe(`#case=${row.id}`);
   });
+  it('opening the active history row retains follow-up turns and the unsent draft', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    openExisting(enabled);
+    vi.spyOn(api, 'recent').mockResolvedValue([row]);
+    vi.spyOn(api, 'followup').mockResolvedValue({
+      answer: 'The capture cannot identify the device.',
+      evidence_ids: [],
+    });
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Which device?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('The capture cannot identify the device.');
+    await userEvent.type(
+      screen.getByLabelText('Question about this report'),
+      'Unsent validation question',
+    );
+    const popover = await history();
+    await userEvent.click(await within(popover).findByRole('button', { name: 'Open trace.pcap' }));
+    expect(screen.queryByRole('dialog', { name: 'Recent captures' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(screen.getByText('Which device?')).toBeVisible();
+    expect(screen.getByText('The capture cannot identify the device.')).toBeVisible();
+    expect(screen.getByLabelText('Question about this report')).toHaveValue(
+      'Unsent validation question',
+    );
+    expect(window.location.hash).toBe(`#case=${row.id}`);
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.upload).not.toHaveBeenCalled();
+    expect(api.investigate).not.toHaveBeenCalled();
+  });
   it('rename_updates_only_case_display_name', async () => {
     const enabled = structuredClone(supported);
     enabled.case.provider_mode = 'openai_compatible_local';

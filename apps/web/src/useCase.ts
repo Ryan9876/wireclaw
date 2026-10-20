@@ -188,7 +188,7 @@ export function useCase() {
       setError('Enter a 32-character lowercase hexadecimal case ID.');
       return;
     }
-    if (!operation.current) {
+    if (!operation.current && value !== currentId.current) {
       setNotice('');
       select(value);
     }
