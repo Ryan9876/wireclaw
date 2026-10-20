@@ -1,9 +1,10 @@
 """Strict request contracts: no paths, executable names, flags or filters."""
 
+import unicodedata
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from wireclaw_analyzer import Capability
 
 
@@ -34,8 +35,46 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+def plain_label(value):
+    if any(unicodedata.category(char).startswith("C") for char in value):
+        raise ValueError("invalid_display_label")
+    value = value.strip()
+    if not value:
+        raise ValueError("invalid_display_label")
+    return value
+
+
 class CreateCase(StrictModel):
     symptom: Annotated[str, Field(max_length=4096)]
+    capture_name: Annotated[str, Field(max_length=255)] | None = None
+
+    @field_validator("capture_name")
+    @classmethod
+    def safe_capture_name(cls, value):
+        if value is None:
+            return value
+        value = plain_label(value).replace("\\", "/").rsplit("/", 1)[-1].strip()
+        if not value or value in (".", ".."):
+            raise ValueError("invalid_capture_name")
+        return value
+
+
+class RenameCase(StrictModel):
+    display_name: Annotated[str, Field(max_length=120)]
+
+    @field_validator("display_name")
+    @classmethod
+    def safe_display_name(cls, value):
+        return plain_label(value)
+
+
+class RecentCaseResponse(StrictModel):
+    id: str
+    name: str
+    capture_bytes: int | None
+    created: str
+    updated: str
+    state: str
 
 
 BASELINE = (
@@ -147,6 +186,9 @@ class AIStatusResponse(StrictModel):
 
 class CaseResponse(StrictModel):
     id: str
+    name: str
+    capture_name: str | None
+    display_name: str | None
     symptom: str
     state: str
     created: str

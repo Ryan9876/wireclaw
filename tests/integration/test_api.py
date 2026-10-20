@@ -647,3 +647,146 @@ def test_api_capability_result_matches_direct_analyzer(environment):
         with pytest.raises(AnalyzerError):
             runner.run("whoami")
         assert isinstance(Operation.PACKETS, Operation)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_case_metadata_migration_backfills_existing_cases(environment, version):
+    root, captures = environment
+    with client_for(root) as client:
+        case_id, _ = prepared(client, captures)
+        before = client.get(f"/api/cases/{case_id}").json()
+        report = client.get(f"/api/cases/{case_id}/report").json()
+    with sqlite3.connect(root / "cases.sqlite3") as conn:
+        # Reconstruct the previous schema from a real persisted case.
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(cases)")}
+        for column in ("capture_name", "display_name"):
+            if column in columns:
+                conn.execute(f"ALTER TABLE cases DROP COLUMN {column}")
+        if version == 1:
+            conn.execute("DROP TABLE reasoning_steps")
+        conn.execute(f"PRAGMA user_version={version}")
+    with client_for(root) as client:
+        after = client.get(f"/api/cases/{case_id}").json()
+        assert after["name"] == f"Capture {case_id[:8]}"
+        assert {
+            key: after[key] for key in before if key not in ("capture_name", "display_name", "name")
+        } == {
+            key: value
+            for key, value in before.items()
+            if key not in ("capture_name", "display_name", "name")
+        }
+        assert client.get(f"/api/cases/{case_id}/report").json() == report
+        assert client.get("/api/cases").json()[0]["capture_bytes"] == len(captures["clean_tcp"])
+        with client.app.state.service.db.connect() as conn:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+
+
+def test_recent_cases_returns_bounded_metadata_without_sensitive_fields(environment):
+    root, captures = environment
+    with client_for(root) as client:
+        ids = [case(client, "SECRET symptom") for _ in range(12)]
+        assert upload(client, ids[0], captures["clean_tcp"]).status_code == 200
+        with client.app.state.service.db.connect() as conn:
+            conn.execute("UPDATE cases SET updated='2026-10-20T00:00:00Z'")
+        response = client.get("/api/cases")
+        assert response.status_code == 200
+        rows = response.json()
+        assert [row["id"] for row in rows] == sorted(ids, reverse=True)[:10]
+        assert all(
+            set(row) == {"id", "name", "capture_bytes", "created", "updated", "state"}
+            for row in rows
+        )
+        assert len(client.get("/api/cases?limit=2").json()) == 2
+        assert all(row["capture_bytes"] is None for row in rows if row["id"] != ids[0])
+        if ids[0] in [row["id"] for row in rows]:
+            assert next(row for row in rows if row["id"] == ids[0])["capture_bytes"] == len(
+                captures["clean_tcp"]
+            )
+        for limit in ("0", "11", "-1", "abc"):
+            assert client.get(f"/api/cases?limit={limit}").status_code == 422
+        assert "SECRET" not in response.text and "relative_path" not in response.text
+        assert client.delete(f"/api/cases/{ids[0]}").status_code == 200
+        assert ids[0] not in [r["id"] for r in client.get("/api/cases").json()]
+
+
+def test_case_capture_name_is_safe_display_metadata(environment):
+    root, _ = environment
+    with client_for(root) as client:
+        for supplied, expected in (
+            ("/private/secret/trace.pcap", "trace.pcap"),
+            (r"C:\private\trace.pcapng", "trace.pcapng"),
+        ):
+            response = client.post("/api/cases", json={"symptom": "slow", "capture_name": supplied})
+            assert response.status_code == 201, response.text
+            assert response.json()["name"] == expected
+            assert response.json()["capture_name"] == expected
+            assert (root / "cases" / response.json()["id"]).is_dir()
+        for invalid in ("", " ", ".", "..", "a\n.pcap", "a\x00.pcap", "a\x7f.pcap", "a" * 256, 42):
+            response = client.post("/api/cases", json={"symptom": "slow", "capture_name": invalid})
+            assert response.status_code == 422, response.text
+            assert response.json() == {"error": {"code": "invalid_request"}}
+
+
+def test_rename_case_changes_label_without_renaming_files_or_artifacts(environment):
+    root, captures = environment
+    with client_for(root) as client:
+        case_id, _ = prepared(client, captures)
+        before = client.get(f"/api/cases/{case_id}").json()
+        report = client.get(f"/api/cases/{case_id}/report").json()
+        files = {
+            str(p.relative_to(root)): p.read_bytes()
+            for p in (root / "cases").rglob("*")
+            if p.is_file()
+        }
+        response = client.patch(
+            f"/api/cases/{case_id}", json={"display_name": "  Slow connection  "}
+        )
+        assert response.status_code == 200, response.text
+        after = response.json()
+        assert after["name"] == after["display_name"] == "Slow connection"
+        assert after["updated"] >= before["updated"]
+        assert {k: v for k, v in after.items() if k not in ("name", "display_name", "updated")} == {
+            k: v for k, v in before.items() if k not in ("name", "display_name", "updated")
+        }
+        assert client.get(f"/api/cases/{case_id}/report").json() == report
+        assert files == {
+            str(p.relative_to(root)): p.read_bytes()
+            for p in (root / "cases").rglob("*")
+            if p.is_file()
+        }
+    with client_for(root) as client:
+        assert client.get(f"/api/cases/{case_id}").json()["name"] == "Slow connection"
+
+
+def test_rename_unknown_case_returns_not_found(environment):
+    root, _ = environment
+    with client_for(root) as client:
+        response = client.patch(f"/api/cases/{'f' * 32}", json={"display_name": "Capture"})
+        assert response.status_code == 404
+        assert response.json() == {"error": {"code": "case_not_found"}}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"display_name": ""},
+        {"display_name": "  "},
+        {"display_name": "a" * 121},
+        {"display_name": "bad\nname"},
+        {"display_name": "bad\x7fname"},
+        {"display_name": "bad\x00name"},
+        {"display_name": 5},
+        {"display_name": None},
+        {"display_name": "valid", "path": "/tmp/secret"},
+    ],
+)
+def test_rename_invalid_display_name_returns_422_invalid_request(environment, body):
+    root, _ = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        before = client.get(f"/api/cases/{case_id}").json()
+        response = client.patch(f"/api/cases/{case_id}", json=body)
+        assert response.status_code == 422, response.text
+        assert response.json() == {"error": {"code": "invalid_request"}}
+        assert client.get(f"/api/cases/{case_id}").json() == before

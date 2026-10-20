@@ -26,6 +26,8 @@ from .models import (
     EvidenceCaptureRequest,
     EvidenceCaptureResponse,
     HealthResponse,
+    RecentCaseResponse,
+    RenameCase,
 )
 from .storage import ApiError
 from .web import register_web
@@ -175,7 +177,16 @@ def create_app(data_root: Path, policy: Policy | None = None):
     @app.post("/api/cases", status_code=201, response_model=CaseResponse)
     def create(body: CreateCase):
         with service().admission():
-            return service().create(body.symptom)
+            return service().create(body.symptom, body.capture_name)
+
+    @app.get("/api/cases", response_model=list[RecentCaseResponse])
+    def recent_cases(limit: int = Query(default=10, ge=1, le=10)):
+        return service().recent(limit)
+
+    @app.patch("/api/cases/{case_id}", response_model=CaseResponse)
+    def rename_case(case_id: str, body: RenameCase):
+        with service().admission():
+            return service().rename(case_id, body.display_name)
 
     @app.post(
         "/api/cases/{case_id}/capture",

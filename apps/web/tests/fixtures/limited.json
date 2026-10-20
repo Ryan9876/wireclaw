@@ -1,5 +1,8 @@
 {
   "case": {
+    "name": "Capture cccccccc",
+    "capture_name": null,
+    "display_name": null,
     "id": "cccccccccccccccccccccccccccccccc",
     "symptom": "application is slow",
     "state": "COMPLETE",

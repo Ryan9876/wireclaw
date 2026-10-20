@@ -798,7 +798,7 @@ def test_rules_only_report_exposes_mode_and_keeps_database_reasoning_table(tmp_p
             "embedded_failure_code": None,
         }
         with service.db.connect() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
             assert conn.execute("SELECT count(*) FROM reasoning_steps").fetchone()[0] == 0
     finally:
         service.close()

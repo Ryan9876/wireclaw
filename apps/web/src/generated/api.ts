@@ -40,7 +40,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Recent Cases */
+        get: operations["recent_cases_api_cases_get"];
         put?: never;
         /** Create */
         post: operations["create_api_cases_post"];
@@ -48,6 +49,25 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Case */
+        get: operations["get_case_api_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_api_cases__case_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Case */
+        patch: operations["rename_case_api_cases__case_id__patch"];
         trace?: never;
     };
     "/api/cases/{case_id}/capture": {
@@ -130,24 +150,6 @@ export interface paths {
         /** Bridge Grant */
         post: operations["bridge_grant_api_cases__case_id__bridge_grants_post"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cases/{case_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Case */
-        get: operations["get_case_api_cases__case_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete */
-        delete: operations["delete_api_cases__case_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -324,6 +326,12 @@ export interface components {
         CaseResponse: {
             /** Id */
             id: string;
+            /** Name */
+            name: string;
+            /** Capture Name */
+            capture_name: string | null;
+            /** Display Name */
+            display_name: string | null;
             /** Symptom */
             symptom: string;
             /** State */
@@ -358,6 +366,8 @@ export interface components {
         CreateCase: {
             /** Symptom */
             symptom: string;
+            /** Capture Name */
+            capture_name?: string | null;
         };
         /** DeletionResponse */
         DeletionResponse: {
@@ -437,6 +447,26 @@ export interface components {
             state: string;
             /** At */
             at: string;
+        };
+        /** RecentCaseResponse */
+        RecentCaseResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Capture Bytes */
+            capture_bytes: number | null;
+            /** Created */
+            created: string;
+            /** Updated */
+            updated: string;
+            /** State */
+            state: string;
+        };
+        /** RenameCase */
+        RenameCase: {
+            /** Display Name */
+            display_name: string;
         };
         /** RunResponse */
         RunResponse: {
@@ -531,6 +561,37 @@ export interface operations {
             };
         };
     };
+    recent_cases_api_cases_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentCaseResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_api_cases_post: {
         parameters: {
             query?: never;
@@ -546,6 +607,103 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_api_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_cases__case_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_case_api_cases__case_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameCase"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -722,68 +880,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BridgeGrantResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_case_api_cases__case_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_api_cases__case_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeletionResponse"];
                 };
             };
             /** @description Validation Error */

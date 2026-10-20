@@ -71,7 +71,7 @@ class Service:
             diagnostic_limits=self.policy.diagnostics,
         )
 
-    def create(self, symptom):
+    def create(self, symptom, capture_name=None):
         if len(symptom) > self.policy.max_symptom_chars:
             raise ApiError("symptom_size_limit", 413)
         case_id = identifier()
@@ -85,8 +85,9 @@ class Service:
             directory.mkdir(parents=True, exist_ok=False)
             try:
                 conn.execute(
-                    "INSERT INTO cases VALUES(?,?,?,?,?,NULL,NULL,NULL,NULL)",
-                    (case_id, symptom, State.NEW, now(), now()),
+                    "INSERT INTO cases(id,symptom,state,created,updated,capture_name) "
+                    "VALUES(?,?,?,?,?,?)",
+                    (case_id, symptom, State.NEW, now(), now(), capture_name),
                 )
                 conn.execute("INSERT INTO history VALUES(?,?,?,?)", (case_id, 0, State.NEW, now()))
                 conn.commit()
@@ -95,9 +96,34 @@ class Service:
                 raise
         return self.get(case_id)
 
+    def recent(self, limit=10):
+        if type(limit) is not int or not 1 <= limit <= 10:
+            raise ApiError("invalid_request", 422)
+        with self.db.connect() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT c.id,coalesce(c.display_name,c.capture_name,'Capture ' || substr(c.id,1,8)) "
+                    "AS name,a.bytes AS capture_bytes,c.created,c.updated,c.state FROM cases c "
+                    "LEFT JOIN artifacts a ON a.id=c.original_id AND a.case_id=c.id AND a.kind='original' "
+                    "ORDER BY c.updated DESC,c.id DESC LIMIT ?",
+                    (limit,),
+                )
+            ]
+
+    def rename(self, case_id, display_name):
+        with self.db.connect() as conn:
+            self.db.case(conn, case_id)
+            conn.execute(
+                "UPDATE cases SET display_name=?,updated=? WHERE id=?",
+                (display_name, now(), case_id),
+            )
+        return self.get(case_id)
+
     def get(self, case_id):
         with self.db.connect() as conn:
             case = self.db.case(conn, case_id)
+            case["name"] = case["display_name"] or case["capture_name"] or f"Capture {case_id[:8]}"
             case["history"] = [
                 dict(r)
                 for r in conn.execute(
