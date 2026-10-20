@@ -3,9 +3,7 @@ from pathlib import Path
 from scripts import validate_gate3
 
 
-def test_gate3_temporary_directory_resolves_symlinked_platform_temp(
-    tmp_path, monkeypatch
-):
+def test_gate3_temporary_directory_resolves_symlinked_platform_temp(tmp_path, monkeypatch):
     physical_base = tmp_path / "physical-temp"
     physical_base.mkdir()
     platform_temp = tmp_path / "platform-temp"
