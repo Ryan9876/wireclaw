@@ -705,6 +705,125 @@ def _record_handler_evidence(
     ]
 
 
+def project_eai14_08_case_report(
+    report: dict, identity: dict, capture_sha256_before: str, capture_sha256_after: str
+) -> dict:
+    """Project an actual completed report; never accept operator-supplied conclusions."""
+    from jsonschema import Draft202012Validator
+
+    schema = json.loads((ROOT / "contracts/investigation-result.schema.json").read_text())
+    if not Draft202012Validator(schema).is_valid(report):
+        raise ValueError("operator_source_report_invalid")
+    if (
+        report["status"] != "complete"
+        or report.get("reasoning", {}).get("provider_mode") != "embedded_local"
+    ):
+        raise ValueError("operator_source_report_invalid")
+    evidence_ids = set()
+
+    def collect(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "evidence_ids":
+                    if not isinstance(child, list) or any(
+                        not isinstance(item, str) for item in child
+                    ):
+                        raise ValueError("operator_source_report_invalid")
+                    evidence_ids.update(child)
+                else:
+                    collect(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child)
+
+    collect(report)
+    projection = {
+        "schema_version": 1,
+        "case_id": report["case_id"],
+        "conclusion_type": report["conclusion"]["type"],
+        "candidate_identity_sha256": identity["candidate_identity_sha256"],
+        "model_sha256": identity["signed_app"]["model_sha256"],
+        "llama_server_sha256": identity["signed_app"]["llama_server_sha256"],
+        "provider_mode": report["reasoning"]["provider_mode"],
+        "source_report_sha256": hashlib.sha256(
+            json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        ).hexdigest(),
+        "original_capture_sha256_before": capture_sha256_before,
+        "original_capture_sha256_after": capture_sha256_after,
+        "evidence_ids": sorted(evidence_ids),
+        "findings": [
+            {"finding_id": finding["id"], "evidence_ids": list(finding["evidence_ids"])}
+            for finding in report["findings"]
+        ],
+    }
+    _validate_eai14_08_projection(projection, identity, report["case_id"])
+    return projection
+
+
+def _validate_eai14_08_projection(payload: dict, identity: dict, expected_case: str) -> None:
+    required_case_fields = {
+        "schema_version",
+        "case_id",
+        "conclusion_type",
+        "source_report_sha256",
+        "candidate_identity_sha256",
+        "model_sha256",
+        "llama_server_sha256",
+        "provider_mode",
+        "original_capture_sha256_before",
+        "original_capture_sha256_after",
+        "evidence_ids",
+        "findings",
+    }
+    evidence_ids = payload.get("evidence_ids") if isinstance(payload, dict) else None
+    findings = payload.get("findings") if isinstance(payload, dict) else None
+    if (
+        expected_case not in {"high_rtt", "server_wait", "midstream"}
+        or not isinstance(payload, dict)
+        or set(payload) != required_case_fields
+        or type(payload.get("schema_version")) is not int
+        or payload.get("schema_version") != 1
+        or payload.get("case_id") != expected_case
+        or payload.get("conclusion_type") not in ("supported_finding", "insufficient_evidence")
+        or not re.fullmatch(r"[0-9a-f]{64}", str(payload.get("source_report_sha256", "")))
+        or payload.get("candidate_identity_sha256") != identity["candidate_identity_sha256"]
+        or payload.get("model_sha256") != identity["signed_app"]["model_sha256"]
+        or payload.get("llama_server_sha256") != identity["signed_app"]["llama_server_sha256"]
+        or payload.get("provider_mode") != "embedded_local"
+        or not re.fullmatch(r"[0-9a-f]{64}", str(payload.get("original_capture_sha256_before", "")))
+        or payload.get("original_capture_sha256_before")
+        != payload.get("original_capture_sha256_after")
+        or not isinstance(evidence_ids, list)
+        or not evidence_ids
+        or len(evidence_ids) > 128
+        or any(
+            not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", item)
+            for item in evidence_ids
+        )
+        or len(set(evidence_ids)) != len(evidence_ids)
+        or not isinstance(findings, list)
+        or (
+            not findings
+            and not (
+                expected_case == "server_wait"
+                and payload.get("conclusion_type") == "insufficient_evidence"
+            )
+        )
+        or len(findings) > 128
+        or any(
+            not isinstance(finding, dict)
+            or set(finding) != {"finding_id", "evidence_ids"}
+            or not isinstance(finding["finding_id"], str)
+            or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", finding["finding_id"])
+            or not isinstance(finding["evidence_ids"], list)
+            or not finding["evidence_ids"]
+            or any(item not in evidence_ids for item in finding["evidence_ids"])
+            for finding in findings
+        )
+    ):
+        raise ValueError("operator_evidence_invalid")
+
+
 def _operator_artifact(
     operator_root: Path,
     evidence_root: Path,
@@ -827,62 +946,8 @@ def _operator_artifact(
                 raise ValueError("operator_evidence_invalid")
         if check_id == "eai14-16":
             expected_case = "privacy-sentinel"
-        required_case_fields = {
-            "schema_version",
-            "case_id",
-            "candidate_identity_sha256",
-            "model_sha256",
-            "llama_server_sha256",
-            "provider_mode",
-            "original_capture_sha256_before",
-            "original_capture_sha256_after",
-            "evidence_ids",
-            "findings",
-        }
-        evidence_ids = payload.get("evidence_ids") if isinstance(payload, dict) else None
-        findings = payload.get("findings") if isinstance(payload, dict) else None
-        if check_id not in {"eai14-10", "eai14-14", "eai14-16"} and (
-            (
-                check_id != "eai14-16"
-                and expected_case not in {"high_rtt", "server_wait", "midstream"}
-            )
-            or not isinstance(payload, dict)
-            or set(payload) != required_case_fields
-            or type(payload.get("schema_version")) is not int
-            or payload.get("schema_version") != 1
-            or payload.get("case_id") != expected_case
-            or payload.get("candidate_identity_sha256") != identity["candidate_identity_sha256"]
-            or payload.get("model_sha256") != identity["signed_app"]["model_sha256"]
-            or payload.get("llama_server_sha256") != identity["signed_app"]["llama_server_sha256"]
-            or payload.get("provider_mode") != "embedded_local"
-            or not re.fullmatch(
-                r"[0-9a-f]{64}", str(payload.get("original_capture_sha256_before", ""))
-            )
-            or payload.get("original_capture_sha256_before")
-            != payload.get("original_capture_sha256_after")
-            or not isinstance(evidence_ids, list)
-            or not evidence_ids
-            or len(evidence_ids) > 128
-            or any(
-                not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", item)
-                for item in evidence_ids
-            )
-            or len(set(evidence_ids)) != len(evidence_ids)
-            or not isinstance(findings, list)
-            or not findings
-            or len(findings) > 128
-            or any(
-                not isinstance(finding, dict)
-                or set(finding) != {"finding_id", "evidence_ids"}
-                or not isinstance(finding["finding_id"], str)
-                or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", finding["finding_id"])
-                or not isinstance(finding["evidence_ids"], list)
-                or not finding["evidence_ids"]
-                or any(item not in evidence_ids for item in finding["evidence_ids"])
-                for finding in findings
-            )
-        ):
-            raise ValueError("operator_evidence_invalid")
+        if check_id not in {"eai14-10", "eai14-14", "eai14-16"}:
+            _validate_eai14_08_projection(payload, identity, expected_case)
     elif media_type == "text/markdown":
         try:
             text = content.decode("utf-8")
@@ -2481,11 +2546,54 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-bundle", type=Path, required=True)
     parser.add_argument("--candidate-archive", type=Path, required=True)
     parser.add_argument("--candidate-metadata", type=Path, required=True)
-    parser.add_argument("--evidence-dir", type=Path, required=True)
+    parser.add_argument("--evidence-dir", type=Path)
+    parser.add_argument("--project-eai14-08-report", type=Path)
+    parser.add_argument("--capture-sha256-before")
+    parser.add_argument("--capture-sha256-after")
     parser.add_argument("--operator-evidence-dir", type=Path)
     parser.add_argument("--print-operator-procedure", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.project_eai14_08_report:
+        try:
+            validate_output_isolated(args.candidate_bundle, args.candidate_archive, args.output)
+            validate_input_isolated(
+                args.candidate_bundle,
+                args.candidate_archive,
+                args.candidate_metadata,
+                args.project_eai14_08_report,
+            )
+            if args.output.resolve() in {
+                args.candidate_metadata.resolve(),
+                args.project_eai14_08_report.resolve(),
+            }:
+                raise ValueError("qualification_output_overlaps_input")
+            recorded = json.loads(args.candidate_metadata.read_text(encoding="utf-8"))
+            identity = candidate_identity(
+                args.candidate_bundle, args.candidate_archive, frozen_metadata=recorded
+            )
+            verify_candidate_unchanged(
+                args.candidate_bundle, args.candidate_archive, identity, frozen_metadata=recorded
+            )
+            source = args.project_eai14_08_report
+            if source.stat().st_size > 8 * 1024 * 1024:
+                raise ValueError("operator_source_report_invalid")
+            report = json.loads(source.read_text(encoding="utf-8"))
+            projection = project_eai14_08_case_report(
+                report, identity, args.capture_sha256_before, args.capture_sha256_after
+            )
+            if args.output.name != f"{projection['case_id']}.json":
+                raise ValueError("operator_evidence_invalid")
+            with args.output.open("x", encoding="utf-8") as stream:
+                json.dump(projection, stream, indent=2, sort_keys=True, allow_nan=False)
+                stream.write("\n")
+            args.output.chmod(0o600)
+        except (OSError, UnicodeError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return 1
+        return 0
+    if not args.evidence_dir:
+        parser.error("--evidence-dir is required for qualification")
     if args.print_operator_procedure:
         for check_id in OPERATOR_CHECKS:
             print(f"{check_id}: {OPERATOR_PROCEDURE[check_id]}")

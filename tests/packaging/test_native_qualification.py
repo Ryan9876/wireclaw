@@ -3,6 +3,8 @@ import importlib.util
 import json
 import plistlib
 import struct
+import subprocess
+import sys
 import tarfile
 import zlib
 from pathlib import Path
@@ -52,6 +54,8 @@ def operator_case_report(case_id, identity):
     return {
         "schema_version": 1,
         "case_id": case_id,
+        "conclusion_type": "supported_finding",
+        "source_report_sha256": "b" * 64,
         "candidate_identity_sha256": identity["candidate_identity_sha256"],
         "model_sha256": identity["signed_app"]["model_sha256"],
         "llama_server_sha256": identity["signed_app"]["llama_server_sha256"],
@@ -61,6 +65,248 @@ def operator_case_report(case_id, identity):
         "evidence_ids": ["ev-1"],
         "findings": [{"finding_id": "finding-1", "evidence_ids": ["ev-1"]}],
     }
+
+
+def completed_case_report(case_id, conclusion_type="supported_finding", *, empty=False):
+    return {
+        "schema_version": "1.0",
+        "case_id": case_id,
+        "status": "complete",
+        "symptom": "Slow response",
+        "capture_quality": {
+            "state": "limited",
+            "evidence_ids": ["ev-quality"],
+            "limitations": ["Incomplete transaction visibility"],
+        },
+        "conclusion": {
+            "type": conclusion_type,
+            "statement": "Inspect available timing",
+            "confidence": "low",
+            "fault_domains": ["unknown"],
+            "evidence_ids": ["ev-1"],
+        },
+        "findings": []
+        if empty
+        else [
+            {
+                "id": "finding-1",
+                "title": "Timing",
+                "category": "timing",
+                "confidence": "low",
+                "statement": "Observed timing requires validation",
+                "evidence_ids": ["ev-1"],
+                "alternate_explanations": [],
+                "limitations": [],
+                "recommended_validation": ["Collect server capture"],
+                "wireshark": {
+                    "applicable": True,
+                    "full_capture": True,
+                    "evidence_capture": True,
+                    "copy_filter": True,
+                    "show_packet_evidence": True,
+                    "display_filter": "tcp",
+                },
+            }
+        ],
+        "remaining_hypotheses": [
+            {
+                "statement": "Server delay remains possible",
+                "fault_domains": ["server_application"],
+                "evidence_ids": ["ev-1"],
+                "next_evidence": ["Collect server capture"],
+            }
+        ],
+        "recommended_next_evidence": ["Collect server capture"],
+        "limitations": ["Incomplete transaction visibility"],
+        "analyzer_versions": {},
+        "reasoning": {
+            "mode": "model_assisted",
+            "status": "complete",
+            "steps": 1,
+            "provider_mode": "embedded_local",
+            "model": "packaged-model",
+        },
+    }
+
+
+def validate_eai14_08_artifact(tmp_path, qualification, payload, identity):
+    operator_root = tmp_path / "operator"
+    evidence_root = tmp_path / "evidence"
+    operator_root.mkdir(exist_ok=True)
+    evidence_root.mkdir(exist_ok=True)
+    source = operator_root / f"{payload['case_id']}.json"
+    source.write_text(json.dumps(payload))
+    return qualification._operator_artifact(
+        operator_root,
+        evidence_root,
+        "eai14-08",
+        {
+            "path": source.name,
+            "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "media_type": "application/json",
+        },
+        identity,
+    )
+
+
+def test_eai14_08_accepts_server_wait_insufficient_evidence_with_zero_findings(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    payload = operator_case_report("server_wait", identity)
+    payload.update(conclusion_type="insufficient_evidence", findings=[])
+    assert validate_eai14_08_artifact(tmp_path, qualification, payload, identity)
+
+
+def test_eai14_08_rejects_server_wait_zero_findings_with_other_conclusion(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    payload = operator_case_report("server_wait", identity)
+    payload["findings"] = []
+    with pytest.raises(ValueError, match="operator_evidence_invalid"):
+        validate_eai14_08_artifact(tmp_path, qualification, payload, identity)
+
+
+@pytest.mark.parametrize("case_id", ["high_rtt", "midstream"])
+@pytest.mark.parametrize("conclusion", ["supported_finding", "insufficient_evidence"])
+def test_eai14_08_rejects_zero_findings_for_other_cases(tmp_path, case_id, conclusion):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    payload = operator_case_report(case_id, identity)
+    payload.update(conclusion_type=conclusion, findings=[])
+    with pytest.raises(ValueError, match="operator_evidence_invalid"):
+        validate_eai14_08_artifact(tmp_path, qualification, payload, identity)
+
+
+@pytest.mark.parametrize("case_id", ["high_rtt", "server_wait", "midstream"])
+def test_eai14_08_requires_conclusion_type_for_all_case_artifacts(tmp_path, case_id):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    payload = operator_case_report(case_id, identity)
+    del payload["conclusion_type"]
+    with pytest.raises(ValueError, match="operator_evidence_invalid"):
+        validate_eai14_08_artifact(tmp_path, qualification, payload, identity)
+
+
+def test_eai14_08_projection_cli_derives_conclusion_from_actual_report(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    archive.unlink()
+    freezer = module_at(ROOT / "scripts/freeze_embedded_ai_candidate.py", "projection_freezer")
+    metadata = freezer.freeze_candidate(bundle, archive, codesign_runner=ad_hoc_codesign_runner)
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(json.dumps(metadata))
+    source = completed_case_report("server_wait", "insufficient_evidence", empty=True)
+    source_path = tmp_path / "actual-report.json"
+    source_path.write_text(json.dumps(source, indent=2))
+    output = tmp_path / "server_wait.json"
+    args = [
+        sys.executable,
+        str(SCRIPT),
+        "--project-eai14-08-report",
+        str(source_path),
+        "--candidate-bundle",
+        str(bundle),
+        "--candidate-archive",
+        str(archive),
+        "--candidate-metadata",
+        str(metadata_path),
+        "--capture-sha256-before",
+        "a" * 64,
+        "--capture-sha256-after",
+        "a" * 64,
+        "--output",
+        str(output),
+    ]
+    result = subprocess.run(args, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    projected = json.loads(output.read_text())
+    assert projected["conclusion_type"] == source["conclusion"]["type"]
+    assert projected["findings"] == []
+    assert projected["evidence_ids"] == ["ev-1", "ev-quality"]
+    assert (
+        projected["source_report_sha256"]
+        == hashlib.sha256(
+            json.dumps(source, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+    identity = qualification.candidate_identity(bundle, archive, frozen_metadata=metadata)
+    assert projected["candidate_identity_sha256"] == identity["candidate_identity_sha256"]
+    assert projected["model_sha256"] == identity["signed_app"]["model_sha256"]
+    assert projected["llama_server_sha256"] == identity["signed_app"]["llama_server_sha256"]
+    assert projected["original_capture_sha256_before"] == projected["original_capture_sha256_after"]
+    assert validate_eai14_08_artifact(tmp_path, qualification, projected, identity)
+    rejected = subprocess.run(
+        [*args, "--conclusion-type", "supported_finding"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert rejected.returncode == 2
+
+
+@pytest.mark.parametrize("case_id", ["high_rtt", "server_wait", "midstream"])
+def test_eai14_08_projection_retains_source_findings_and_case_evidence(tmp_path, case_id):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    report = completed_case_report(case_id)
+    projected = qualification.project_eai14_08_case_report(report, identity, "a" * 64, "a" * 64)
+    assert projected["case_id"] == case_id
+    assert projected["conclusion_type"] == "supported_finding"
+    assert projected["findings"] == [{"finding_id": "finding-1", "evidence_ids": ["ev-1"]}]
+    assert projected["evidence_ids"] == ["ev-1", "ev-quality"]
+    assert validate_eai14_08_artifact(tmp_path, qualification, projected, identity)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("source_report_sha256", None),
+        ("source_report_sha256", "invalid"),
+        ("candidate_identity_sha256", "f" * 64),
+        ("model_sha256", "f" * 64),
+        ("llama_server_sha256", "f" * 64),
+        ("original_capture_sha256_after", "f" * 64),
+        ("case_id", "unrecognized"),
+        ("provider_mode", "none"),
+        ("findings", [{"finding_id": "finding-1", "evidence_ids": ["foreign-case-evidence"]}]),
+    ],
+)
+def test_eai14_08_rejects_invalid_projection_binding(tmp_path, field, value):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    payload = operator_case_report("high_rtt", identity)
+    if value is None:
+        del payload[field]
+    else:
+        payload[field] = value
+    with pytest.raises(ValueError, match="operator_evidence_invalid"):
+        validate_eai14_08_artifact(tmp_path, qualification, payload, identity)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda r: r.update(status="partial"),
+        lambda r: r["reasoning"].update(provider_mode="none"),
+        lambda r: r["conclusion"].update(type="invented"),
+        lambda r: r["findings"][0].update(evidence_ids=[]),
+        lambda r: r["findings"][0].update(affected_scope={"evidence_ids": [{}]}),
+    ],
+)
+def test_eai14_08_projection_rejects_invalid_source_report(tmp_path, mutation):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    report = completed_case_report("high_rtt")
+    mutation(report)
+    with pytest.raises(ValueError, match="operator_source_report_invalid"):
+        qualification.project_eai14_08_case_report(report, identity, "a" * 64, "a" * 64)
 
 
 def operator_native_report(check_id, identity):
