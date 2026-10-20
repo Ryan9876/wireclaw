@@ -199,3 +199,33 @@ describe('fixed same-origin API contract', () => {
     await expect(api.get(supported.case.id)).rejects.toThrow('contract_mismatch');
   });
 });
+
+describe('stateless follow-up client', () => {
+  it('sends only the current bounded question and validates the response', async () => {
+    const answer = { answer: 'More evidence is needed.', evidence_ids: ['ev_1'] };
+    const fetch = vi.fn().mockResolvedValue(response(answer));
+    vi.stubGlobal('fetch', fetch);
+    expect(await api.followup(supported.case.id, 'Why?')).toEqual(answer);
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/cases/${supported.case.id}/followups`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ question: 'Why?' }) }),
+    );
+  });
+  it.each(['', ' '.repeat(5), 'x'.repeat(2001)])(
+    'rejects invalid question before network access',
+    async (question) => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      await expect(api.followup(supported.case.id, question)).rejects.toThrow('invalid_request');
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { answer: '', evidence_ids: [] },
+    { answer: 'Answer', evidence_ids: ['../raw'] },
+    { answer: 'Answer', evidence_ids: [], report: {} },
+  ])('rejects incompatible follow-up data', async (answer) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(answer)));
+    await expect(api.followup(supported.case.id, 'Why?')).rejects.toThrow('contract_mismatch');
+  });
+});

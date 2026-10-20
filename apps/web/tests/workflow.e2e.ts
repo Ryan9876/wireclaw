@@ -9,7 +9,7 @@ async function analyze(page: Page, capture: string, symptom = 'application is sl
   await page.goto('/');
   await page.getByLabel('Select capture').setInputFiles(resolve(captures, `${capture}.pcap`));
   await page.getByLabel('Symptom / problem description').fill(symptom);
-  await page.getByRole('button', { name: 'Investigate capture' }).click();
+  await page.getByRole('button', { name: 'Send' }).click();
   await expect(page).toHaveURL(/#case=[a-f0-9]{32}$/);
   return new URL(page.url()).hash.slice(6);
 }
@@ -25,6 +25,8 @@ async function noOverflow(page: Page) {
   );
 }
 async function remove(page: Page) {
+  if (!(await page.locator('.case-context').evaluate((element) => element.hasAttribute('open'))))
+    await page.getByText('Case details', { exact: true }).click();
   await page.getByRole('button', { name: 'Delete case', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Delete this case?' });
   await expect(dialog).toBeVisible();
@@ -36,7 +38,7 @@ test('intake has semantic labels, keyboard access, no overflow, and clean access
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Investigate capture' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Skip to investigation' })).toBeFocused();
   await page.keyboard.press('Enter');
@@ -71,6 +73,7 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
   const report = await (await request.get(`/api/cases/${id}/report`)).json();
   await expect(page.getByText(report.conclusion.statement, { exact: true }).first()).toBeVisible();
+  await page.getByText('Time attribution and measurement details', { exact: true }).click();
   await expect(page.getByText('Stage subtotal:', { exact: false })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open Full Capture in Wireshark' })).toBeDisabled();
   await expect(
@@ -112,6 +115,7 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await noOverflow(page);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await page.getByText('Case details', { exact: true }).click();
   await page.getByRole('button', { name: 'Delete case', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Delete this case?' });
   await expect(dialog.getByRole('button', { name: 'Keep case' })).toBeFocused();

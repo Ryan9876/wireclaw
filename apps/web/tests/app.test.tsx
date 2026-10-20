@@ -89,6 +89,12 @@ async function fillIntake() {
 }
 beforeEach(() => {
   vi.spyOn(api, 'limits').mockResolvedValue(256 * 1024 * 1024);
+  vi.spyOn(api, 'aiStatus').mockResolvedValue({
+    effective_provider_mode: 'none',
+    embedded_availability: 'not_applicable',
+    model: null,
+    failure_code: null,
+  });
 });
 
 describe('primary intake and recovery workflow', () => {
@@ -150,8 +156,8 @@ describe('primary intake and recovery workflow', () => {
   it('starts with a labeled intake and disabled investigation action', async () => {
     fixture();
     render(<App />);
-    expect(screen.getByRole('heading', { name: 'Start an investigation' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Investigate capture' })).toBeDisabled();
+    expect(screen.getByRole('heading', { name: 'Start with a capture' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     await waitFor(() => expect(screen.getByText(/Local limit:/)).toBeVisible());
     expect(api.create).not.toHaveBeenCalled();
   });
@@ -160,7 +166,7 @@ describe('primary intake and recovery workflow', () => {
     render(<App />);
     const user = await fillIntake();
     expect(screen.getByText('trace.pcap')).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Investigate capture' }));
+    await user.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
     expect(api.create).toHaveBeenCalledWith('application is slow');
     expect(api.upload).toHaveBeenCalledTimes(1);
@@ -170,13 +176,17 @@ describe('primary intake and recovery workflow', () => {
   it('handles file drop and rejects multiple or empty captures', async () => {
     fixture();
     render(<App />);
-    const drop = screen.getByText('Drop a packet capture here').parentElement!;
+    const drop = screen.getByText('Drop PCAP or PCAPNG').parentElement!;
     const first = new File(['capture'], 'dropped.pcap');
     fireEvent.drop(drop, { dataTransfer: { files: [first] } });
     expect(screen.getByText('dropped.pcap')).toBeVisible();
-    fireEvent.drop(drop, { dataTransfer: { files: [first, first] } });
+    fireEvent.change(screen.getByLabelText('Select capture'), {
+      target: { files: [first, first] },
+    });
     expect(screen.getByRole('alert')).toHaveTextContent('exactly one');
-    fireEvent.drop(drop, { dataTransfer: { files: [new File([], 'empty.pcap')] } });
+    fireEvent.drop(screen.getByText('Drop PCAP or PCAPNG').parentElement!, {
+      dataTransfer: { files: [new File([], 'empty.pcap')] },
+    });
     expect(screen.getByRole('alert')).toHaveTextContent('empty');
   });
   it('enforces the actual configured size limit', async () => {
@@ -195,7 +205,7 @@ describe('primary intake and recovery workflow', () => {
     const user = await fillIntake();
     await user.click(screen.getByRole('button', { name: 'Remove selection' }));
     expect(screen.queryByText('trace.pcap')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Investigate capture' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
   });
   it('reports API initialization failure and supports retry', async () => {
     vi.mocked(api.limits).mockRejectedValueOnce(new ApiError('network_unavailable'));
@@ -222,9 +232,10 @@ describe('primary intake and recovery workflow', () => {
     });
     render(<App />);
     const user = await fillIntake();
-    await user.click(screen.getByRole('button', { name: 'Investigate capture' }));
+    await user.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByRole('heading', { name: 'Investigation failed' })).toBeVisible();
     expect(api.investigate).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByText('Case details'));
     expect(screen.getByRole('button', { name: 'Delete case' })).toBeEnabled();
     expect(screen.getByRole('heading', { name: 'Resume capture intake' })).toBeVisible();
   });
@@ -248,8 +259,9 @@ describe('primary intake and recovery workflow', () => {
     openExisting();
     current.state = 'INVESTIGATING';
     current.runs = [{ ...current.runs[0], status: 'running' }];
-    expect(await screen.findByText('Current backend state: INVESTIGATING.')).toBeVisible();
+    expect(await screen.findByText('Analyzing deterministic evidence')).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText('Case details'));
     expect(screen.getByRole('button', { name: 'Delete case' })).toBeDisabled();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
@@ -329,6 +341,7 @@ describe('evidence and uncertainty presentation', () => {
   it('preserves measured classes and incomplete-subtotal qualification', async () => {
     openExisting();
     await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.click(screen.getByText('Time attribution and measurement details'));
     expect(screen.getByText(/Stage subtotal:/)).toBeVisible();
     expect(screen.getByText(/derived \(measured\)/i)).toBeVisible();
     expect(screen.getByText(/not complete end-to-end transaction time/)).toBeVisible();
@@ -352,7 +365,7 @@ describe('evidence and uncertainty presentation', () => {
       symptom: current.symptom,
     } as Report);
     expect(await screen.findByText(current.symptom)).toBeVisible();
-    expect(document.querySelector('img')).toBeNull();
+    expect(document.querySelector('img[src="x"]')).toBeNull();
   });
 });
 
@@ -360,6 +373,7 @@ describe('deliberate deletion', () => {
   it('requires confirmation and accurately reports successful file removal', async () => {
     openExisting();
     await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.click(screen.getByText('Case details'));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case' }));
     const dialog = screen.getByRole('dialog', { name: 'Delete this case?' });
     expect(dialog).toHaveTextContent(supported.case.id);
@@ -381,6 +395,7 @@ describe('deliberate deletion', () => {
       cleanup_pending: true,
     });
     await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.click(screen.getByText('Case details'));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case and stored files' }));
     expect(await screen.findByText(/cleanup is pending/)).toBeVisible();
@@ -389,6 +404,7 @@ describe('deliberate deletion', () => {
     openExisting();
     vi.mocked(api.delete).mockRejectedValue(new ApiError('service_busy'));
     await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.click(screen.getByText('Case details'));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case and stored files' }));
     await waitFor(() =>
@@ -439,7 +455,7 @@ describe('report freshness races', () => {
     await act(async () => {
       resolve(supported.report as Report);
     });
-    expect(screen.getByRole('heading', { name: 'Start an investigation' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Start with a capture' })).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
   });
   it('hides results on lost status connectivity and supports explicit recovery', async () => {
@@ -454,4 +470,191 @@ describe('report freshness races', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
     expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
   });
+});
+
+describe('approved conversation window', () => {
+  it('renders_minimal_empty_capture_state_and_requires_symptom_before_send', async () => {
+    fixture();
+    render(<App />);
+    expect(screen.getByRole('img', { name: 'Wireclaw' })).toHaveAttribute(
+      'src',
+      '/brand/wireclaw-logo.jpeg',
+    );
+    expect(screen.getByText('Drop PCAP or PCAPNG')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Choose file' })).toBeVisible();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    const drop = screen.getByText('Drop PCAP or PCAPNG').parentElement!;
+    fireEvent.dragOver(drop);
+    expect(drop).toHaveClass('dragging');
+    fireEvent.drop(drop, { dataTransfer: { files: [new File(['capture'], 'trace.pcap')] } });
+    expect(screen.queryByText('Drop PCAP or PCAPNG')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Symptom / problem description'), 'slow download');
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+  });
+  it('shows_compact_processing_from_api_state_without_percentage', async () => {
+    openExisting();
+    current.state = 'INVESTIGATING';
+    current.runs = [{ ...current.runs[0], status: 'running' }];
+    const status = await screen.findByText('Analyzing deterministic evidence');
+    expect(status.closest('[role="status"]')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.queryByRole('heading', { name: 'Investigation stages' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\d+%/);
+  });
+  it('renders_authoritative_conclusion_with_nearby_evidence_and_both_wireshark_actions', async () => {
+    openExisting(supported);
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    const result = screen.getByRole('region', { name: 'Supported finding' });
+    expect(within(result).getByText(supported.report.conclusion.statement)).toBeVisible();
+    expect(within(result).getAllByRole('button')[0]).toHaveClass('evidence-id');
+    expect(screen.getByRole('button', { name: 'Open Full Capture in Wireshark' })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
+    ).toBeVisible();
+    expect(screen.getByText(/does not prove a root cause/)).toBeVisible();
+  });
+  it('disables_followup_when_provider_mode_is_rules_only', async () => {
+    openExisting();
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    expect(screen.getByLabelText('Question about this report')).toBeDisabled();
+    expect(screen.getByText(/Follow-up is unavailable in rules-only mode/)).toBeVisible();
+  });
+  it('bookmarked_case_id_restores_existing_case_without_creating_a_case', async () => {
+    openExisting();
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    expect(api.get).toHaveBeenCalledWith(supported.case.id, expect.any(AbortSignal));
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.investigate).not.toHaveBeenCalled();
+  });
+  it('followup_ui_retains_visible_turns_but_sends_only_current_question', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    const fetch = vi.fn().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            answer: 'The capture cannot identify the exact device.',
+            evidence_ids: [enabled.evidence[0].id],
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    openExisting(enabled);
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    const composer = screen.getByLabelText('Question about this report');
+    await userEvent.type(composer, 'Which device?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('The capture cannot identify the exact device.')).toBeVisible();
+    await userEvent.type(composer, 'What would validate this?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() =>
+      expect(screen.getAllByText('The capture cannot identify the exact device.')).toHaveLength(2),
+    );
+    expect(screen.getByText('Which device?')).toBeVisible();
+    expect(screen.getByText('What would validate this?')).toBeVisible();
+    expect(fetch.mock.calls.map((call) => JSON.parse(call[1].body))).toEqual([
+      { question: 'Which device?' },
+      { question: 'What would validate this?' },
+    ]);
+  });
+  it('keeps_report_above_followup_turns', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ answer: 'More evidence is needed.', evidence_ids: [] }), {
+            status: 200,
+          }),
+      ),
+    );
+    openExisting(enabled);
+    const report = await screen.findByRole('region', { name: 'Supported finding' });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const reply = await screen.findByText('More evidence is needed.');
+    expect(report.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'New case' }));
+    expect(screen.queryByText('More evidence is needed.')).not.toBeInTheDocument();
+  });
+});
+
+describe('follow-up recovery and case isolation', () => {
+  function enabledCase() {
+    const value = structuredClone(supported);
+    value.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    value.case.provider_mode = 'openai_compatible_local';
+    return value;
+  }
+  it('keeps evidence usable after a provider failure and allows another question', async () => {
+    const value = enabledCase();
+    openExisting(value);
+    vi.spyOn(api, 'followup')
+      .mockRejectedValueOnce(new ApiError('provider_timeout'))
+      .mockResolvedValueOnce({ answer: '<img src=x onerror="alert(1)">', evidence_ids: [] });
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('timed out');
+    expect(screen.getByRole('button', { name: 'Show Packet Evidence' })).toBeEnabled();
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'What next?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('<img src=x onerror="alert(1)">')).toBeVisible();
+    expect(document.querySelector('img[src="x"]')).toBeNull();
+  });
+  it('aborts and discards a late explanation when the conversation is discarded', async () => {
+    openExisting(enabledCase());
+    let resolve!: (value: { answer: string; evidence_ids: string[] }) => void;
+    const followup = vi.spyOn(api, 'followup').mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    await screen.findByRole('heading', { name: 'Supported finding' });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(resolve).toBeDefined());
+    const signal = followup.mock.calls[0][2];
+    await userEvent.click(screen.getByRole('button', { name: 'New case' }));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => {
+      resolve({ answer: 'Stale response', evidence_ids: [] });
+    });
+    expect(screen.queryByText('Stale response')).not.toBeInTheDocument();
+  });
+});
+
+it('uses_validated_file_intake_when_attaching_a_new_capture_from_a_report', async () => {
+  openExisting();
+  await screen.findByRole('heading', { name: 'Supported finding' });
+  await userEvent.upload(
+    screen.getByLabelText('Select new capture'),
+    new File(['new capture'], 'next.pcapng'),
+  );
+  expect(screen.getByText('next.pcapng')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+  expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+  expect(api.create).not.toHaveBeenCalled();
 });

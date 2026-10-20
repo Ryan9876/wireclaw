@@ -1,4 +1,10 @@
-import { validReport, validEvidence, validCase, validDeletion } from './generated/validators';
+import {
+  validReport,
+  validEvidence,
+  validCase,
+  validDeletion,
+  validFollowup,
+} from './generated/validators';
 import type { components } from './generated/api';
 import type { Report } from './generated/investigation-result';
 import type { Evidence } from './generated/evidence';
@@ -6,6 +12,7 @@ import type { Evidence } from './generated/evidence';
 export type { Report, Evidence };
 export type Case = components['schemas']['CaseResponse'];
 export type AIStatus = components['schemas']['AIStatusResponse'];
+export type Followup = components['schemas']['FollowupResponse'];
 export type Deletion = components['schemas']['DeletionResponse'];
 export type EvidenceCapture = {
   artifact_id: string;
@@ -96,6 +103,11 @@ const explanations: Record<string, string> = {
   service_busy: 'The local API is busy with another operation. Wait, then refresh status.',
   service_interrupted:
     'The service restarted during analysis. Prior evidence is preserved; you can retry investigation.',
+  followup_unavailable:
+    'Follow-up is unavailable for this case. Deterministic evidence remains available.',
+  followup_response_invalid: 'The provider returned an invalid explanation. Try another question.',
+  provider_unavailable: 'The reasoning provider is unavailable. Try again later.',
+  provider_timeout: 'The reasoning provider timed out. Try again later.',
   report_not_ready: 'The report is not ready. Refresh status to recover the current case.',
   invalid_request: 'The local API rejected the request. Check the selected capture and symptom.',
   run_count_limit:
@@ -276,6 +288,22 @@ export const api = {
   },
   async investigate(id: string): Promise<Case> {
     return checkCase(await request(`${casePath(id)}/investigate`, { method: 'POST' }), id);
+  },
+  async followup(id: string, question: string, signal?: AbortSignal): Promise<Followup> {
+    if (!question.trim() || Array.from(question).length > 2000)
+      throw new ApiError('invalid_request');
+    const data = await request(`${casePath(id)}/followups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+      signal,
+    });
+    if (
+      !validFollowup(data) ||
+      !data.evidence_ids.every((id) => /^[A-Za-z0-9_.-]{1,256}$/.test(id))
+    )
+      throw new ApiError('contract_mismatch');
+    return data;
   },
   async report(id: string, signal?: AbortSignal): Promise<Report> {
     const data = await request(`${casePath(id)}/report`, { signal });
