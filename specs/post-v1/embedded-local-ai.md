@@ -523,6 +523,59 @@ The frozen candidate is never edited to supply runtime configuration.
 15. no LAN listener exists for the model or application;
 16. accepted privacy/security sentinel checks pass.
 
+### EAI.14-16 qualification-only provider recorder
+
+EAI.14-16 uses a qualification-only OpenAI-compatible recorder in place of
+the packaged llama-server. The Core remains configured as `embedded_local`
+with its fixed model ID and fixed `http://host.docker.internal:8767/v1`
+provider URL; the recorder temporarily owns the same loopback host endpoint.
+The native product, provider boundary, runtime, model, and UI are not changed.
+
+Run the helper from the exact qualification checkout, supplying the frozen
+candidate bundle, archive, freeze metadata, and an evidence output path:
+
+```text
+python3 scripts/eai14_privacy_qualification.py --candidate-bundle <frozen-candidate-root> --candidate-archive <frozen-candidate.tar> --candidate-metadata <candidate-freeze.json> --receipt-output <operator-evidence/eai14-16.json>
+```
+
+The helper verifies candidate identity, creates a disposable private copy,
+uses one unique `wireclaw-privacy-<16 lowercase hex>` Compose project and an
+isolated data root, and supplies a synthetic-only provider token through the
+qualification process environment. It generates a bounded synthetic PCAP
+with randomized raw-capture, payload, cookie, bearer, and token sentinels;
+the symptom itself contains no sentinel. The packaged Core analyzes the
+capture and completes an investigation through the recorder. The recorder
+checks the actual OpenAI-compatible request body and every non-Authorization
+header in memory, validates its synthetic Authorization value internally,
+and returns the existing schema-valid deterministic `finalize` action. It
+retains only request count, body size and SHA-256, and bounded pass/fail
+metadata. It never writes or prints credentials, request bodies, or model
+context.
+
+The helper must inspect these exact surfaces and fail closed if any check is
+missing or any sentinel is found:
+
+- `model_context`: direct recorder observation of the actual request body
+   and non-Authorization headers, correlated to the generated case;
+- `api_responses`: bounded health, capability, case, capture, investigation,
+   and report responses;
+- `case_database`: raw private SQLite database/WAL bytes and decoded records;
+- `runtime_logs`: applicable runtime/data-root log files and the recorder's
+   suppressed in-memory diagnostic stream;
+- `core_logs`: bounded `docker compose logs` output for the unique project;
+- `browser_status`: bounded public UI document, health, and capability HTTP
+   responses; this probe retains no screenshot, trace, or video;
+- `reports`: report response and serialized report files.
+
+Only after the investigation completes, the recorder observes exactly one
+case-correlated request, all seven surfaces are inspected and clean, and the
+frozen bundle/archive are reverified does the helper write the existing
+eight-field EAI.14-16 candidate-bound receipt. The helper then stops the
+recorder, removes the unique Compose project, private candidate copy, isolated
+data root, PCAP, and synthetic-token container state. It does not remove the
+operator evidence output. No receipt is hand-authored, and no qualification
+artifact is added to the release candidate.
+
 Windows/Linux results remain `NOT_RUN` for this stage and are not blockers because they are outside the approved scope.
 
 ## 23. Implementation tasks
