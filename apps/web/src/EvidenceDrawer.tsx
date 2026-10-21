@@ -107,12 +107,12 @@ export function EvidenceDrawer({
       )}
       {!item && !error && <p role="status">Loading normalized evidence…</p>}
       {item && (
-        <article aria-label="Evidence record">
+        <article aria-labelledby="evidence-record-title">
           <div className="record-meta">
             <span className="tag">{human(item.epistemic_class)}</span>
             <code>{item.id}</code>
           </div>
-          <h3>{human(item.category)}</h3>
+          <h3 id="evidence-record-title">{human(item.category)}</h3>
           <p>{item.summary}</p>
           <dl className="facts">
             <div>

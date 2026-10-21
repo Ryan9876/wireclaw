@@ -352,6 +352,11 @@ describe('evidence and uncertainty presentation', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Show Packet Evidence' }));
     const dialog = screen.getByRole('dialog', { name: 'Expert evidence' });
     expect(await within(dialog).findByRole('heading', { name: 'Normalized values' })).toBeVisible();
+    expect(within(dialog).getByLabelText('Evidence record')).toBeVisible();
+    expect(within(dialog).getByRole('article', { name: 'analyze rtt' })).toBeVisible();
+    expect(
+      within(dialog).queryByRole('article', { name: 'Evidence record' }),
+    ).not.toBeInTheDocument();
     expect(within(dialog).getByText('Tool / version')).toBeVisible();
     expect(within(dialog).getByText('Scope')).toBeVisible();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Close expert evidence' }));
