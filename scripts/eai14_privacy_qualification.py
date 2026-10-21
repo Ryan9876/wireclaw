@@ -420,6 +420,7 @@ def cleanup_qualification(
         and not re.search(r"(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)", key, re.IGNORECASE)
     }
     environment["COMPOSE_PROJECT_NAME"] = project_name
+    environment["WIRECLAW_DATA_ROOT"] = str(root / "isolated-data")
     if compose_file.is_file() and not compose_file.is_symlink():
         result = runner(
             [
@@ -427,8 +428,6 @@ def cleanup_qualification(
                 "compose",
                 "--project-name",
                 project_name,
-                "--env-file",
-                str(compose_file.parent / ".env"),
                 "-f",
                 str(compose_file),
                 "down",

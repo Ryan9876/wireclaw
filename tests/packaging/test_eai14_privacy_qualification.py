@@ -367,19 +367,23 @@ def test_browser_status_probe_does_not_retain_browser_artifacts():
     assert helper.BROWSER_PROBE_METHOD == "bounded_http_ui_probe"
 
 
-def test_cleanup_is_bounded_and_removes_only_private_qualification_tree(tmp_path):
+def test_cleanup_is_bounded_without_env_and_removes_only_private_qualification_tree(
+    tmp_path, monkeypatch
+):
     helper = helper_module()
     workspace = tmp_path / "wireclaw-privacy-qualification-run"
     private_copy = workspace / "private-candidate"
     private_copy.mkdir(parents=True)
     (private_copy / "compose.yaml").write_text("services: {}\n")
-    (private_copy / ".env").write_text("\n")
     (private_copy / ".env.example").write_text("\n")
     (private_copy / "marker").write_text("synthetic")
+    (workspace / "isolated-data").mkdir()
     evidence = tmp_path / "operator-evidence"
     evidence.mkdir()
     receipt = evidence / "eai14-16.json"
     receipt.write_text("keep")
+    monkeypatch.setenv("WIRECLAW_PROVIDER_API_KEY", "SYNTHETIC_SHOULD_NOT_BE_INHERITED")
+    monkeypatch.setenv("QUALIFICATION_TEST_SECRET", "SYNTHETIC_SHOULD_NOT_BE_INHERITED")
     calls = []
 
     def runner(argv, **kwargs):
@@ -398,5 +402,42 @@ def test_cleanup_is_bounded_and_removes_only_private_qualification_tree(tmp_path
         runner=runner,
     )
     assert calls and all(call[1]["timeout"] <= 30 for call in calls)
+    compose_argv, compose_kwargs = calls[0]
+    assert "--env-file" not in compose_argv
+    assert compose_kwargs["env"]["WIRECLAW_DATA_ROOT"] == str(workspace / "isolated-data")
+    assert compose_kwargs["env"]["COMPOSE_PROJECT_NAME"] == "wireclaw-privacy-0123456789abcdef"
+    assert "WIRECLAW_PROVIDER_API_KEY" not in compose_kwargs["env"]
+    assert "QUALIFICATION_TEST_SECRET" not in compose_kwargs["env"]
     assert not workspace.exists()
     assert receipt.read_text() == "keep"
+
+
+def test_cleanup_compose_failure_preserves_private_workspace(tmp_path):
+    helper = helper_module()
+    workspace = tmp_path / "wireclaw-privacy-cleanup-failure"
+    private_copy = workspace / "candidate"
+    private_copy.mkdir(parents=True)
+    compose_file = private_copy / "compose.yaml"
+    compose_file.write_text("services: {}\n")
+    (workspace / "isolated-data").mkdir()
+    calls = []
+
+    def runner(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return type("Result", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+
+    with pytest.raises(ValueError, match="privacy_compose_cleanup_failed"):
+        helper.cleanup_qualification(
+            project_name="wireclaw-privacy-0123456789abcdef",
+            compose_file=compose_file,
+            private_root=workspace,
+            evidence_output=tmp_path / "eai14-16.json",
+            runner=runner,
+        )
+
+    assert len(calls) == 1
+    assert calls[0][0][0:2] == ["docker", "compose"]
+    assert "--env-file" not in calls[0][0]
+    assert calls[0][1]["timeout"] == 30
+    assert workspace.exists()
+    assert not any(argv[0] == "/bin/rm" for argv, _kwargs in calls)
