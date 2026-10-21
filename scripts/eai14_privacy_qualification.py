@@ -669,9 +669,16 @@ def _candidate_context(bundle: Path, archive: Path, metadata_path: Path):
 
 
 def _reject_persisted_provider_key(bundle: Path) -> None:
-    for config_file in (bundle / ".env", bundle / ".env.example"):
-        if config_file.is_symlink() or not config_file.is_file():
+    example_file = bundle / ".env.example"
+    env_file = bundle / ".env"
+    if example_file.is_symlink() or not example_file.is_file():
+        raise ValueError("candidate_configuration_invalid")
+    config_files = [example_file]
+    if env_file.exists() or env_file.is_symlink():
+        if env_file.is_symlink() or not env_file.is_file():
             raise ValueError("candidate_configuration_invalid")
+        config_files.append(env_file)
+    for config_file in config_files:
         try:
             lines = config_file.read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeError):

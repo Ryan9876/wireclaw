@@ -30,6 +30,64 @@ def helper_module():
     return module
 
 
+def test_candidate_configuration_accepts_untouched_frozen_release_without_env(tmp_path):
+    helper = helper_module()
+    (tmp_path / ".env.example").write_text("WIRECLAW_PROVIDER_API_KEY=\n", encoding="utf-8")
+
+    helper._reject_persisted_provider_key(tmp_path)
+
+
+def test_candidate_configuration_requires_regular_env_example(tmp_path):
+    helper = helper_module()
+    with pytest.raises(ValueError, match="candidate_configuration_invalid"):
+        helper._reject_persisted_provider_key(tmp_path)
+
+
+def test_candidate_configuration_rejects_env_example_symlink(tmp_path):
+    helper = helper_module()
+    target = tmp_path / "template"
+    target.write_text("WIRECLAW_PROVIDER_API_KEY=\n", encoding="utf-8")
+    (tmp_path / ".env.example").symlink_to(target)
+
+    with pytest.raises(ValueError, match="candidate_configuration_invalid"):
+        helper._reject_persisted_provider_key(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "env_contents", [None, "", "OTHER_SETTING=value\n", "WIRECLAW_PROVIDER_API_KEY=\n"]
+)
+def test_candidate_configuration_accepts_optional_env_without_provider_key(tmp_path, env_contents):
+    helper = helper_module()
+    (tmp_path / ".env.example").write_text("WIRECLAW_PROVIDER_API_KEY=\n", encoding="utf-8")
+    if env_contents is not None:
+        (tmp_path / ".env").write_text(env_contents, encoding="utf-8")
+
+    helper._reject_persisted_provider_key(tmp_path)
+
+
+@pytest.mark.parametrize("filename", [".env", ".env.example"])
+def test_candidate_configuration_rejects_nonempty_provider_key(tmp_path, filename):
+    helper = helper_module()
+    (tmp_path / ".env.example").write_text("WIRECLAW_PROVIDER_API_KEY=\n", encoding="utf-8")
+    (tmp_path / filename).write_text(
+        "WIRECLAW_PROVIDER_API_KEY=synthetic-value\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="candidate_persistent_provider_key_present"):
+        helper._reject_persisted_provider_key(tmp_path)
+
+
+def test_candidate_configuration_rejects_env_symlink_if_present(tmp_path):
+    helper = helper_module()
+    (tmp_path / ".env.example").write_text("WIRECLAW_PROVIDER_API_KEY=\n", encoding="utf-8")
+    target = tmp_path / "local-env"
+    target.write_text("WIRECLAW_PROVIDER_API_KEY=\n", encoding="utf-8")
+    (tmp_path / ".env").symlink_to(target)
+
+    with pytest.raises(ValueError, match="candidate_configuration_invalid"):
+        helper._reject_persisted_provider_key(tmp_path)
+
+
 def test_provider_fixture_fails_when_sentinel_is_in_actual_request(capsys):
     helper = helper_module()
     token = "TEST_ONLY_PROVIDER_TOKEN_abcdef0123456789"
