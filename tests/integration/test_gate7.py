@@ -1063,6 +1063,54 @@ def followup_client(tmp_path, monkeypatch, result=None, *, mode=ProviderMode.LOC
     )
 
 
+def test_followup_provider_receives_timeout_configured_from_environment(tmp_path, monkeypatch):
+    for key in (
+        "WIRECLAW_PUBLIC_PORT",
+        "WIRECLAW_BRIDGE_PORT",
+        "WIRECLAW_PROVIDER_MODE",
+        "WIRECLAW_PROVIDER_BASE_URL",
+        "WIRECLAW_PROVIDER_MODEL",
+        "WIRECLAW_PROVIDER_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("WIRECLAW_PROVIDER_MODE", "openai_compatible_local")
+    monkeypatch.setenv("WIRECLAW_PROVIDER_BASE_URL", "http://127.0.0.1:1234/v1")
+    monkeypatch.setenv("WIRECLAW_PROVIDER_MODEL", "followup-model")
+    monkeypatch.setenv("WIRECLAW_PROVIDER_TIMEOUT_SECONDS", "120")
+    policy = Policy.from_environment()
+    service, case_id = prepared_service(tmp_path, policy)
+    Gate6Service._assemble_report(service, case_id)
+    configured_timeouts = []
+    original_make_provider = loop.make_provider
+
+    class Provider:
+        def propose(self, _request):
+            return ProviderResult(
+                content=json.dumps(
+                    {
+                        "answer": "The available evidence cannot answer this question.",
+                        "evidence_ids": [],
+                    }
+                )
+            )
+
+    def make_provider(configured_policy):
+        configured_provider = original_make_provider(configured_policy)
+        configured_timeouts.append(configured_provider.timeout_seconds)
+        return Provider()
+
+    monkeypatch.setattr(loop, "make_provider", make_provider)
+    monkeypatch.setattr(api_module, "Service", lambda *_args: service)
+    client = TestClient(create_app(tmp_path, policy), base_url="http://127.0.0.1:8765")
+    with client:
+        response = client.post(
+            f"/api/cases/{case_id}/followups", json={"question": "Why was this slow?"}
+        )
+
+    assert response.status_code == 200, response.text
+    assert configured_timeouts == [120]
+
+
 def assert_followup_error(client, case_id, status, code, body=None):
     response = client.post(f"/api/cases/{case_id}/followups", json=body or {"question": "Why?"})
     assert response.status_code == status, response.text

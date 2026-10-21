@@ -36,6 +36,39 @@ def test_provider_configuration_is_startup_only_and_cloud_requires_https():
     assert local.provider_mode is ProviderMode.LOCAL
 
 
+def test_provider_timeout_from_environment_defaults_to_60_and_reads_120(monkeypatch):
+    for key in (
+        "WIRECLAW_PUBLIC_PORT",
+        "WIRECLAW_BRIDGE_PORT",
+        "WIRECLAW_PROVIDER_MODE",
+        "WIRECLAW_PROVIDER_BASE_URL",
+        "WIRECLAW_PROVIDER_MODEL",
+        "WIRECLAW_PROVIDER_API_KEY",
+        "WIRECLAW_PROVIDER_TIMEOUT_SECONDS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    assert Policy.from_environment().provider_timeout_seconds == 60
+
+    monkeypatch.setenv("WIRECLAW_PROVIDER_TIMEOUT_SECONDS", "120")
+    assert Policy.from_environment().provider_timeout_seconds == 120
+
+
+def test_provider_timeout_from_environment_rejects_values_above_policy_limit(monkeypatch):
+    monkeypatch.setenv("WIRECLAW_PROVIDER_TIMEOUT_SECONDS", "301")
+    with pytest.raises(ValueError):
+        Policy.from_environment()
+
+
+@pytest.mark.parametrize("value", ["not-a-number", "", "nan", "inf"])
+def test_provider_timeout_from_environment_rejects_invalid_values_safely(monkeypatch, value):
+    monkeypatch.setenv("WIRECLAW_PROVIDER_TIMEOUT_SECONDS", value)
+    with pytest.raises(ValueError) as error:
+        Policy.from_environment()
+    assert str(error.value) in {"invalid_provider_timeout", "invalid_policy"}
+    if value:
+        assert value not in str(error.value)
+
+
 def test_embedded_provider_configuration_uses_authenticated_fixed_local_endpoint():
     assert ProviderMode("embedded_local") is ProviderMode.EMBEDDED
     policy = Policy(

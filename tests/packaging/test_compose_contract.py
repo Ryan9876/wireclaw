@@ -1,11 +1,16 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def rendered_compose():
+def rendered_compose(extra_environment=None):
+    environment = os.environ.copy()
+    environment.pop("WIRECLAW_PROVIDER_TIMEOUT_SECONDS", None)
+    if extra_environment:
+        environment.update(extra_environment)
     result = subprocess.run(
         [
             "docker",
@@ -19,6 +24,7 @@ def rendered_compose():
             "json",
         ],
         cwd=ROOT,
+        env=environment,
         check=True,
         capture_output=True,
         text=True,
@@ -49,11 +55,20 @@ def test_rendered_compose_has_only_loopback_core_publication_and_persistent_moun
     assert core["security_opt"] == ["no-new-privileges:true"]
     assert core["read_only"] is True
     assert core["environment"]["WIRECLAW_PROVIDER_MODE"] == "none"
+    assert core["environment"]["WIRECLAW_PROVIDER_TIMEOUT_SECONDS"] == "60"
     assert "WIRECLAW_PROVIDER_API_KEY" in core["environment"]
     assert core["healthcheck"]["test"][0] == "CMD"
     assert "/api/health" in core["healthcheck"]["test"][-1]
     assert "WIRECLAW_PUBLIC_PORT" in core["healthcheck"]["test"][-1]
     assert all(port["published"] != "8767" for port in core["ports"])
+
+
+def test_compose_passes_explicit_provider_timeout_to_core():
+    config = rendered_compose({"WIRECLAW_PROVIDER_TIMEOUT_SECONDS": "120"})
+    assert (
+        config["services"]["wireclaw-core"]["environment"]["WIRECLAW_PROVIDER_TIMEOUT_SECONDS"]
+        == "120"
+    )
 
 
 def test_env_example_uses_rules_only_and_contains_no_secret():
@@ -69,6 +84,7 @@ def test_env_example_uses_rules_only_and_contains_no_secret():
 def test_packaged_env_example_defaults_to_embedded_ai_without_token():
     env = (ROOT / "wireclaw-release/.env.example").read_text(encoding="utf-8")
     assert "WIRECLAW_PROVIDER_MODE=embedded_local" in env
+    assert "WIRECLAW_PROVIDER_TIMEOUT_SECONDS=120" in env
     assert "WIRECLAW_AI_PORT=8767" in env
     assert "WIRECLAW_PROVIDER_API_KEY" not in env
 

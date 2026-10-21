@@ -202,6 +202,12 @@ class Policy:
         """Read provider policy only at process startup; request bodies cannot alter it."""
         import os
 
+        try:
+            provider_timeout_seconds = float(
+                os.environ.get("WIRECLAW_PROVIDER_TIMEOUT_SECONDS", "60")
+            )
+        except (TypeError, ValueError):
+            raise ValueError("invalid_provider_timeout") from None
         values = {
             "port": int(os.environ.get("WIRECLAW_PUBLIC_PORT", "8765")),
             "bridge_port": int(os.environ.get("WIRECLAW_BRIDGE_PORT", "8766")),
@@ -209,6 +215,7 @@ class Policy:
             "provider_base_url": os.environ.get("WIRECLAW_PROVIDER_BASE_URL"),
             "provider_model": os.environ.get("WIRECLAW_PROVIDER_MODEL"),
             "provider_api_key": os.environ.get("WIRECLAW_PROVIDER_API_KEY"),
+            "provider_timeout_seconds": provider_timeout_seconds,
         }
         values.update(overrides)
         return cls(**values)

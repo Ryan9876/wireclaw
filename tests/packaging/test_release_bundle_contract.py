@@ -285,6 +285,14 @@ def test_release_stager_includes_the_production_build_context_and_native_launche
     assert '"README.md"' in PACKAGER
 
 
+def test_release_stager_copies_embedded_timeout_default_into_bundle():
+    env_template = (ROOT / "wireclaw-release/.env.example").read_text(encoding="utf-8")
+    assert "WIRECLAW_PROVIDER_TIMEOUT_SECONDS=120" in env_template
+    assert (
+        'shutil.copy2(ROOT / "wireclaw-release/.env.example", stage / ".env.example")' in PACKAGER
+    )
+
+
 def test_release_readme_documents_staged_bundle_and_platform_scope():
     readme = " ".join((ROOT / "wireclaw-release/README.md").read_text(encoding="utf-8").split())
     assert "macOS arm64" in readme
