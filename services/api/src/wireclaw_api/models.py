@@ -1,9 +1,10 @@
 """Strict request contracts: no paths, executable names, flags or filters."""
 
+import unicodedata
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from wireclaw_analyzer import Capability
 
 
@@ -34,8 +35,74 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+def plain_label(value):
+    if any(unicodedata.category(char).startswith("C") for char in value):
+        raise ValueError("invalid_display_label")
+    value = value.strip()
+    if not value:
+        raise ValueError("invalid_display_label")
+    return value
+
+
 class CreateCase(StrictModel):
     symptom: Annotated[str, Field(max_length=4096)]
+    capture_name: Annotated[str, Field(max_length=255)] | None = None
+
+    @field_validator("capture_name")
+    @classmethod
+    def safe_capture_name(cls, value):
+        if value is None:
+            return value
+        value = plain_label(value).replace("\\", "/").rsplit("/", 1)[-1].strip()
+        if not value or value in (".", ".."):
+            raise ValueError("invalid_capture_name")
+        return value
+
+
+class RenameCase(StrictModel):
+    display_name: Annotated[str, Field(max_length=120)]
+
+    @field_validator("display_name")
+    @classmethod
+    def safe_display_name(cls, value):
+        return plain_label(value)
+
+
+class FollowupRequest(StrictModel):
+    question: Annotated[str, Field(min_length=1, max_length=2000)]
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def trim_question(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class FollowupResponse(StrictModel):
+    answer: Annotated[str, Field(min_length=1, max_length=4000)]
+    evidence_ids: Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=256)]], Field(max_length=200)
+    ]
+
+    @field_validator("answer")
+    @classmethod
+    def nonblank_answer(cls, value):
+        if not value.strip():
+            raise ValueError("invalid_answer")
+        return value
+
+    @field_validator("evidence_ids")
+    @classmethod
+    def unique_evidence_ids(cls, value):
+        return list(dict.fromkeys(value))
+
+
+class RecentCaseResponse(StrictModel):
+    id: str
+    name: str
+    capture_bytes: int | None
+    created: str
+    updated: str
+    state: str
 
 
 BASELINE = (
@@ -136,8 +203,20 @@ class RunResponse(StrictModel):
     created: str
 
 
+class AIStatusResponse(StrictModel):
+    effective_provider_mode: Literal[
+        "none", "openai_compatible_cloud", "openai_compatible_local", "embedded_local"
+    ]
+    embedded_availability: Literal["ready", "unavailable", "not_applicable"]
+    model: str | None
+    failure_code: str | None
+
+
 class CaseResponse(StrictModel):
     id: str
+    name: str
+    capture_name: str | None
+    display_name: str | None
     symptom: str
     state: str
     created: str
@@ -152,6 +231,23 @@ class CaseResponse(StrictModel):
     evidence_count: int
     gate_boundary: str
     provider_mode: str
+    ai_status: AIStatusResponse
+
+
+class HealthResponse(StrictModel):
+    status: str
+    gate: int
+    provider_mode: str
+    ai: AIStatusResponse
+
+
+class CapabilitiesResponse(StrictModel):
+    capabilities: list[str]
+    provider_mode: str
+    provider_modes_supported_by_interface: list[str]
+    bridge: dict[str, str]
+    limits: dict[str, int | float]
+    ai: AIStatusResponse
 
 
 class DeletionResponse(StrictModel):

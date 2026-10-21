@@ -1,5 +1,8 @@
 {
   "case": {
+    "name": "Capture cccccccc",
+    "capture_name": null,
+    "display_name": null,
     "id": "cccccccccccccccccccccccccccccccc",
     "symptom": "application is slow",
     "state": "COMPLETE",
@@ -390,7 +393,13 @@
     ],
     "evidence_count": 16,
     "gate_boundary": "Gate 4: deterministic findings and report; model reasoning deferred",
-    "provider_mode": "none"
+    "provider_mode": "none",
+    "ai_status": {
+      "effective_provider_mode": "none",
+      "embedded_availability": "not_applicable",
+      "model": null,
+      "failure_code": null
+    }
   },
   "report": {
     "analyzer_versions": {

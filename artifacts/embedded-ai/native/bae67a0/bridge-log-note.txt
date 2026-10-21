@@ -1,0 +1,1 @@
+Packaged launch/macos/start.sh redirects host-bridge stdout/stderr to /dev/null. The macOS unified-log query was denied access to the local log store (Operation not permitted), so no bridge log text is available. Bridge process identity, 127.0.0.1:28796 listener, and /v1/health response are preserved in bridge-health-final.json and listener-bridge-final.txt.

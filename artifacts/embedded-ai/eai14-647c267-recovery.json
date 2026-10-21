@@ -1,0 +1,18 @@
+{
+  "health": {
+    "status": "ok",
+    "gate": 7,
+    "provider_mode": "embedded_local",
+    "ai": {
+      "effective_provider_mode": "embedded_local",
+      "embedded_availability": "ready",
+      "model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+      "failure_code": null
+    }
+  },
+  "case_id": "20b204f1ea204d4e9cfea55034e37d5c",
+  "case_state": "COMPLETE",
+  "capture_sha": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+  "reasoning_mode": "model_assisted",
+  "evidence_count": 17
+}

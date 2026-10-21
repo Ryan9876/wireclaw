@@ -1,0 +1,19 @@
+{
+  "core_and_launcher_logs_scanned": [
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/core-pre-tamper-stop.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/core-after-capture.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/core-final.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/core-port-conflict.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/core-after-loss.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/core-preflight.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/launcher-final.stdout-stderr.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/launcher.stdout-stderr.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/launcher-after-port-conflict.stdout-stderr.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/launcher-port-conflict.stdout-stderr.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0/logs/launcher-restart.stdout-stderr.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0 tamper copy/logs/core-tamper.log",
+    "/private/tmp/Wireclaw EAI14 bae67a0 tamper copy/logs/launcher-tamper.stdout-stderr.log"
+  ],
+  "async_probe_warning_hits": [],
+  "warning_absent": true
+}

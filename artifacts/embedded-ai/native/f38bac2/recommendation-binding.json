@@ -1,0 +1,15 @@
+{
+  "result": "PASS",
+  "ranking": [],
+  "accepted_codes": [
+    "application_logs"
+  ],
+  "deterministic_report_hypotheses_unchanged": [
+    {
+      "category": "server.application_wait",
+      "fault_domains": [
+        "server_application"
+      ]
+    }
+  ]
+}

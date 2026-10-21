@@ -43,11 +43,25 @@ ajv.addSchema({
   components: api.components,
   $ref: '#/components/schemas/DeletionResponse',
 });
+ajv.addSchema({
+  $id: 'wireclaw-recent-cases',
+  components: api.components,
+  type: 'array',
+  maxItems: 10,
+  items: { $ref: '#/components/schemas/RecentCaseResponse' },
+});
+ajv.addSchema({
+  $id: 'wireclaw-followup',
+  components: api.components,
+  $ref: '#/components/schemas/FollowupResponse',
+});
 let validators = standalone(ajv, {
   validReport: report.$id,
   validEvidence: evidence.$id,
   validCase: 'wireclaw-case',
   validDeletion: 'wireclaw-deletion',
+  validRecentCases: 'wireclaw-recent-cases',
+  validFollowup: 'wireclaw-followup',
 });
 const helpers = new Set();
 validators = validators.replace(
@@ -77,5 +91,7 @@ export function validReport(data: unknown): data is Report;
 export function validEvidence(data: unknown): data is Evidence;
 export function validCase(data: unknown): data is components['schemas']['CaseResponse'];
 export function validDeletion(data: unknown): data is components['schemas']['DeletionResponse'];
+export function validRecentCases(data: unknown): data is components['schemas']['RecentCaseResponse'][];
+export function validFollowup(data: unknown): data is components['schemas']['FollowupResponse'];
 `,
 );

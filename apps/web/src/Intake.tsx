@@ -6,20 +6,38 @@ export const fileSize = (bytes: number) =>
     ? `${(bytes / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 1 })} MiB`
     : `${bytes.toLocaleString()} bytes`;
 
+function validateSelection(
+  files: FileList | File[],
+  limit: number | null,
+): { file: File | null; error: string } {
+  if (files.length !== 1) return { file: null, error: 'Select exactly one capture file.' };
+  if (!files[0].size)
+    return { file: null, error: 'The selected file is empty. Choose a PCAP or PCAPNG capture.' };
+  if (limit && files[0].size > limit)
+    return { file: null, error: `The capture exceeds the local limit of ${fileSize(limit)}.` };
+  return { file: files[0], error: '' };
+}
+
 export function Intake({
   onStart,
   busy,
   fixedSymptom,
+  initialFiles,
 }: {
   onStart: (file: File, symptom: string) => Promise<void>;
   busy: boolean;
   fixedSymptom?: string;
+  initialFiles?: File[];
 }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(() =>
+    initialFiles ? validateSelection(initialFiles, null).file : null,
+  );
   const [symptom, setSymptom] = useState(fixedSymptom ?? '');
   const [limit, setLimit] = useState<number | null>(null);
   const [limitError, setLimitError] = useState('');
-  const [fileError, setFileError] = useState('');
+  const [fileError, setFileError] = useState(() =>
+    initialFiles ? validateSelection(initialFiles, null).error : '',
+  );
   const [dragging, setDragging] = useState(false);
   const [retry, setRetry] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -39,22 +57,9 @@ export function Intake({
     return () => controller.abort();
   }, [retry]);
   function select(files: FileList | File[]) {
-    setFile(null);
-    setFileError('');
-    if (files.length !== 1) {
-      setFileError('Select exactly one capture file.');
-      return;
-    }
-    const selected = files[0];
-    if (selected.size === 0) {
-      setFileError('The selected file is empty. Choose a PCAP or PCAPNG capture.');
-      return;
-    }
-    if (limit && selected.size > limit) {
-      setFileError(`The capture exceeds the local limit of ${fileSize(limit)}.`);
-      return;
-    }
-    setFile(selected);
+    const selection = validateSelection(files, limit);
+    setFile(selection.file);
+    setFileError(selection.error);
   }
   const tooLarge = !!file && !!limit && file.size > limit;
   async function submit(event: FormEvent) {
@@ -62,71 +67,68 @@ export function Intake({
     if (file && limit && !tooLarge && symptom.trim() && !busy) await onStart(file, symptom);
   }
   return (
-    <section className="panel intake" aria-labelledby="intake-heading">
-      <div className="section-heading">
-        <h2 id="intake-heading">
-          {fixedSymptom === undefined ? 'Start an investigation' : 'Resume capture intake'}
-        </h2>
-        <span className="eyebrow">PCAP / PCAPNG</span>
-      </div>
-      <p className="muted">
-        Provide the capture and what the user experienced. The analyzer establishes the facts; your
-        symptom provides context.
-      </p>
+    <section
+      className={`intake ${file ? 'has-file' : ''}`}
+      aria-labelledby="intake-heading"
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!busy) setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (!busy) select(event.dataTransfer.files);
+      }}
+    >
+      <h1 id="intake-heading" className={file ? 'sr-only' : ''}>
+        {fixedSymptom === undefined ? 'Start with a capture' : 'Resume capture intake'}
+      </h1>
       <form onSubmit={submit}>
-        <div
-          className={`drop-zone ${dragging ? 'dragging' : ''}`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            if (!busy) setDragging(true);
+        <input
+          ref={input}
+          className="sr-only"
+          id="capture-file"
+          type="file"
+          accept=".pcap,.pcapng,.cap,application/vnd.tcpdump.pcap"
+          disabled={busy}
+          aria-label="Select capture"
+          aria-describedby="capture-help capture-error"
+          aria-invalid={!!fileError || tooLarge}
+          onChange={(event) => {
+            if (event.target.files?.length) select(event.target.files);
           }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragging(false);
-            if (!busy) select(event.dataTransfer.files);
-          }}
-        >
-          <span className="file-icon" aria-hidden="true">
-            ↥
-          </span>
-          <strong>Drop a packet capture here</strong>
-          <span className="muted">or select a local file</span>
-          <label className="file-picker" htmlFor="capture-file">
-            Select capture
-          </label>
-          <input
-            ref={input}
-            className="file-input"
-            id="capture-file"
-            type="file"
-            accept=".pcap,.pcapng,.cap,application/vnd.tcpdump.pcap"
-            disabled={busy}
-            aria-describedby="capture-help capture-error"
-            aria-invalid={!!fileError || tooLarge}
-            onChange={(event) => {
-              if (event.target.files?.length) select(event.target.files);
-            }}
-          />
-        </div>
-        <p id="capture-help" className="field-help">
-          {limit
-            ? `Local limit: ${fileSize(limit)}. Format is verified by the backend, not the filename.`
-            : 'Reading the local API capture limit…'}
-        </p>
-        <p
-          id="capture-error"
-          className="field-error"
-          role={fileError || tooLarge ? 'alert' : undefined}
-        >
-          {fileError || (tooLarge ? 'The selected capture exceeds the local size limit.' : '')}
-        </p>
-        {file && (
-          <div className="selected-file" role="status">
+        />
+        {!file ? (
+          <div className={`drop-zone ${dragging ? 'dragging' : ''}`}>
+            <span className="file-icon" aria-hidden="true">
+              ↥
+            </span>
+            <span>Drop PCAP or PCAPNG</span>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() => input.current?.click()}
+            >
+              Choose file
+            </button>
+          </div>
+        ) : (
+          <div className={`selected-file ${dragging ? 'dragging' : ''}`} role="status">
+            <span aria-hidden="true">▤</span>
             <div>
               <strong>{file.name}</strong>
-              <span>{fileSize(file.size)} · Ready for local upload</span>
+              <span>{fileSize(file.size)}</span>
             </div>
+            <button
+              type="button"
+              className="quiet"
+              disabled={busy}
+              onClick={() => input.current?.click()}
+            >
+              Replace
+            </button>
             <button
               type="button"
               className="quiet"
@@ -140,25 +142,19 @@ export function Intake({
             </button>
           </div>
         )}
-        <label htmlFor="symptom">Symptom / problem description</label>
-        <textarea
-          id="symptom"
-          rows={4}
-          value={symptom}
-          readOnly={fixedSymptom !== undefined}
-          disabled={busy}
-          maxLength={4096}
-          required
-          placeholder="For example: users report slow downloads to 192.0.2.20 over port 443."
-          aria-describedby="symptom-help"
-          onChange={(event) => setSymptom(event.target.value)}
-        />
-        <div className="field-help" id="symptom-help">
-          <span>
-            Include affected endpoints and timing when known. Context is not packet evidence.
-          </span>
-          <span>{symptom.length} / 4096</span>
-        </div>
+        <p id="capture-help" className="field-help">
+          {limit
+            ? `Local limit: ${fileSize(limit)}. Format is verified by the backend, not the filename.`
+            : 'Reading the local API capture limit…'}
+        </p>
+        <p
+          id="capture-error"
+          className="field-error"
+          role={fileError || tooLarge ? 'alert' : undefined}
+        >
+          {fileError || (tooLarge ? 'The selected capture exceeds the local size limit.' : '')}
+        </p>
+        <p className="privacy">Your capture stays in your local Wireclaw workspace.</p>
         {limitError && (
           <div className="error" role="alert">
             <p>{limitError}</p>
@@ -173,15 +169,44 @@ export function Intake({
             </button>
           </div>
         )}
-        <div className="intake-footer">
-          <p>Capture stays in the local Wireclaw API. No model provider is used.</p>
-          <button
-            className="primary"
-            type="submit"
-            disabled={busy || !file || !symptom.trim() || !limit || tooLarge}
-          >
-            {busy ? 'Submitting…' : 'Investigate capture'} <span aria-hidden="true">→</span>
-          </button>
+        <div className="composer-wrap">
+          <div className="composer">
+            <button
+              className="attach quiet"
+              type="button"
+              aria-label="Attach capture"
+              disabled={busy}
+              onClick={() => input.current?.click()}
+            >
+              ＋
+            </button>
+            <label className="sr-only" htmlFor="symptom">
+              Symptom / problem description
+            </label>
+            <textarea
+              id="symptom"
+              rows={1}
+              value={symptom}
+              readOnly={fixedSymptom !== undefined}
+              disabled={busy}
+              maxLength={4096}
+              required
+              placeholder="What did users experience?"
+              aria-describedby="symptom-help"
+              onChange={(event) => setSymptom(event.target.value)}
+            />
+            <button
+              className="send primary"
+              type="submit"
+              aria-label="Send"
+              disabled={busy || !file || !symptom.trim() || !limit || tooLarge}
+            >
+              <span aria-hidden="true">↑</span>
+            </button>
+          </div>
+          <p className="composer-hint" id="symptom-help">
+            Attach a capture, then describe the issue. Context is not packet evidence.
+          </p>
         </div>
       </form>
     </section>

@@ -1,0 +1,33 @@
+{
+  "health_status": 200,
+  "health_ready": true,
+  "capabilities_status": 200,
+  "authenticated_models_status": 200,
+  "authenticated_expected_model": true,
+  "token_file_mode_octal": "0o600",
+  "runtime_dir_mode_octal": "0o700",
+  "token_absent_from_public_surfaces": true,
+  "token_absent_from_logs_and_case_data": true,
+  "token_leak_locations": [],
+  "benchmark_runs": [
+    {
+      "verdict": "PASS",
+      "scenario_count": 22,
+      "privacy_leaks": 0,
+      "original_capture_hashes_unchanged": true
+    },
+    {
+      "verdict": "PASS",
+      "scenario_count": 22,
+      "privacy_leaks": 0,
+      "original_capture_hashes_unchanged": true
+    },
+    {
+      "verdict": "PASS",
+      "scenario_count": 22,
+      "privacy_leaks": 0,
+      "original_capture_hashes_unchanged": true
+    }
+  ],
+  "pass": true
+}

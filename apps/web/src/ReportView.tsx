@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   api,
+  aiStatusLabel,
   ApiError,
   errorMessage,
   type Evidence,
+  type AIStatus,
   type NativeBridgeState,
   type Report,
 } from './api';
@@ -46,8 +48,14 @@ function EvidenceLinks({
       <span>Evidence</span>
       {ids.length ? (
         ids.map((id) => (
-          <button key={id} className="evidence-id" onClick={() => onEvidence([id])}>
-            {id}
+          <button
+            key={id}
+            className="evidence-id"
+            title={id}
+            aria-label={`Inspect evidence ${id}`}
+            onClick={() => onEvidence([id])}
+          >
+            {id.length > 60 ? `${id.slice(0, 3)}…${id.slice(-36)}` : id}
           </button>
         ))
       ) : (
@@ -184,10 +192,14 @@ function Finding({
         </p>
       )}
       <EvidenceLinks ids={finding.evidence_ids} onEvidence={onEvidence} />
-      <SupportingEvidence caseId={caseId} ids={finding.evidence_ids} />
-      <TextList title="Limitations" values={finding.limitations} />
-      <TextList title="Alternate explanations" values={finding.alternate_explanations} />
+      <TextList title="Limitations" values={finding.limitations.slice(0, 1)} />
       <TextList title="Next validation" values={finding.recommended_validation} />
+      <details className="technical-detail">
+        <summary>Packet details and alternate explanations</summary>
+        <TextList title="Additional limitations" values={finding.limitations.slice(1)} />
+        <SupportingEvidence caseId={caseId} ids={finding.evidence_ids} />
+        <TextList title="Alternate explanations" values={finding.alternate_explanations} />
+      </details>
       {finding.wireshark.applicable && (
         <div className="validation-actions">
           <div className="button-row">
@@ -258,6 +270,26 @@ export function ReportView({
   onEvidence: (ids: string[]) => void;
 }) {
   const { conclusion, capture_quality: quality, time_attribution: time } = report;
+  const reasoningStatus = report.reasoning;
+  const embeddedFailed =
+    reasoningStatus?.provider_mode === 'embedded_local' &&
+    reasoningStatus.mode === 'model_fallback';
+  const statusForReport: AIStatus = {
+    effective_provider_mode:
+      embeddedFailed || reasoningStatus?.embedded_availability === 'unavailable'
+        ? 'none'
+        : (reasoningStatus?.provider_mode ?? 'none'),
+    embedded_availability: embeddedFailed
+      ? 'unavailable'
+      : (reasoningStatus?.embedded_availability ?? 'not_applicable'),
+    model:
+      embeddedFailed || reasoningStatus?.embedded_availability === 'unavailable'
+        ? reasoningStatus.model
+        : null,
+    failure_code: embeddedFailed
+      ? (reasoningStatus.failure_code ?? 'provider_unavailable')
+      : (reasoningStatus?.embedded_failure_code ?? null),
+  };
   const [bridgeAvailable, setBridgeAvailable] = useState<NativeBridgeState>('checking');
   useEffect(() => {
     const controller = new AbortController();
@@ -274,16 +306,16 @@ export function ReportView({
   return (
     <div className="report">
       <section className="summary panel" aria-labelledby="conclusion-heading">
-        <div className="section-heading">
-          <span className="eyebrow">Investigation result · {report.status}</span>
-          <span className="tag">Rules-only</span>
-        </div>
-        <h2 id="conclusion-heading">
+        <p className="answer-label">Wireclaw · {aiStatusLabel(statusForReport)}</p>
+        <h2 className="result-kind" id="conclusion-heading">
           {conclusion.type === 'insufficient_evidence'
             ? 'Insufficient evidence'
             : 'Supported finding'}
         </h2>
-        <p className="conclusion">{conclusion.statement}</p>
+        <p className="conclusion" role="status">
+          {conclusion.statement}
+        </p>
+        <EvidenceLinks ids={conclusion.evidence_ids} onEvidence={onEvidence} />
         <dl className="result-facts">
           <div>
             <dt>Confidence</dt>
@@ -302,7 +334,8 @@ export function ReportView({
           Conclusions are inferred from deterministic evidence. Confidence describes support for the
           conclusion; it does not prove a root cause.
         </p>
-        <EvidenceLinks ids={conclusion.evidence_ids} onEvidence={onEvidence} />
+        <TextList title="Investigation limitations" values={report.limitations.slice(0, 1)} />
+        <TextList title="Recommended next evidence" values={report.recommended_next_evidence} />
       </section>
       <section className="panel quality" aria-labelledby="quality-heading">
         <h2 id="quality-heading">Capture quality: {human(quality.state)}</h2>
@@ -317,65 +350,70 @@ export function ReportView({
         )}
         <EvidenceLinks ids={quality.evidence_ids} onEvidence={onEvidence} />
       </section>
-      <section className="panel" aria-labelledby="time-heading">
-        <div className="section-heading">
-          <h2 id="time-heading">Time attribution</h2>
-          {time && (
-            <span className="tag">
-              Stage subtotal:{' '}
-              {time.total_ms.toLocaleString(undefined, { maximumFractionDigits: 3 })} ms
-            </span>
-          )}
-        </div>
-        <p className="muted">
-          Available stage intervals only. This subtotal is not complete end-to-end transaction time;
-          missing stages remain unknown.
-        </p>
-        {time?.segments.length ? (
-          <div className="table-wrap">
-            <table>
-              <caption className="sr-only">
-                Available stage intervals and measurement classes
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Stage</th>
-                  <th scope="col">Interval</th>
-                  <th scope="col">Measurement</th>
-                  <th scope="col">Evidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {time.segments.map((segment, index) => (
-                  <tr key={index}>
-                    <th scope="row">{human(segment.name)}</th>
-                    <td>
-                      {segment.duration_ms.toLocaleString(undefined, { maximumFractionDigits: 3 })}{' '}
-                      ms
-                    </td>
-                    <td>
-                      {human(segment.measurement_class)}
-                      {segment.measurement_class === 'inferred' ? ' (estimated)' : ' (measured)'}
-                    </td>
-                    <td>
-                      <button className="quiet" onClick={() => onEvidence(segment.evidence_ids)}>
-                        Inspect stage evidence
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <details className="technical-detail">
+        <summary>Time attribution and measurement details</summary>
+        <section aria-labelledby="time-heading">
+          <div className="section-heading">
+            <h2 id="time-heading">Time attribution</h2>
+            {time && (
+              <span className="tag">
+                Stage subtotal:{' '}
+                {time.total_ms.toLocaleString(undefined, { maximumFractionDigits: 3 })} ms
+              </span>
+            )}
           </div>
-        ) : (
-          <p>No deterministic stage intervals available.</p>
-        )}
-        <TextList title="Attribution limitations" values={time?.limitations} />
-        <p>
-          <strong>Unknown / unobserved:</strong> complete user-visible transaction time and any
-          stage not listed above.
-        </p>
-      </section>
+          <p className="muted">
+            Available stage intervals only. This subtotal is not complete end-to-end transaction
+            time; missing stages remain unknown.
+          </p>
+          {time?.segments.length ? (
+            <div className="table-wrap">
+              <table>
+                <caption className="sr-only">
+                  Available stage intervals and measurement classes
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Stage</th>
+                    <th scope="col">Interval</th>
+                    <th scope="col">Measurement</th>
+                    <th scope="col">Evidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {time.segments.map((segment, index) => (
+                    <tr key={index}>
+                      <th scope="row">{human(segment.name)}</th>
+                      <td>
+                        {segment.duration_ms.toLocaleString(undefined, {
+                          maximumFractionDigits: 3,
+                        })}{' '}
+                        ms
+                      </td>
+                      <td>
+                        {human(segment.measurement_class)}
+                        {segment.measurement_class === 'inferred' ? ' (estimated)' : ' (measured)'}
+                      </td>
+                      <td>
+                        <button className="quiet" onClick={() => onEvidence(segment.evidence_ids)}>
+                          Inspect stage evidence
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p>No deterministic stage intervals available.</p>
+          )}
+          <TextList title="Attribution limitations" values={time?.limitations} />
+          <p>
+            <strong>Unknown / unobserved:</strong> complete user-visible transaction time and any
+            stage not listed above.
+          </p>
+        </section>
+      </details>
       <section aria-labelledby="findings-heading">
         <div className="section-heading">
           <h2 id="findings-heading">
@@ -418,13 +456,12 @@ export function ReportView({
           ))}
         </section>
       )}
-      <section className="panel" aria-labelledby="validation-heading">
-        <h2 id="validation-heading">Next evidence & limitations</h2>
-        <TextList title="Recommended next evidence" values={report.recommended_next_evidence} />
-        <TextList title="Investigation limitations" values={report.limitations} />
-      </section>
       <details className="panel">
-        <summary>Analyzer versions & report provenance</summary>
+        <summary>Investigation limitations, analyzer versions & report provenance</summary>
+        <TextList
+          title="Additional investigation limitations"
+          values={report.limitations.slice(1)}
+        />
         <dl className="facts">
           {Object.entries(report.analyzer_versions).map(([tool, version]) => (
             <div key={tool}>

@@ -40,7 +40,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Recent Cases */
+        get: operations["recent_cases_api_cases_get"];
         put?: never;
         /** Create */
         post: operations["create_api_cases_post"];
@@ -48,6 +49,25 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Case */
+        get: operations["get_case_api_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete */
+        delete: operations["delete_api_cases__case_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Case */
+        patch: operations["rename_case_api_cases__case_id__patch"];
         trace?: never;
     };
     "/api/cases/{case_id}/capture": {
@@ -78,6 +98,23 @@ export interface paths {
         put?: never;
         /** Investigate */
         post: operations["investigate_api_cases__case_id__investigate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/followups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Followup */
+        post: operations["followup_api_cases__case_id__followups_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -130,24 +167,6 @@ export interface paths {
         /** Bridge Grant */
         post: operations["bridge_grant_api_cases__case_id__bridge_grants_post"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cases/{case_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Case */
-        get: operations["get_case_api_cases__case_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete */
-        delete: operations["delete_api_cases__case_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -242,6 +261,23 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AIStatusResponse */
+        AIStatusResponse: {
+            /**
+             * Effective Provider Mode
+             * @enum {string}
+             */
+            effective_provider_mode: "none" | "openai_compatible_cloud" | "openai_compatible_local" | "embedded_local";
+            /**
+             * Embedded Availability
+             * @enum {string}
+             */
+            embedded_availability: "ready" | "unavailable" | "not_applicable";
+            /** Model */
+            model: string | null;
+            /** Failure Code */
+            failure_code: string | null;
+        };
         /** ArtifactResponse */
         ArtifactResponse: {
             /** Id */
@@ -273,6 +309,24 @@ export interface components {
             /** Expires Unix */
             expires_unix: number;
         };
+        /** CapabilitiesResponse */
+        CapabilitiesResponse: {
+            /** Capabilities */
+            capabilities: string[];
+            /** Provider Mode */
+            provider_mode: string;
+            /** Provider Modes Supported By Interface */
+            provider_modes_supported_by_interface: string[];
+            /** Bridge */
+            bridge: {
+                [key: string]: string;
+            };
+            /** Limits */
+            limits: {
+                [key: string]: number;
+            };
+            ai: components["schemas"]["AIStatusResponse"];
+        };
         /** CapabilityRequest */
         CapabilityRequest: {
             /** Artifact Id */
@@ -289,6 +343,12 @@ export interface components {
         CaseResponse: {
             /** Id */
             id: string;
+            /** Name */
+            name: string;
+            /** Capture Name */
+            capture_name: string | null;
+            /** Display Name */
+            display_name: string | null;
             /** Symptom */
             symptom: string;
             /** State */
@@ -317,11 +377,14 @@ export interface components {
             gate_boundary: string;
             /** Provider Mode */
             provider_mode: string;
+            ai_status: components["schemas"]["AIStatusResponse"];
         };
         /** CreateCase */
         CreateCase: {
             /** Symptom */
             symptom: string;
+            /** Capture Name */
+            capture_name?: string | null;
         };
         /** DeletionResponse */
         DeletionResponse: {
@@ -378,10 +441,32 @@ export interface components {
             bytes: number;
             provenance: components["schemas"]["EvidenceCaptureProvenance"];
         };
+        /** FollowupRequest */
+        FollowupRequest: {
+            /** Question */
+            question: string;
+        };
+        /** FollowupResponse */
+        FollowupResponse: {
+            /** Answer */
+            answer: string;
+            /** Evidence Ids */
+            evidence_ids: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthResponse */
+        HealthResponse: {
+            /** Status */
+            status: string;
+            /** Gate */
+            gate: number;
+            /** Provider Mode */
+            provider_mode: string;
+            ai: components["schemas"]["AIStatusResponse"];
         };
         /** HistoryResponse */
         HistoryResponse: {
@@ -391,6 +476,26 @@ export interface components {
             state: string;
             /** At */
             at: string;
+        };
+        /** RecentCaseResponse */
+        RecentCaseResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Capture Bytes */
+            capture_bytes: number | null;
+            /** Created */
+            created: string;
+            /** Updated */
+            updated: string;
+            /** State */
+            state: string;
+        };
+        /** RenameCase */
+        RenameCase: {
+            /** Display Name */
+            display_name: string;
         };
         /** RunResponse */
         RunResponse: {
@@ -460,7 +565,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
         };
@@ -480,7 +585,140 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CapabilitiesResponse"];
+                };
+            };
+        };
+    };
+    recent_cases_api_cases_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentCaseResponse"][];
+                };
+            };
+            /** @description Code-only error: invalid_content_length */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_content_length";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: host_rejected, origin_rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "host_rejected" | "origin_rejected";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_timeout */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_timeout";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_size_limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_size_limit";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: invalid_request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_request";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: operation_failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "operation_failed";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: persistence_failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "persistence_failure";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
                 };
             };
         };
@@ -514,6 +752,233 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_api_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_cases__case_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_case_api_cases__case_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameCase"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Code-only error: invalid_content_length */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_content_length";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: host_rejected, origin_rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "host_rejected" | "origin_rejected";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: case_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "case_not_found";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_timeout */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_timeout";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_size_limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_size_limit";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: invalid_request, invalid_id */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_request" | "invalid_id";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: service_busy */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "service_busy";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: operation_failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "operation_failed";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: persistence_failure */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "persistence_failure";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
                 };
             };
         };
@@ -580,6 +1045,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    followup_api_cases__case_id__followups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FollowupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FollowupResponse"];
+                };
+            };
+            /** @description Code-only error: case_not_found, report_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "case_not_found" | "report_not_found";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: report_not_ready, followup_unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "report_not_ready" | "followup_unavailable";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: request_size_limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "request_size_limit";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: invalid_request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "invalid_request";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: followup_response_invalid */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "followup_response_invalid";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: provider_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "provider_unavailable";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error: provider_timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            /** @enum {string} */
+                            code: "provider_timeout";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
                 };
             };
         };
@@ -676,68 +1278,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BridgeGrantResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_case_api_cases__case_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CaseResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_api_cases__case_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                case_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeletionResponse"];
                 };
             };
             /** @description Validation Error */

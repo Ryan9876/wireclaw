@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "result": "PASS_WITH_LIMITATION",
+  "source_sha": "b64a0fdaa80ef5a9c4115a757e677942cd685beb",
+  "automated_current_head": {
+    "python_acceptance_and_packaging_suite": "PASS",
+    "embedded_ai_privacy_and_injection_contracts": "PASS",
+    "launcher_runtime_argv_policy": "PASS",
+    "tamper_and_hash_validation": "PASS"
+  },
+  "native_candidate": {
+    "candidate_source_sha": "b64a0fdaa80ef5a9c4115a757e677942cd685beb",
+    "runtime_sha256": "84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034",
+    "runtime_policy": "cache-ram=0; authenticated; loopback-only; agent and web UI disabled; network downloads disabled",
+    "api_token_in_runtime_log": false,
+    "external_runtime_socket_observed": false,
+    "loopback_listener": "127.0.0.1:8767",
+    "current_ephemeral_token_in_log_or_isolated_data": false,
+    "process_loss_fallback": "PASS",
+    "tamper_degradation": "PASS"
+  },
+  "review": {
+    "focused_source_review": "PASS",
+    "argument_injection": "No user-controlled arguments; fixed literal cache flag and exact locked numeric policy.",
+    "manifest_truthfulness": "PASS; runtime manifest, release metadata, launcher validation, and benchmark record effective zero cache policy.",
+    "remaining_independent_security_review": "Pending before EAI.15 closeout."
+  },
+  "limitations": ["Native no-download observation combines offline packaged runtime policy, fixed launcher path, unchanged packaged model identity, and observed absence of external llama-server sockets; no full-host packet capture was made."]
+}

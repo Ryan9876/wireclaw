@@ -1,0 +1,212 @@
+{
+  "source_sha": "bae67a0996afa7ca34c2890295e72de0acd02221",
+  "bundle_tree_sha256": "41a8d6f063d36450eb0df7d696e64a80d2f163101f982638a86dbd2bd9d0ad3a",
+  "archive_sha256": "747f90fdb45828db59651780b0d6834d803a9db7c9d5da7c9880a7e4ffdd305d",
+  "archive_size_bytes": 2671237120,
+  "embedded_ai": {
+    "model": {
+      "id": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+      "repository": "Qwen/Qwen3-4B-Instruct-2507",
+      "source_revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+      "license": "Apache-2.0",
+      "quantization": "Q4_K_M",
+      "architecture": "qwen3",
+      "sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc",
+      "size_bytes": 2497279040
+    },
+    "runtime": {
+      "repository": "ggml-org/llama.cpp",
+      "tag": "v0.6.0",
+      "revision": "8345f333951c661d166b00e6f9362e553768f292",
+      "platform": "macos",
+      "architecture": "arm64",
+      "files": [
+        {
+          "path": "macos-arm64/libggml-base.0.26.0.dylib",
+          "sha256": "5f58de248bc2c45915dc9e20e14b1322091b08ae16abab9c5c566939723003e5",
+          "size_bytes": 737096
+        },
+        {
+          "path": "macos-arm64/libggml-base.0.dylib",
+          "sha256": "74ecd6af9f60a68afd50c660bd9b4fa929b515ade0f933162dc423d925c2cb76",
+          "size_bytes": 737096
+        },
+        {
+          "path": "macos-arm64/libggml-base.dylib",
+          "sha256": "b4890d1723430296fb561cca80aa523ce293960aa37fd300d4026d28757274a4",
+          "size_bytes": 737088
+        },
+        {
+          "path": "macos-arm64/libggml-blas.0.26.0.dylib",
+          "sha256": "5ed078d77e6a6c6e26dacc18b2f0eac5804e676a0f46bf9f4af96f5fd4ca4a5b",
+          "size_bytes": 58776
+        },
+        {
+          "path": "macos-arm64/libggml-blas.0.dylib",
+          "sha256": "b8ca38a87eb3a9dd67a3b7183d050650ad9a78ba548ba76847abb6eb04832122",
+          "size_bytes": 58776
+        },
+        {
+          "path": "macos-arm64/libggml-blas.dylib",
+          "sha256": "b900dbb3392ca39a02a80584c9985626d010d27f80215fd3f32b04b82e6103d0",
+          "size_bytes": 58768
+        },
+        {
+          "path": "macos-arm64/libggml-cpu.0.26.0.dylib",
+          "sha256": "1fe4f7b5eb128e47c016d4a0262ba558a257a091fa13dbad9bbc47afd925bec1",
+          "size_bytes": 990680
+        },
+        {
+          "path": "macos-arm64/libggml-cpu.0.dylib",
+          "sha256": "18780bf4ce49aa9206724338f8809dc35638008a22a2da076da7c7c06ab0cfae",
+          "size_bytes": 990672
+        },
+        {
+          "path": "macos-arm64/libggml-cpu.dylib",
+          "sha256": "858db5fe555bdef39362d95e031844eb4d599c6d1b2ceaec0a6e9c3cc75533ba",
+          "size_bytes": 990672
+        },
+        {
+          "path": "macos-arm64/libggml-metal.0.26.0.dylib",
+          "sha256": "09926ba935ddf3af47e1d8fd0aa38910baea51303bf74f25f071e96fb3575bc9",
+          "size_bytes": 5521624
+        },
+        {
+          "path": "macos-arm64/libggml-metal.0.dylib",
+          "sha256": "103e6649bed452d92cb412cdc139fa4a4886e13da13447116af3b17390677efe",
+          "size_bytes": 5521624
+        },
+        {
+          "path": "macos-arm64/libggml-metal.dylib",
+          "sha256": "2bb1354f1134cc34a395f6bc4dbf00497ca0176c4687f2751307b327d5fe17f1",
+          "size_bytes": 5521616
+        },
+        {
+          "path": "macos-arm64/libggml.0.26.0.dylib",
+          "sha256": "97dd10e6d1ed43f0163d417cf21a9388500aa9db928268460d78b7102737b623",
+          "size_bytes": 60232
+        },
+        {
+          "path": "macos-arm64/libggml.0.dylib",
+          "sha256": "7df2eab722d9e95f003855118d59f204282b111b64d76f1a0edc9c60e2f2ca44",
+          "size_bytes": 60224
+        },
+        {
+          "path": "macos-arm64/libggml.dylib",
+          "sha256": "ffbd65d0c2f50f7d53b58784fc2837a86c72d517d186f97c676f2037ee45b116",
+          "size_bytes": 60224
+        },
+        {
+          "path": "macos-arm64/libllama-common.0.6.0.dylib",
+          "sha256": "ff977e07a1907730e1c4a17967ed67923bc31e993f651684f748692da687f0a4",
+          "size_bytes": 5098280
+        },
+        {
+          "path": "macos-arm64/libllama-common.0.dylib",
+          "sha256": "81a071db96cf540fc667c3b5b9275160577b15f9cf6cb254eba839605b9ede74",
+          "size_bytes": 5098280
+        },
+        {
+          "path": "macos-arm64/libllama-common.dylib",
+          "sha256": "4065fb4eee42143047d9e262cc783b4998a199e490b32c3300f014cbe118cbe3",
+          "size_bytes": 5098280
+        },
+        {
+          "path": "macos-arm64/libllama-server-impl.dylib",
+          "sha256": "98747219567d71cf775e04e246ec4d04ecb09e6b3e1d0d27e282b7228b7b6a69",
+          "size_bytes": 6492856
+        },
+        {
+          "path": "macos-arm64/libllama.0.6.0.dylib",
+          "sha256": "bed61aa4f3089c2a9648d4ec9454cba3167eab1aa8c9050bde15b4b6a0761b20",
+          "size_bytes": 3360472
+        },
+        {
+          "path": "macos-arm64/libllama.0.dylib",
+          "sha256": "9ee35bc042432a5e79611a3af84f3d27a61b3ee328681a4a055440ff8e58ed42",
+          "size_bytes": 3360464
+        },
+        {
+          "path": "macos-arm64/libllama.dylib",
+          "sha256": "03c21aa4e2fb05e7e19c86a037a251e369c31cb40fb5c94b804c3b8f37f38574",
+          "size_bytes": 3360464
+        },
+        {
+          "path": "macos-arm64/libmtmd.0.6.0.dylib",
+          "sha256": "6ded2b766596414b149ed8ba45466c2c748439826e83cc0a7944094e4e4a3f5d",
+          "size_bytes": 1390080
+        },
+        {
+          "path": "macos-arm64/libmtmd.0.dylib",
+          "sha256": "1f16138d0b91d36ba3f4a52fafbe33e1648dd3bf133d76c5440fd33ee5922e33",
+          "size_bytes": 1390080
+        },
+        {
+          "path": "macos-arm64/libmtmd.dylib",
+          "sha256": "071c31b839e08eb729db982a2621a70ea876543daee3ccf1bd9e490abc5ecb80",
+          "size_bytes": 1390080
+        },
+        {
+          "path": "macos-arm64/llama-server",
+          "sha256": "84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034",
+          "size_bytes": 33472
+        }
+      ]
+    },
+    "licenses": [
+      {
+        "path": "ai/licenses/Qwen-Apache-2.0.txt",
+        "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e",
+        "size_bytes": 11343
+      },
+      {
+        "path": "ai/licenses/llama.cpp-MIT.txt",
+        "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+        "size_bytes": 1078
+      }
+    ],
+    "model_manifest_sha256": "a40ec1543fc060a2fb5513fb3cedeea045fc048f06ce68acc3efafb9c5f1c285",
+    "runtime_manifest_sha256": "5cafd2ecfa0d76a484ca1c5a9d039588c1832e7f26175d46417f1f361f40a93c",
+    "runtime_argv_template": [
+      "ai/macos-arm64/llama-server",
+      "--model",
+      "ai/models/qwen3-4b-instruct-2507-q4_k_m.gguf",
+      "--alias",
+      "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8767",
+      "--ctx-size",
+      "16384",
+      "--batch-size",
+      "128",
+      "--ubatch-size",
+      "32",
+      "--n-predict",
+      "2048",
+      "--parallel",
+      "1",
+      "--api-key-file",
+      "<ephemeral-per-launch-key-file>",
+      "--no-agent",
+      "--no-webui",
+      "--cache-ram",
+      "0"
+    ],
+    "policy": {
+      "default_provider_mode": "embedded_local",
+      "port": 8767,
+      "context_size": 16384,
+      "batch_size": 128,
+      "micro_batch_size": 32,
+      "max_tokens": 2048,
+      "parallel": 1,
+      "prompt_cache_ram_mib": 0,
+      "platform": "macos",
+      "architecture": "arm64"
+    },
+    "protocol_smoke": "PASS"
+  },
+  "frozen": true
+}

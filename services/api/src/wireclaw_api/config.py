@@ -12,6 +12,59 @@ class ProviderMode(StrEnum):
     NONE = "none"
     CLOUD = "openai_compatible_cloud"
     LOCAL = "openai_compatible_local"
+    EMBEDDED = "embedded_local"
+
+
+EMBEDDED_MODEL_ID = "wireclaw-qwen3-4b-instruct-2507-q4_k_m"
+EMBEDDED_FAILURE_CODES = frozenset(
+    {
+        "invalid-bundle",
+        "port-in-use",
+        "port-conflict",
+        "invalid-port",
+        "secret-generation-failed",
+        "log-init-failed",
+        "runtime-start-failed",
+        "runtime-unhealthy",
+        "docker-connectivity",
+        "unsafe-state",
+        "state-write-failed",
+        "not-ready",
+    }
+)
+
+
+def effective_ai_status(policy, runtime_failure_code=None):
+    """Return a public, normalized AI state without provider plumbing or secrets."""
+    import os
+
+    mode = policy.provider_mode.value
+    raw = os.environ.get("WIRECLAW_EMBEDDED_AI_STATUS", "not_applicable")
+    embedded_selected = policy.provider_mode is ProviderMode.EMBEDDED
+    launcher_fallback = mode == ProviderMode.NONE.value and raw.startswith("unavailable:")
+    if not embedded_selected and not launcher_fallback:
+        return {
+            "effective_provider_mode": mode,
+            "embedded_availability": "not_applicable",
+            "model": None,
+            "failure_code": None,
+        }
+    failure = None
+    if runtime_failure_code in EMBEDDED_FAILURE_CODES and embedded_selected:
+        availability = "unavailable"
+        failure = runtime_failure_code
+    elif raw == "ready" and embedded_selected:
+        availability = "ready"
+    else:
+        availability = "unavailable"
+        candidate = raw.partition(":")[2] if raw.startswith("unavailable:") else "not-ready"
+        failure = candidate if candidate in EMBEDDED_FAILURE_CODES else "not-ready"
+    return {
+        "effective_provider_mode": mode if availability == "ready" else ProviderMode.NONE.value,
+        "embedded_availability": availability,
+        "model": EMBEDDED_MODEL_ID,
+        "failure_code": failure,
+    }
 
 
 @dataclass(frozen=True)
@@ -131,6 +184,18 @@ class Policy:
             ord(char) < 33 or ord(char) == 127 for char in self.provider_api_key
         ):
             raise ValueError("invalid_provider_key")
+        if mode is ProviderMode.EMBEDDED:
+            if (
+                parsed.scheme != "http"
+                or parsed.hostname != "host.docker.internal"
+                or port != 8767
+                or parsed.path != "/v1"
+            ):
+                raise ValueError("invalid_provider_url")
+            if self.provider_model != "wireclaw-qwen3-4b-instruct-2507-q4_k_m":
+                raise ValueError("invalid_provider_model")
+            if not isinstance(self.provider_api_key, str) or len(self.provider_api_key) < 32:
+                raise ValueError("invalid_provider_key")
 
     @classmethod
     def from_environment(cls, **overrides):

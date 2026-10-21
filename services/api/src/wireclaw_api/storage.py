@@ -79,7 +79,8 @@ SCHEMA = """
 CREATE TABLE cases (
  id TEXT PRIMARY KEY, symptom TEXT NOT NULL, state TEXT NOT NULL,
  created TEXT NOT NULL, updated TEXT NOT NULL, capture_sha TEXT,
- original_id TEXT, quality TEXT, last_error TEXT);
+ original_id TEXT, quality TEXT, last_error TEXT,
+ capture_name TEXT, display_name TEXT);
 CREATE TABLE history (
  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
  seq INTEGER NOT NULL, state TEXT NOT NULL, at TEXT NOT NULL,
@@ -104,7 +105,7 @@ CREATE TABLE reasoning_steps (
  case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
  step_id TEXT NOT NULL, sequence INTEGER NOT NULL, at TEXT NOT NULL, metadata TEXT NOT NULL,
  PRIMARY KEY(case_id, step_id), UNIQUE(case_id, sequence));
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 """
 
 
@@ -118,7 +119,8 @@ class Database:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version == 0:
                 conn.executescript("BEGIN IMMEDIATE;" + SCHEMA + "COMMIT;")
-            elif version == 1:
+                version = 3
+            if version == 1:
                 conn.executescript(
                     "BEGIN IMMEDIATE;"
                     "CREATE TABLE reasoning_steps ("
@@ -127,7 +129,17 @@ class Database:
                     "metadata TEXT NOT NULL, PRIMARY KEY(case_id,step_id),"
                     "UNIQUE(case_id,sequence)); PRAGMA user_version=2; COMMIT;"
                 )
-            elif version != 2:
+                version = 2
+            if version == 2:
+                conn.executescript(
+                    "BEGIN IMMEDIATE;"
+                    "ALTER TABLE cases ADD COLUMN capture_name TEXT;"
+                    "ALTER TABLE cases ADD COLUMN display_name TEXT;"
+                    "UPDATE cases SET capture_name='Capture ' || substr(id,1,8);"
+                    "PRAGMA user_version=3; COMMIT;"
+                )
+                version = 3
+            if version != 3:
                 raise ApiError("unsupported_schema_version", 500)
 
     @contextmanager

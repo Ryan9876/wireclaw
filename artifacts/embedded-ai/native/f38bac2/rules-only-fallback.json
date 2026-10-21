@@ -1,0 +1,18 @@
+{
+  "case_id": "3413eda860b94eb68cf072ca1a9719b5",
+  "reasoning": {
+    "embedded_availability": "unavailable",
+    "embedded_failure_code": "runtime-unhealthy",
+    "failure_code": "provider_unavailable",
+    "mode": "model_fallback",
+    "model": "wireclaw-qwen3-4b-instruct-2507-q4_k_m",
+    "provider_mode": "embedded_local",
+    "status": "fallback",
+    "steps": 1
+  },
+  "capture_sha": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+  "expected_capture_sha": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+  "findings": [
+    "tcp.rtt"
+  ]
+}

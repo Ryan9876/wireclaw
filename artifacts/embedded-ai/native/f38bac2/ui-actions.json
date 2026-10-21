@@ -1,0 +1,9 @@
+{
+  "ready": true,
+  "full_capture": true,
+  "evidence_capture": true,
+  "case_id": "b84fd1f2bdf64ca8beedbbbffced0574",
+  "capture_sha": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+  "evidence_sha": "57d3283c32204a84e9ea212581b09907cbcb512b603238f45230ee9e5cedb7a9",
+  "filter": "tcp.stream == 0"
+}

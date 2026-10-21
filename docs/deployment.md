@@ -69,6 +69,10 @@ python scripts/package_release.py /path/to/output
 This command is for release engineering and uses Go and Docker during the build.
 End users do not run it or need those development tools.
 
+## Post-V1 embedded AI package
+
+The separate post-V1 macOS arm64 package includes the pinned Qwen model, native llama.cpp Metal runtime, licenses, manifests, and host bridge. Its default is embedded local AI; no separate model server or first-launch model download is required. See [embedded AI operations](embedded-ai-operations.md) for packaged start/stop, fallback, provider overrides, privacy, and troubleshooting. The current implementation/benchmark evidence and outstanding acceptance status are in [post-V1 embedded AI acceptance](post-v1-embedded-ai-acceptance.md). Do not treat this candidate as release-qualified until EAI.14 and EAI.15 are PASS.
+
 ## Development setup
 
 Development continues to use the repository Python environment, npm, Go, and

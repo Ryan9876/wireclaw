@@ -1,10 +1,20 @@
-import { validReport, validEvidence, validCase, validDeletion } from './generated/validators';
+import {
+  validReport,
+  validEvidence,
+  validCase,
+  validDeletion,
+  validFollowup,
+  validRecentCases,
+} from './generated/validators';
 import type { components } from './generated/api';
 import type { Report } from './generated/investigation-result';
 import type { Evidence } from './generated/evidence';
 
 export type { Report, Evidence };
 export type Case = components['schemas']['CaseResponse'];
+export type RecentCase = components['schemas']['RecentCaseResponse'];
+export type AIStatus = components['schemas']['AIStatusResponse'];
+export type Followup = components['schemas']['FollowupResponse'];
 export type Deletion = components['schemas']['DeletionResponse'];
 export type EvidenceCapture = {
   artifact_id: string;
@@ -43,6 +53,26 @@ export const validCaseId = (id: string) => /^[a-f0-9]{32}$/.test(id);
 const validArtifactId = validCaseId;
 const validFindingId = (id: string) => /^[A-Za-z0-9_.-]{1,128}$/.test(id);
 const validSHA256 = (value: string) => /^[a-f0-9]{64}$/.test(value);
+const providerModes = [
+  'none',
+  'embedded_local',
+  'openai_compatible_local',
+  'openai_compatible_cloud',
+] as const;
+const embeddedModel = 'wireclaw-qwen3-4b-instruct-2507-q4_k_m';
+export function aiStatusLabel(status: AIStatus | undefined): string {
+  if (!status) return 'Checking local AI status…';
+  if (status.embedded_availability === 'unavailable')
+    return 'Local embedded AI unavailable — deterministic analysis remains available';
+  if (
+    status.effective_provider_mode === 'embedded_local' &&
+    status.embedded_availability === 'ready'
+  )
+    return 'Local embedded AI ready';
+  if (status.effective_provider_mode === 'openai_compatible_local') return 'Custom local provider';
+  if (status.effective_provider_mode === 'openai_compatible_cloud') return 'Cloud provider';
+  return 'Rules-only mode';
+}
 
 export class ApiError extends Error {
   constructor(
@@ -75,6 +105,11 @@ const explanations: Record<string, string> = {
   service_busy: 'The local API is busy with another operation. Wait, then refresh status.',
   service_interrupted:
     'The service restarted during analysis. Prior evidence is preserved; you can retry investigation.',
+  followup_unavailable:
+    'Follow-up is unavailable for this case. Deterministic evidence remains available.',
+  followup_response_invalid: 'The provider returned an invalid explanation. Try another question.',
+  provider_unavailable: 'The reasoning provider is unavailable. Try again later.',
+  provider_timeout: 'The reasoning provider timed out. Try again later.',
   report_not_ready: 'The report is not ready. Refresh status to recover the current case.',
   invalid_request: 'The local API rejected the request. Check the selected capture and symptom.',
   run_count_limit:
@@ -131,11 +166,14 @@ function checkCase(value: unknown, id?: string): Case {
     !validCaseId(value.id) ||
     (id && value.id !== id) ||
     !states.includes(value.state as (typeof states)[number]) ||
-    value.provider_mode !== 'none'
+    !providerModes.includes(value.provider_mode as (typeof providerModes)[number])
   ) {
     throw new ApiError('contract_mismatch');
   }
   return value;
+}
+function plainName(value: string, limit: number): boolean {
+  return !!value.trim() && Array.from(value).length <= limit && !/\p{C}/u.test(value);
 }
 async function getBridgeOrigin(signal?: AbortSignal): Promise<string> {
   const data = (await request('config/capabilities', { signal })) as {
@@ -167,13 +205,42 @@ export const api = {
     };
     const size = data?.limits?.max_capture_bytes;
     if (
-      data?.provider_mode !== 'none' ||
+      !providerModes.includes(data?.provider_mode as (typeof providerModes)[number]) ||
       typeof size !== 'number' ||
       !Number.isSafeInteger(size) ||
       size < 1
     )
       throw new ApiError('contract_mismatch');
     return size;
+  },
+  async aiStatus(signal?: AbortSignal): Promise<AIStatus> {
+    const data = (await request('config/capabilities', { signal })) as { ai?: unknown };
+    const value = data.ai as Partial<AIStatus> | undefined;
+    const validMode = providerModes.includes(
+      value?.effective_provider_mode as (typeof providerModes)[number],
+    );
+    const failureValid =
+      value?.failure_code === null ||
+      (typeof value?.failure_code === 'string' && /^[a-z0-9-]{1,64}$/.test(value.failure_code));
+    const modelValid = value?.model === null || value?.model === embeddedModel;
+    const validAvailability = ['ready', 'unavailable', 'not_applicable'].includes(
+      value?.embedded_availability as string,
+    );
+    const combinationValid =
+      (value?.embedded_availability === 'ready' &&
+        value.effective_provider_mode === 'embedded_local' &&
+        value.model === embeddedModel &&
+        value.failure_code === null) ||
+      (value?.embedded_availability === 'unavailable' &&
+        value.effective_provider_mode === 'none' &&
+        value.model === embeddedModel &&
+        typeof value.failure_code === 'string') ||
+      (value?.embedded_availability === 'not_applicable' &&
+        value.model === null &&
+        value.failure_code === null);
+    if (!validMode || !failureValid || !modelValid || !validAvailability || !combinationValid)
+      throw new ApiError('contract_mismatch');
+    return value as AIStatus;
   },
   async bridgeHealth(signal?: AbortSignal): Promise<NativeBridgeState> {
     let origin: string;
@@ -202,12 +269,47 @@ export const api = {
       return 'bridge_unavailable';
     }
   },
-  async create(symptom: string): Promise<Case> {
+  async recent(signal?: AbortSignal): Promise<RecentCase[]> {
+    const data = await request('cases?limit=10', { signal });
+    if (
+      !validRecentCases(data) ||
+      data.length > 10 ||
+      new Set(data.map((row) => row.id)).size !== data.length ||
+      !data.every(
+        (row) =>
+          validCaseId(row.id) &&
+          plainName(row.name, 255) &&
+          states.includes(row.state as (typeof states)[number]) &&
+          (row.capture_bytes === null ||
+            (Number.isSafeInteger(row.capture_bytes) && row.capture_bytes >= 0)) &&
+          Number.isFinite(Date.parse(row.created)) &&
+          Number.isFinite(Date.parse(row.updated)),
+      )
+    )
+      throw new ApiError('contract_mismatch');
+    return data;
+  },
+  async rename(id: string, displayName: string, signal?: AbortSignal): Promise<Case> {
+    if (!plainName(displayName, 120)) throw new ApiError('invalid_request');
+    return checkCase(
+      await request(casePath(id), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: displayName.trim() }),
+        signal,
+      }),
+      id,
+    );
+  },
+  async create(symptom: string, captureName?: string): Promise<Case> {
+    const name = captureName?.replace(/\\/g, '/').split('/').at(-1)?.trim();
+    if (captureName !== undefined && (!name || !plainName(name, 255) || ['.', '..'].includes(name)))
+      throw new ApiError('invalid_request');
     return checkCase(
       await request('cases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symptom }),
+        body: JSON.stringify({ symptom, ...(name ? { capture_name: name } : {}) }),
       }),
     );
   },
@@ -226,6 +328,22 @@ export const api = {
   },
   async investigate(id: string): Promise<Case> {
     return checkCase(await request(`${casePath(id)}/investigate`, { method: 'POST' }), id);
+  },
+  async followup(id: string, question: string, signal?: AbortSignal): Promise<Followup> {
+    if (!question.trim() || Array.from(question).length > 2000)
+      throw new ApiError('invalid_request');
+    const data = await request(`${casePath(id)}/followups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+      signal,
+    });
+    if (
+      !validFollowup(data) ||
+      !data.evidence_ids.every((id) => /^[A-Za-z0-9_.-]{1,256}$/.test(id))
+    )
+      throw new ApiError('contract_mismatch');
+    return data;
   },
   async report(id: string, signal?: AbortSignal): Promise<Report> {
     const data = await request(`${casePath(id)}/report`, { signal });
@@ -327,7 +445,6 @@ export function revision(value: Case): string {
     value.updated,
     value.history.at(-1)?.seq,
     value.evidence_count,
-    value.artifacts.map((a) => [a.kind, a.sha256]),
     value.runs.map((r) => [r.id, r.status]),
   ]);
 }

@@ -64,6 +64,10 @@ The rules engine:
 
 Important conservative boundaries are intentional: a reset proves termination but not cause; a retransmission indicator does not localize the physical loss point; reordering alone is not promoted to a root-cause finding; a zero window identifies a constrained receiver but not automatically client/server ownership; PMTUD control signals support a path hypothesis but do not by themselves prove an MTU black hole.
 
+## Post-V1 embedded provider
+
+`embedded_local` reuses the same Gate 7 request context, JSON action schema, evidence-ID validation, capability allowlist, step/byte limits, audit persistence, and deterministic fallback as other providers. The macOS launcher supplies the local authenticated endpoint and ephemeral token at container start; the API does not own or launch llama.cpp and the host bridge is not an inference proxy. If the runtime is unavailable, deterministic analysis remains healthy and reports safe availability/fallback metadata. See [post-V1 operations](../../docs/embedded-ai-operations.md).
+
 ## Time attribution
 
 The deterministic attribution can include DNS, TCP establishment, the visible TLS establishment milestone, and decodable HTTP request-to-first-response timing. Measurement class and evidence IDs accompany each segment.

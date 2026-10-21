@@ -1,0 +1,2 @@
+COMMAND     PID   USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+llama-ser 65798 smithr    3u  IPv4 0x25fdba3edf8ebe89      0t0  TCP 127.0.0.1:8767 (LISTEN)

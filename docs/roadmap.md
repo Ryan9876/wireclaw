@@ -1,6 +1,6 @@
 # Product Roadmap
 
-This roadmap is directional. `specs/v1/` remains authoritative for V1 scope.
+This roadmap is directional. `specs/v1/` remains authoritative for V1 scope. Approved post-V1 feature specifications live under `specs/post-v1/`.
 
 ## V1 — macOS PCAP investigator
 
@@ -20,6 +20,26 @@ Core capabilities:
 
 Existing Windows/Linux host-bridge code and CI coverage are portability groundwork only; they are not V1 support claims.
 
+## Post-V1 next — Embedded local AI
+
+Goal: make AI-assisted troubleshooting work as an intrinsic Wireclaw capability with no separately installed/configured LLM stack.
+
+Approved design direction:
+
+- bundle Qwen3-4B-Instruct-2507 as a Q4_K_M GGUF release asset;
+- bundle a pinned native macOS arm64 llama.cpp server runtime with Metal support;
+- make `embedded_local` the normal provider default for the new packaged macOS release;
+- preserve the Gate 7 normalized-evidence, typed-capability, evidence-validation, uncertainty, and deterministic-fallback boundaries;
+- keep the model/runtime loopback-only and Wireclaw-managed;
+- package model/runtime licenses and immutable provenance/hash metadata;
+- compare embedded-AI reasoning against rules-only behavior over the Gate 9 corpus before promotion;
+- retain `none`, custom local, and cloud provider modes;
+- design the runtime/package contract so Windows/Linux platform runtimes can be added later without redesigning the reasoning layer.
+
+Implementation and acceptance are governed by `specs/post-v1/embedded-local-ai.md` and ADR-0007. This stage qualifies macOS arm64 only. The accepted V1 release record remains unchanged.
+
+Current implementation evidence is tracked in `docs/post-v1-embedded-ai-acceptance.md`. Candidate `bae67a0` passes the three-run official benchmark, all 16 frozen-package native EAI.14 checks, and exact-head CI run 38829585198. Independent whole-branch/security reviews and final acceptance-head CI remain outstanding; PR #13 remains draft, so this work is not yet release-qualified. Windows/Linux embedded-AI qualification remains `NOT_RUN`.
+
 ## Post-V1 — Windows and Linux release qualification
 
 Goal: extend the macOS-qualified product to Windows and Linux without weakening the local-first/security model or redesigning the core analysis architecture.
@@ -37,6 +57,8 @@ For each platform, qualification requires:
 - release smoke tests on the actual host OS
 - Gate 9-equivalent end-to-end, privacy, immutability, and security acceptance
 - documentation of OS/version, architecture, Wireshark version, source SHA, image digest, and bridge binary hash
+
+For the embedded-AI product line, each future platform must additionally qualify its native inference runtime/model packaging, process isolation, local-only exposure, resource behavior, and deterministic fallback before embedded AI is claimed as supported there.
 
 Windows and Linux should be promoted to supported platforms only after this qualification is complete. Automated build/test jobs remain useful before then but do not substitute for native release acceptance.
 

@@ -5,3 +5,5 @@ export function validReport(data: unknown): data is Report;
 export function validEvidence(data: unknown): data is Evidence;
 export function validCase(data: unknown): data is components['schemas']['CaseResponse'];
 export function validDeletion(data: unknown): data is components['schemas']['DeletionResponse'];
+export function validRecentCases(data: unknown): data is components['schemas']['RecentCaseResponse'][];
+export function validFollowup(data: unknown): data is components['schemas']['FollowupResponse'];

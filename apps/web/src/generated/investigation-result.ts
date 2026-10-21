@@ -60,8 +60,10 @@ export type Report = {
     mode: 'rules_only' | 'model_assisted' | 'model_fallback';
     status: 'complete' | 'fallback';
     steps: number;
-    provider_mode: 'none' | 'openai_compatible_cloud' | 'openai_compatible_local';
+    provider_mode: 'none' | 'openai_compatible_cloud' | 'openai_compatible_local' | 'embedded_local';
     model: string | null;
+    embedded_availability?: 'ready' | 'unavailable' | 'not_applicable';
+    embedded_failure_code?: string | null;
     failure_code?: string;
     /**
      * @maxItems 16

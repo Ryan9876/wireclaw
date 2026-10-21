@@ -6,6 +6,10 @@ RELEASE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 . "$SCRIPT_DIR/common.sh"
 
 stop_failed=0
+if ! stop_ai; then
+  printf 'Wireclaw: failed to stop the embedded AI safely.\n' >&2
+  stop_failed=1
+fi
 if ! stop_bridge; then
   printf 'Wireclaw: failed to stop the host bridge safely.\n' >&2
   stop_failed=1

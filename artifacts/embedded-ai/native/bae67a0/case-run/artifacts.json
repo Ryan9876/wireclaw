@@ -1,0 +1,71 @@
+{
+  "finding": {
+    "affected_scope": {
+      "tcp_stream": 0
+    },
+    "alternate_explanations": [
+      "The 150 ms rule threshold is a diagnostic heuristic, not proof of a network fault.",
+      "Path distance and capture location can legitimately produce higher RTT."
+    ],
+    "category": "tcp.rtt",
+    "confidence": "medium",
+    "epistemic_class": "inferred",
+    "evidence_ids": [
+      "ev_72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c_analyze_rtt_stream0"
+    ],
+    "fault_domains": [
+      "local_network",
+      "network_path"
+    ],
+    "id": "finding_001",
+    "limitations": [
+      "Capture quality must be considered before interpreting these facts; no root-cause conclusion is produced.",
+      "capture_drops",
+      "duplicate_capture_artifacts",
+      "ACK RTT is capture-point segment-to-ACK timing, includes delayed ACKs and may include SYN samples; not one-way path latency.",
+      "TShark 4.2.2 does not expose newer ambiguous_ack classification; these samples do not independently implement Karn's algorithm."
+    ],
+    "recommended_validation": [
+      "Compare RTT from the same path under a known-good reproduction or from the opposite endpoint."
+    ],
+    "statement": "TCP stream 0 has a measured median ACK RTT of 200 ms across 3 sample(s).",
+    "title": "High transport RTT observed",
+    "wireshark": {
+      "applicable": true,
+      "copy_filter": true,
+      "display_filter": "tcp.stream == 0",
+      "evidence_capture": true,
+      "full_capture": true,
+      "show_packet_evidence": true
+    }
+  },
+  "evidence_capture": {
+    "artifact_id": "90d9303924104146a7a4074dc1dec2a0",
+    "sha256": "57d3283c32204a84e9ea212581b09907cbcb512b603238f45230ee9e5cedb7a9",
+    "bytes": 600,
+    "provenance": {
+      "artifact_id": "90d9303924104146a7a4074dc1dec2a0",
+      "parent_sha256": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+      "case_id": "9d93d258ad994f0a94f8fe4effb778b0",
+      "finding_id": "finding_001",
+      "related_finding_ids": [
+        "finding_001"
+      ],
+      "evidence_ids": [
+        "ev_72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c_analyze_rtt_stream0"
+      ],
+      "extraction_mode": "tcp_stream",
+      "extraction_rule": {
+        "mode": "tcp_stream",
+        "display_filter": "tcp.stream == 0"
+      },
+      "display_filter": "tcp.stream == 0",
+      "created": "2026-10-16T01:03:39.698132+00:00",
+      "tool_versions": {
+        "capinfos": "4.2.2",
+        "tshark": "4.2.2",
+        "analyzer": "0.2.0"
+      }
+    }
+  }
+}

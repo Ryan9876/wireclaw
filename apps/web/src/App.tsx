@@ -1,20 +1,51 @@
-import { useState } from 'react';
-import { ApiError, errorMessage, isRunning, revision } from './api';
+import { useEffect, useState } from 'react';
+import {
+  aiStatusLabel,
+  ApiError,
+  api,
+  errorMessage,
+  isRunning,
+  revision,
+  type AIStatus,
+} from './api';
+import { Conversation } from './Conversation';
 import { Dialog } from './Dialog';
 import { EvidenceDrawer } from './EvidenceDrawer';
-import { Intake } from './Intake';
+import { fileSize, Intake } from './Intake';
 import { Progress } from './Progress';
 import { ReportView } from './ReportView';
+import { RecentCaptures } from './RecentCaptures';
 import { useCase } from './useCase';
 
 export function App() {
   const investigation = useCase();
   const { id, record, report, busy, error, notice } = investigation;
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>();
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    symptom?: string;
+  } | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [evidenceView, setEvidenceView] = useState<{ report: typeof report; ids: string[] } | null>(
     null,
   );
   const [recoveryId, setRecoveryId] = useState('');
+  const [runtimeAIStatus, setRuntimeAIStatus] = useState<AIStatus>();
+  useEffect(() => {
+    const controller = new AbortController();
+    api.aiStatus(controller.signal).then(
+      (status) => {
+        if (!controller.signal.aborted) setRuntimeAIStatus(status);
+      },
+      () => {
+        if (!controller.signal.aborted) setRuntimeAIStatus(undefined);
+      },
+    );
+    return () => controller.abort();
+  }, []);
+  const original = record?.artifacts.find((artifact) => artifact.id === record.original_id);
+  const currentAIStatus = record?.ai_status ?? runtimeAIStatus;
   const locked =
     busy ||
     (!!record &&
@@ -34,35 +65,39 @@ export function App() {
         Skip to investigation
       </a>
       <header className="app-header">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            W
-          </span>
-          <div>
-            <strong>Wireclaw</strong>
-            <span>Packet investigation</span>
-          </div>
-        </div>
+        <img className="brand" src="/brand/wireclaw-logo.jpeg" alt="Wireclaw" />
         <div className="local-status">
           <span aria-hidden="true">◉</span> Local capture analysis{' '}
-          <span className="separator">/</span> Rules-only
+          <span className="separator">/</span> {aiStatusLabel(currentAIStatus)}
         </div>
+        <RecentCaptures
+          key={historyVersion}
+          activeId={id}
+          disabled={busy}
+          onOpen={(caseId) => {
+            setPendingFiles(undefined);
+            investigation.recover(caseId);
+          }}
+          onRename={investigation.updateMetadata}
+          onDelete={(row) => setDeleteTarget(row)}
+        />
       </header>
       <main id="main" tabIndex={-1}>
-        <div className="page-heading">
-          <div>
-            <span className="eyebrow">Evidence before diagnosis</span>
-            <h1>{id ? 'Capture investigation' : 'Investigate a network symptom'}</h1>
-            <p className="muted">
-              Deterministic packet facts. Traceable conclusions. Visible uncertainty.
-            </p>
-          </div>
-          {id && (
-            <button className="quiet" disabled={locked} onClick={investigation.newCase}>
+        <h1 className="sr-only">Capture investigation</h1>
+        {id && (
+          <div className="case-toolbar">
+            <button
+              className="quiet"
+              disabled={locked}
+              onClick={() => {
+                setPendingFiles(undefined);
+                investigation.newCase();
+              }}
+            >
               New case
             </button>
-          )}
-        </div>
+          </div>
+        )}
         {notice && (
           <div className="notice" role="status">
             {notice}
@@ -80,8 +115,8 @@ export function App() {
         )}
         {!id && (
           <>
-            <Intake busy={busy} onStart={investigation.start} />
-            <details className="recovery panel">
+            <Intake busy={busy} initialFiles={pendingFiles} onStart={investigation.start} />
+            <details className="recovery">
               <summary>Recover an existing local case</summary>
               <p className="muted">
                 Bookmark a case to return after reload. Or enter its logical case ID; no file path
@@ -115,31 +150,49 @@ export function App() {
         )}
         {record && (
           <>
-            <section className="panel case-context" aria-labelledby="context-heading">
-              <div className="section-heading">
-                <h2 id="context-heading">Case context</h2>
-                <button
-                  className="danger quiet"
-                  disabled={locked}
-                  onClick={() => setDeleteId(record.id)}
-                >
-                  Delete case
-                </button>
+            {record.original_id && (
+              <div className="selected-file">
+                <span aria-hidden="true">▤</span>
+                <div>
+                  <strong>
+                    {record.name || record.display_name || record.capture_name || 'Stored capture'}
+                  </strong>
+                  {original && <span>{fileSize(original.bytes)}</span>}
+                </div>
               </div>
+            )}
+            <p className="symptom user-question">{record.symptom}</p>
+            <details className="case-context">
+              <summary>Case details</summary>
               <p className="case-id">
                 Case <code>{record.id}</code>
               </p>
-              <p className="symptom">{record.symptom}</p>
               {record.capture_sha && (
-                <details>
-                  <summary>Immutable original capture</summary>
-                  <p>
-                    SHA-256 <code>{record.capture_sha}</code>
-                  </p>
-                  <p>The stored original is read-only. Your source file is unchanged.</p>
-                </details>
+                <p>
+                  Immutable original · SHA-256 <code>{record.capture_sha}</code>
+                </p>
               )}
-            </section>
+              <p>Your source file is unchanged.</p>
+              <details>
+                <summary>Recorded lifecycle history</summary>
+                <ol>
+                  {record.history.map((entry) => (
+                    <li key={entry.seq}>
+                      <code>{entry.state}</code> · <time dateTime={entry.at}>{entry.at}</time>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+              <button
+                className="danger quiet"
+                disabled={locked}
+                onClick={() =>
+                  setDeleteTarget({ id: record.id, name: record.name, symptom: record.symptom })
+                }
+              >
+                Delete case
+              </button>
+            </details>
             {record.state !== 'COMPLETE' && <Progress record={record} />}
             {record.state === 'FAILED' && (
               <section className="panel failure" aria-labelledby="failure-heading">
@@ -185,12 +238,52 @@ export function App() {
                 }}
               />
             )}
-            {record.state === 'COMPLETE' && (
-              <details className="panel">
-                <summary>Investigation complete · inspect recorded lifecycle</summary>
-                <Progress record={record} />
-              </details>
+            {/* Preserve turns and draft during report recovery; the case/revision key still resets them. */}
+            {record.state === 'COMPLETE' && record.original_id && (
+              <Conversation
+                key={JSON.stringify([
+                  id,
+                  record.original_id,
+                  record.history.at(-1)?.seq,
+                  record.runs.map((run) => [run.id, run.status]),
+                ])}
+                caseId={record.id}
+                verified={!busy && !!report}
+                enabled={!!currentAIStatus && currentAIStatus.effective_provider_mode !== 'none'}
+                onAttach={(files) => {
+                  setPendingFiles(files);
+                  investigation.newCase();
+                }}
+                onEvidence={(ids) => {
+                  if (ids.length) setEvidenceView({ report, ids });
+                }}
+              />
             )}
+            {!report &&
+              (busy || record.state !== 'COMPLETE') &&
+              (locked || !!record.original_id) && (
+                <div className="composer-wrap">
+                  <div className="composer">
+                    <button className="attach quiet" disabled aria-label="Attach capture">
+                      ＋
+                    </button>
+                    <textarea
+                      rows={1}
+                      disabled
+                      aria-label="Question about this report"
+                      placeholder="Waiting for the investigation report…"
+                    />
+                    <button className="send primary" disabled aria-label="Send">
+                      ↑
+                    </button>
+                  </div>
+                  <p className="composer-hint">
+                    {locked
+                      ? 'Investigation in progress. Capture evidence remains authoritative.'
+                      : 'A completed report is required for follow-up.'}
+                  </p>
+                </div>
+              )}
             {record.state === 'COMPLETE' && !report && !error && (
               <p className="panel" role="status">
                 Retrieving and verifying the current report…
@@ -198,19 +291,19 @@ export function App() {
             )}
           </>
         )}
-        {deleteId === id && record && (
+        {deleteTarget && (
           <Dialog
             title="Delete this case?"
             titleId="delete-title"
             closeDisabled={busy}
             onClose={() => {
-              if (!busy) setDeleteId(null);
+              if (!busy) setDeleteTarget(null);
             }}
           >
             <p>
-              Delete case <code>{record.id}</code>?
+              Delete {deleteTarget.name || 'case'} <code>{deleteTarget.id}</code>?
             </p>
-            <blockquote>{record.symptom}</blockquote>
+            {deleteTarget.symptom && <blockquote>{deleteTarget.symptom}</blockquote>}
             <p>
               This removes the locally stored original capture, normalized evidence, report, and any
               derived evidence captures. Your source file outside Wireclaw is unchanged. Deletion
@@ -226,14 +319,21 @@ export function App() {
                 autoFocus
                 data-initial-focus
                 disabled={busy}
-                onClick={() => setDeleteId(null)}
+                onClick={() => setDeleteTarget(null)}
               >
                 Keep case
               </button>
               <button
                 className="danger solid"
                 disabled={busy}
-                onClick={() => void investigation.remove()}
+                onClick={() =>
+                  void investigation.remove(deleteTarget.id).then((removed) => {
+                    if (removed) {
+                      setDeleteTarget(null);
+                      setHistoryVersion((value) => value + 1);
+                    }
+                  })
+                }
               >
                 {busy ? 'Deleting…' : 'Delete case and stored files'}
               </button>
@@ -248,9 +348,6 @@ export function App() {
           />
         )}
       </main>
-      <footer className="app-footer">
-        Local-first · No model provider · Evidence remains authoritative
-      </footer>
     </>
   );
 }

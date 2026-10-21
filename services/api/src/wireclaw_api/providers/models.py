@@ -10,6 +10,7 @@ class ReasoningRequest:
     system_instruction: str
     max_request_bytes: int
     max_response_bytes: int
+    response_schema: dict | None = None
 
 
 @dataclass(frozen=True)

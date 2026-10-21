@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { api, ApiError, errorMessage } from '../src/api';
+import { api, ApiError, errorMessage, revision, type Case } from '../src/api';
 import supported from './fixtures/supported.json';
 
 function response(value: unknown, status = 200) {
@@ -9,6 +9,17 @@ function response(value: unknown, status = 200) {
   });
 }
 describe('fixed same-origin API contract', () => {
+  it('does not invalidate report content when only derived artifact bookkeeping changes', () => {
+    const before = structuredClone(supported.case) as unknown as Case;
+    const after = structuredClone(supported.case) as unknown as Case;
+    after.artifacts.push({
+      ...after.artifacts[0],
+      id: 'derived-artifact',
+      kind: 'evidence_capture',
+      sha256: 'a'.repeat(64),
+    });
+    expect(revision(after)).toBe(revision(before));
+  });
   it('creates with context, uploads octet stream, and invokes the real endpoint shapes', async () => {
     const fetch = vi.fn().mockImplementation(async () => response(supported.case));
     vi.stubGlobal('fetch', fetch);
@@ -107,11 +118,52 @@ describe('fixed same-origin API contract', () => {
   it('rejects non-rules provider mode and unknown lifecycle states', async () => {
     const fetch = vi
       .fn()
-      .mockResolvedValueOnce(response({ ...supported.case, provider_mode: 'cloud' }))
+      .mockResolvedValueOnce(response({ ...supported.case, provider_mode: 'mystery' }))
       .mockResolvedValueOnce(response({ ...supported.case, state: 'MAGIC' }));
     vi.stubGlobal('fetch', fetch);
     await expect(api.get(supported.case.id)).rejects.toThrow('contract_mismatch');
     await expect(api.get(supported.case.id)).rejects.toThrow('contract_mismatch');
+  });
+  it.each(['none', 'embedded_local', 'openai_compatible_local', 'openai_compatible_cloud'])(
+    'accepts known provider mode %s on cases and capabilities',
+    async (mode) => {
+      const value = { ...supported.case, provider_mode: mode };
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(response(value))
+        .mockResolvedValueOnce(
+          response({ provider_mode: mode, limits: { max_capture_bytes: 20 } }),
+        );
+      vi.stubGlobal('fetch', fetch);
+      await expect(api.get(supported.case.id)).resolves.toMatchObject({ provider_mode: mode });
+      await expect(api.limits()).resolves.toBe(20);
+    },
+  );
+  it('validates and returns normalized safe AI status', async () => {
+    const status = {
+      effective_provider_mode: 'none',
+      embedded_availability: 'unavailable',
+      model: 'wireclaw-qwen3-4b-instruct-2507-q4_k_m',
+      failure_code: 'docker-connectivity',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ ai: status })));
+    await expect(api.aiStatus()).resolves.toEqual(status);
+  });
+  it('rejects unknown provider modes in the AI status contract', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        response({
+          ai: {
+            effective_provider_mode: 'shell_agent',
+            embedded_availability: 'ready',
+            model: 'unexpected',
+            failure_code: null,
+          },
+        }),
+      ),
+    );
+    await expect(api.aiStatus()).rejects.toThrow('contract_mismatch');
   });
   it('handles API errors without echoing raw untrusted messages', async () => {
     vi.stubGlobal(
@@ -145,5 +197,102 @@ describe('fixed same-origin API contract', () => {
     vi.stubGlobal('fetch', fetch);
     await expect(api.get(supported.case.id)).rejects.toThrow('network_unavailable');
     await expect(api.get(supported.case.id)).rejects.toThrow('contract_mismatch');
+  });
+});
+
+describe('stateless follow-up client', () => {
+  it('sends only the current bounded question and validates the response', async () => {
+    const answer = { answer: 'More evidence is needed.', evidence_ids: ['ev_1'] };
+    const fetch = vi.fn().mockResolvedValue(response(answer));
+    vi.stubGlobal('fetch', fetch);
+    expect(await api.followup(supported.case.id, 'Why?')).toEqual(answer);
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/cases/${supported.case.id}/followups`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ question: 'Why?' }) }),
+    );
+  });
+  it.each(['', ' '.repeat(5), 'x'.repeat(2001)])(
+    'rejects invalid question before network access',
+    async (question) => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      await expect(api.followup(supported.case.id, question)).rejects.toThrow('invalid_request');
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { answer: '', evidence_ids: [] },
+    { answer: 'Answer', evidence_ids: ['../raw'] },
+    { answer: 'Answer', evidence_ids: [], report: {} },
+  ])('rejects incompatible follow-up data', async (answer) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(answer)));
+    await expect(api.followup(supported.case.id, 'Why?')).rejects.toThrow('contract_mismatch');
+  });
+});
+
+describe('recent capture metadata client', () => {
+  const row = {
+    id: supported.case.id,
+    name: 'trace.pcap',
+    capture_bytes: 127,
+    created: supported.case.created,
+    updated: supported.case.updated,
+    state: 'COMPLETE',
+  };
+  it('requests a bounded metadata-only list with cancellation', async () => {
+    const fetch = vi.fn().mockResolvedValue(response([row]));
+    vi.stubGlobal('fetch', fetch);
+    const controller = new AbortController();
+    expect(await api.recent(controller.signal)).toEqual([row]);
+    expect(fetch.mock.calls[0][0]).toBe('/api/cases?limit=10');
+    expect(fetch.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+  it.each(
+    [
+      [{ ...row, symptom: 'private context' }],
+      [{ ...row, id: '../capture' }],
+      [{ ...row, capture_bytes: -1 }],
+      [{ ...row, capture_bytes: 1.5 }],
+      [{ ...row, state: 'UNKNOWN' }],
+      [{ ...row, name: 'bad\u0000name' }],
+      [{ ...row, created: 'yesterday' }],
+      Array.from({ length: 11 }, () => row),
+      [row, row],
+      { cases: [row] },
+    ].map((value) => ({ value })),
+  )('rejects incompatible history data $value', async ({ value }) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(value)));
+    await expect(api.recent()).rejects.toThrow('contract_mismatch');
+  });
+  it('renames with only display_name and validates the returned case identity', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(response(supported.case))
+      .mockResolvedValueOnce(response({ ...supported.case, id: 'b'.repeat(32) }));
+    vi.stubGlobal('fetch', fetch);
+    const signal = new AbortController().signal;
+    await api.rename(row.id, 'Office trace', signal);
+    expect(fetch.mock.calls[0][0]).toBe(`/api/cases/${row.id}`);
+    expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'PATCH', signal });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ display_name: 'Office trace' });
+    await expect(api.rename(row.id, 'Office trace')).rejects.toThrow('contract_mismatch');
+  });
+  it.each(['', ' ', 'x'.repeat(121), 'line\nname', 'bad\u200ename'])(
+    'rejects invalid rename before network access %s',
+    async (name) => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      await expect(api.rename(row.id, name)).rejects.toThrow('invalid_request');
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it('sends only the capture basename on creation', async () => {
+    const fetch = vi.fn().mockResolvedValue(response(supported.case));
+    vi.stubGlobal('fetch', fetch);
+    await api.create('slow', 'C:\\captures\\trace.pcap');
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+      symptom: 'slow',
+      capture_name: 'trace.pcap',
+    });
   });
 });

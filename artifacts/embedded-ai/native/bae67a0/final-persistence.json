@@ -1,0 +1,18 @@
+{
+  "case_state": "COMPLETE",
+  "capture_sha": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+  "db_case_row": [
+    "9d93d258ad994f0a94f8fe4effb778b0",
+    "COMPLETE",
+    "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c"
+  ],
+  "evidence_count": 17,
+  "reasoning_mode": "model_assisted",
+  "case_files": {
+    "data/cases/9d93d258ad994f0a94f8fe4effb778b0/analyzer/cases/72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c/original/capture": "72c8be5c65a54ecc74c53f33d7befb088028e5ced759f50d2341e7233904f22c",
+    "data/cases/9d93d258ad994f0a94f8fe4effb778b0/evidence/7b93a0d1dfd24f70bf58e96db73f367a.pcapng": "57d3283c32204a84e9ea212581b09907cbcb512b603238f45230ee9e5cedb7a9"
+  },
+  "model_sha256": "4169f9cf383f6aeb8b2fc9cc23fe061e276a0d10b0843ae959ab4d895020aafc",
+  "runtime_sha256": "84b7ae18c4e90534a8c44b9190770b1f91fda2c002bac21af6a758c477d98034",
+  "pass": true
+}

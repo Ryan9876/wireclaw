@@ -30,6 +30,11 @@ def records(value):
             yield from records(nested)
 
 
+def gate3_temporary_directory():
+    temp_base = Path(tempfile.gettempdir()).resolve()
+    return tempfile.TemporaryDirectory(prefix="wireclaw-gate3-", dir=temp_base)
+
+
 def main():
     if not shutil.which("tshark") or not shutil.which("capinfos"):
         raise RuntimeError("real_packet_tools_required")
@@ -47,7 +52,7 @@ def main():
                 item["source"].setdefault("version", "4.2.2")
                 validator.validate(item)
                 checks += 1
-    with tempfile.TemporaryDirectory(prefix="wireclaw-gate3-") as temporary:
+    with gate3_temporary_directory() as temporary:
         directory = Path(temporary)
         captures = generate(directory / "incoming")
         captures.update(generate_diagnostics(directory / "incoming"))

@@ -13,18 +13,23 @@ ENV_FILE="$RELEASE_DIR/.env"
 if [ ! -f "$ENV_FILE" ]; then
   cp "$RELEASE_DIR/.env.example" "$ENV_FILE" || fail "could not create .env from .env.example"
   chmod 600 "$ENV_FILE"
-  printf 'Created %s; defaults use rules-only mode.\n' "$ENV_FILE"
+  printf 'Created %s with the packaged provider defaults.\n' "$ENV_FILE"
 fi
 APP_PORT="$(read_env_value WIRECLAW_PORT "$ENV_FILE")"
 BRIDGE_PORT="$(read_env_value WIRECLAW_BRIDGE_PORT "$ENV_FILE")"
 DATA_CONFIG="$(read_env_value WIRECLAW_DATA_ROOT "$ENV_FILE")"
 PROVIDER_MODE="$(read_env_value WIRECLAW_PROVIDER_MODE "$ENV_FILE")"
+PROVIDER_BASE_URL="$(read_env_value WIRECLAW_PROVIDER_BASE_URL "$ENV_FILE")"
+PROVIDER_MODEL="$(read_env_value WIRECLAW_PROVIDER_MODEL "$ENV_FILE")"
+PROVIDER_API_KEY="$(read_env_value WIRECLAW_PROVIDER_API_KEY "$ENV_FILE")"
+AI_PORT_CONFIG="$(read_env_value WIRECLAW_AI_PORT "$ENV_FILE")"
+[ -n "$AI_PORT_CONFIG" ] || AI_PORT_CONFIG=8767
 validate_port WIRECLAW_PORT "$APP_PORT"
 validate_port WIRECLAW_BRIDGE_PORT "$BRIDGE_PORT"
 [ "$APP_PORT" != "$BRIDGE_PORT" ] || fail "application and bridge ports must differ"
 case "$PROVIDER_MODE" in
-  none|openai_compatible_cloud|openai_compatible_local) ;;
-  *) fail "WIRECLAW_PROVIDER_MODE must be none, openai_compatible_cloud, or openai_compatible_local" ;;
+  none|openai_compatible_cloud|openai_compatible_local|embedded_local) ;;
+  *) fail "WIRECLAW_PROVIDER_MODE must be none, openai_compatible_cloud, openai_compatible_local, or embedded_local" ;;
 esac
 DATA_ROOT="$(resolve_data_root "$DATA_CONFIG")"
 [ -x "$wireclaw_bridge_bin" ] || fail "Wireclaw host bridge is not installed. Run launch/macos/install-host-bridge.sh."
@@ -45,33 +50,25 @@ for port in "$APP_PORT" "$BRIDGE_PORT"; do
     fail "port $port is already in use. Stop the conflicting app or choose another port in .env."
   fi
 done
+validate_runtime_path || fail "Wireclaw runtime path contains an unsafe symlink or directory"
 mkdir -p "$wireclaw_runtime_dir"
+validate_runtime_path || fail "Wireclaw runtime path contains an unsafe symlink or directory"
 chmod 700 "$wireclaw_support_root" "$wireclaw_runtime_dir"
+start_ai "$RELEASE_DIR" "$APP_PORT" "$BRIDGE_PORT" "$PROVIDER_MODE" "$AI_PORT_CONFIG"
 export WIRECLAW_DATA_ROOT="$DATA_ROOT"
 export WIRECLAW_UID="$(id -u)"
 export WIRECLAW_GID="$(id -g)"
-docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" config --quiet \
-  || fail "Compose configuration is invalid; review .env against .env.example."
 load_release_image "$RELEASE_DIR"
-if ! docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" up -d; then
-  docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
-  fail "Wireclaw core did not start. Check Docker Desktop and the packaged release files."
-fi
-
-ready=0
-attempt=0
-while [ "$attempt" -lt 45 ]; do
-  container_id="$(docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" ps -q wireclaw-core 2>/dev/null || true)"
-  if [ -n "$container_id" ] && [ "$(docker inspect --format '{{.State.Health.Status}}' "$container_id" 2>/dev/null || true)" = healthy ]; then
-    ready=1
-    break
+configure_provider_environment "$PROVIDER_MODE" "$PROVIDER_BASE_URL" "$PROVIDER_MODEL" "$PROVIDER_API_KEY"
+if [ "$PROVIDER_MODE" = embedded_local ] && [ "$WIRECLAW_PROVIDER_MODE" = embedded_local ]; then
+  if ! probe_ai_from_core "$RELEASE_DIR" "$ENV_FILE"; then
+    stop_ai || true
+    ai_unavailable "docker-connectivity"
+    configure_provider_environment embedded_local
   fi
-  sleep 2
-  attempt=$((attempt + 1))
-done
-if [ "$ready" -ne 1 ]; then
-  docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
-  fail "Wireclaw core did not become healthy within 90 seconds. Data was preserved; inspect Docker Desktop logs."
+fi
+if ! compose_start_core "$RELEASE_DIR" "$ENV_FILE" "$PROVIDER_MODE"; then
+  fail "Wireclaw core did not start. Check Docker Desktop and the packaged release files."
 fi
 
 if [ -f "$wireclaw_pid_file" ]; then
@@ -102,4 +99,7 @@ if [ "$bridge_ready" -ne 1 ]; then
   docker compose --env-file "$ENV_FILE" -f "$RELEASE_DIR/compose.yaml" stop wireclaw-core >/dev/null 2>&1 || true
   fail "Wireclaw host bridge did not become ready. Check Wireshark configuration; case data was preserved."
 fi
-printf 'Wireclaw core and host bridge are ready.\nOpen http://127.0.0.1:%s\n' "$APP_PORT"
+if [ "$PROVIDER_MODE" = embedded_local ] && [ "$(cat "$wireclaw_ai_status_file" 2>/dev/null || true)" = ready ]; then
+  printf 'Wireclaw core, host bridge, and local embedded AI are ready.\n'
+fi
+printf 'Open http://127.0.0.1:%s\n' "$APP_PORT"
