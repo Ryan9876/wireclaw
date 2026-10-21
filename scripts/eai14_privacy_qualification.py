@@ -97,6 +97,7 @@ class PrivacyProviderFixture:
         self._sentinels = tuple(value.encode("utf-8") for value in sentinels)
         self._max_requests = max_requests
         self._expected_case_id: str | None = None
+        self._active_case_id: str | None = None
         self._request_count = 0
         self._body_bytes = 0
         self._body_sha256: str | None = None
@@ -106,6 +107,7 @@ class PrivacyProviderFixture:
         self._correlated = False
         self._overflow = False
         self._diagnostics = bytearray()
+        self._state_lock = threading.Lock()
         self._server: http.server.ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -215,19 +217,43 @@ class PrivacyProviderFixture:
             raise ValueError("privacy_case_identity_invalid")
         self._expected_case_id = case_id
 
+    def begin_case_investigation(self, case_id: str) -> None:
+        if case_id != self._expected_case_id:
+            raise ValueError("privacy_case_identity_invalid")
+        with self._state_lock:
+            if self._active_case_id is not None or self._request_count:
+                raise ValueError("privacy_case_investigation_scope_invalid")
+            self._active_case_id = case_id
+
+    def end_case_investigation(self, case_id: str) -> None:
+        with self._state_lock:
+            if self._active_case_id != case_id:
+                raise ValueError("privacy_case_investigation_scope_invalid")
+            self._active_case_id = None
+
     def _request_matches_expected_case(self, raw: bytes) -> bool:
-        if self._expected_case_id is None:
+        with self._state_lock:
+            scoped_case_id = self._active_case_id
+        if self._expected_case_id is None or scoped_case_id != self._expected_case_id:
             return False
         try:
             payload = json.loads(raw)
-            if payload.get("model") != MODEL_ID:
+            if not isinstance(payload, dict) or payload.get("model") != MODEL_ID:
                 return False
             messages = payload.get("messages")
+            if not isinstance(messages, list):
+                return False
             user_message = next(
                 item for item in messages if isinstance(item, dict) and item.get("role") == "user"
             )
-            context = json.loads(user_message["content"])
-            return context.get("case_id") == self._expected_case_id
+            content = user_message.get("content")
+            if not isinstance(content, str):
+                return False
+            context = json.loads(content)
+            if not isinstance(context, dict):
+                return False
+            context_case_id = context.get("case_id")
+            return context_case_id is None or context_case_id == self._expected_case_id
         except (ValueError, TypeError, KeyError, StopIteration):
             return False
 
@@ -257,7 +283,7 @@ class PrivacyProviderFixture:
             raise ValueError("privacy_provider_request_count_invalid")
         if not result["synthetic_authorization_valid"]:
             raise ValueError("privacy_provider_auth_invalid")
-        if not result["request_correlated"]:
+        if not result["request_correlated"] or self._active_case_id is not None:
             raise ValueError("privacy_provider_request_uncorrelated")
         if (
             not result["model_context_sentinel_absent"]
@@ -837,12 +863,16 @@ def _perform(args) -> dict:
         if status != 200:
             raise ValueError("privacy_capture_upload_failed")
         api_responses.append(captured)
-        status, investigated = _request(
-            base_url,
-            f"/api/cases/{case_id}/investigate",
-            method="POST",
-            timeout=120,
-        )
+        fixture.begin_case_investigation(case_id)
+        try:
+            status, investigated = _request(
+                base_url,
+                f"/api/cases/{case_id}/investigate",
+                method="POST",
+                timeout=120,
+            )
+        finally:
+            fixture.end_case_investigation(case_id)
         if status != 200:
             raise ValueError("privacy_investigation_failed")
         api_responses.append(investigated)

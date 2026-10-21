@@ -54,8 +54,12 @@ def test_provider_fixture_fails_when_sentinel_is_in_actual_request(capsys):
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=3):
-            pass
+        fixture.begin_case_investigation("case-test-1")
+        try:
+            with urllib.request.urlopen(request, timeout=3):
+                pass
+        finally:
+            fixture.end_case_investigation("case-test-1")
         with pytest.raises(ValueError, match="privacy_sentinel_present"):
             fixture.require_pass()
         emitted = json.dumps(fixture.result()) + capsys.readouterr().out
@@ -89,9 +93,13 @@ def test_provider_fixture_passes_when_sentinel_is_absent_and_correlates_case():
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=3) as response:
-            assert response.status == 200
-            assert json.loads(response.read())["choices"][0]["message"]["content"]
+        fixture.begin_case_investigation("case-test-2")
+        try:
+            with urllib.request.urlopen(request, timeout=3) as response:
+                assert response.status == 200
+                assert json.loads(response.read())["choices"][0]["message"]["content"]
+        finally:
+            fixture.end_case_investigation("case-test-2")
         fixture.require_pass()
         result = fixture.result()
         assert result["model_context_sentinel_absent"] is True
@@ -101,6 +109,44 @@ def test_provider_fixture_passes_when_sentinel_is_absent_and_correlates_case():
         assert result["request_body_sha256"] == hashlib.sha256(body).hexdigest()
     finally:
         fixture.close()
+
+
+def test_provider_fixture_correlates_actual_context_during_single_case_investigation(
+    monkeypatch,
+):
+    api_source = ROOT / "services/api/src"
+    monkeypatch.syspath_prepend(str(api_source))
+    from wireclaw_api.reasoning.context import build_context
+
+    helper = helper_module()
+    token = "TEST_ONLY_PROVIDER_TOKEN_abcdef0123456789"
+    fixture = helper.PrivacyProviderFixture(token, ["PAYLOAD_SENTINEL_5512"])
+    case_id = "case_7f3a9c2e1b4d"
+    serialized_context, _ = build_context(
+        case={"symptom": "Synthetic response timing investigation"},
+        evidence=[],
+        report={"capture_quality": {}, "findings": [], "remaining_hypotheses": []},
+        capabilities=["inspect_capture"],
+        max_items=10,
+        limits={"max_reasoning_steps": 3},
+    )
+    assert "case_id" not in json.loads(serialized_context)
+    fixture.expect_case(case_id)
+    body = json.dumps(
+        {
+            "model": helper.MODEL_ID,
+            "messages": [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": serialized_context},
+            ],
+        }
+    ).encode()
+    assert fixture._request_matches_expected_case(body) is False
+    fixture.begin_case_investigation(case_id)
+    assert fixture._request_matches_expected_case(body) is True
+    fixture.end_case_investigation(case_id)
+    assert fixture._request_matches_expected_case(body) is False
+    fixture.close()
 
 
 def test_provider_fixture_result_never_contains_authorization_or_request_body(capsys):
@@ -254,6 +300,7 @@ def test_operator_procedure_contains_executable_privacy_invocation():
     assert "--receipt-output <operator-evidence/eai14-16.json>" in result.stdout
     assert "unique Compose project" in result.stdout
     assert "isolated data root" in result.stdout
+    assert "single-case investigation window" in result.stdout
 
 
 def test_browser_status_probe_does_not_retain_browser_artifacts():

@@ -552,6 +552,14 @@ retains only request count, body size and SHA-256, and bounded pass/fail
 metadata. It never writes or prints credentials, request bodies, or model
 context.
 
+Wireclaw's normalized model context intentionally omits the logical case ID.
+The helper therefore correlates the recorder request through a single-case
+investigation window: it creates only one case in the isolated data root,
+opens the window immediately around that case's investigation request, and
+accepts exactly one model completion request while the window is active. A
+request outside that window, a second request, or an incomplete investigation
+fails qualification.
+
 The helper must inspect these exact surfaces and fail closed if any check is
 missing or any sentinel is found:
 
