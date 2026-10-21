@@ -73,7 +73,7 @@ OPERATOR_CHECKS = (
 OPERATOR_ATTESTATION = "I performed these native checks against the identified candidate and reviewed each attached artifact."
 OPERATOR_PROCEDURE = {
     "eai14-07": "Launch the frozen candidate normally; capture a screenshot showing Local embedded AI ready.",
-    "eai14-08": "Run high_rtt, server_wait, and midstream through the frozen app; attach each bounded report with valid evidence links and a human-reviewed none-versus-embedded_local comparison covering ranking, explanation, traceability, and uncertainty.",
+    "eai14-08": "Run high_rtt, server_wait, and midstream through the frozen app; preserve each actual report JSON and original-capture SHA-256 before/after. Generate each qualification projection from that untouched report with: python scripts/native_embedded_ai_qualification.py --project-eai14-08-report <actual-report.json> --candidate-bundle <bundle> --candidate-archive <archive> --candidate-metadata <metadata.json> --capture-sha256-before <sha256> --capture-sha256-after <sha256> --scenario-id high_rtt|server_wait|midstream --output <scenario_id>.json. The output filename and scenario_id identify the qualification scenario; case_id remains the actual generated Wireclaw case ID. Never hand-author projection JSON. Attach the three generated projections and a human-reviewed none-versus-embedded_local comparison covering ranking, explanation, traceability, and uncertainty.",
     "eai14-09": "From representative findings, activate both Open Full Capture in Wireshark and Open Evidence Capture in Wireshark; attach one screenshot for each opened capture.",
     "eai14-10": "Use a private candidate copy and unique Compose project. Start normally, verify the host receipt/helper identity, then invoke only the trusted launch/macos/ai_lifecycle.py stop operation with that exact receipt and helper path while leaving Core running. Confirm a representative analysis completes in rules-only mode, restart through the normal launcher, and attach the candidate-bound JSON receipt. Never signal a PID manually.",
     "eai14-14": "Use two private candidate copies and unique Compose projects. In one, create a disposable loopback-only listener on 127.0.0.1:8767 to force the AI port conflict. In the other, alter only the copied model bytes to force integrity failure. Confirm each launch degrades to deterministic analysis, the original frozen bundle/archive hashes stay unchanged, no non-loopback listener appears, and case data remains. Attach the candidate-bound JSON receipt; never attach credentials.",
@@ -706,7 +706,12 @@ def _record_handler_evidence(
 
 
 def project_eai14_08_case_report(
-    report: dict, identity: dict, capture_sha256_before: str, capture_sha256_after: str
+    report: dict,
+    identity: dict,
+    capture_sha256_before: str,
+    capture_sha256_after: str,
+    *,
+    scenario_id: str,
 ) -> dict:
     """Project an actual completed report; never accept operator-supplied conclusions."""
     from jsonschema import Draft202012Validator
@@ -715,7 +720,8 @@ def project_eai14_08_case_report(
     if not Draft202012Validator(schema).is_valid(report):
         raise ValueError("operator_source_report_invalid")
     if (
-        report["status"] != "complete"
+        scenario_id not in {"high_rtt", "server_wait", "midstream"}
+        or report["status"] != "complete"
         or report.get("reasoning", {}).get("provider_mode") != "embedded_local"
     ):
         raise ValueError("operator_source_report_invalid")
@@ -740,6 +746,7 @@ def project_eai14_08_case_report(
     projection = {
         "schema_version": 1,
         "case_id": report["case_id"],
+        "scenario_id": scenario_id,
         "conclusion_type": report["conclusion"]["type"],
         "candidate_identity_sha256": identity["candidate_identity_sha256"],
         "model_sha256": identity["signed_app"]["model_sha256"],
@@ -756,7 +763,7 @@ def project_eai14_08_case_report(
             for finding in report["findings"]
         ],
     }
-    _validate_eai14_08_projection(projection, identity, report["case_id"])
+    _validate_eai14_08_projection(projection, identity, scenario_id)
     return projection
 
 
@@ -764,6 +771,7 @@ def _validate_eai14_08_projection(payload: dict, identity: dict, expected_case: 
     required_case_fields = {
         "schema_version",
         "case_id",
+        "scenario_id",
         "conclusion_type",
         "source_report_sha256",
         "candidate_identity_sha256",
@@ -783,7 +791,10 @@ def _validate_eai14_08_projection(payload: dict, identity: dict, expected_case: 
         or set(payload) != required_case_fields
         or type(payload.get("schema_version")) is not int
         or payload.get("schema_version") != 1
-        or payload.get("case_id") != expected_case
+        or payload.get("scenario_id") != expected_case
+        or not isinstance(payload.get("case_id"), str)
+        or not payload.get("case_id")
+        or len(payload.get("case_id")) > 128
         or payload.get("conclusion_type") not in ("supported_finding", "insufficient_evidence")
         or not re.fullmatch(r"[0-9a-f]{64}", str(payload.get("source_report_sha256", "")))
         or payload.get("candidate_identity_sha256") != identity["candidate_identity_sha256"]
@@ -2550,6 +2561,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-eai14-08-report", type=Path)
     parser.add_argument("--capture-sha256-before")
     parser.add_argument("--capture-sha256-after")
+    parser.add_argument("--scenario-id", choices=("high_rtt", "server_wait", "midstream"))
     parser.add_argument("--operator-evidence-dir", type=Path)
     parser.add_argument("--print-operator-procedure", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
@@ -2580,9 +2592,13 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("operator_source_report_invalid")
             report = json.loads(source.read_text(encoding="utf-8"))
             projection = project_eai14_08_case_report(
-                report, identity, args.capture_sha256_before, args.capture_sha256_after
+                report,
+                identity,
+                args.capture_sha256_before,
+                args.capture_sha256_after,
+                scenario_id=args.scenario_id,
             )
-            if args.output.name != f"{projection['case_id']}.json":
+            if args.output.name != f"{projection['scenario_id']}.json":
                 raise ValueError("operator_evidence_invalid")
             with args.output.open("x", encoding="utf-8") as stream:
                 json.dump(projection, stream, indent=2, sort_keys=True, allow_nan=False)

@@ -54,6 +54,7 @@ def operator_case_report(case_id, identity):
     return {
         "schema_version": 1,
         "case_id": case_id,
+        "scenario_id": case_id,
         "conclusion_type": "supported_finding",
         "source_report_sha256": "b" * 64,
         "candidate_identity_sha256": identity["candidate_identity_sha256"],
@@ -134,7 +135,7 @@ def validate_eai14_08_artifact(tmp_path, qualification, payload, identity):
     evidence_root = tmp_path / "evidence"
     operator_root.mkdir(exist_ok=True)
     evidence_root.mkdir(exist_ok=True)
-    source = operator_root / f"{payload['case_id']}.json"
+    source = operator_root / f"{payload['scenario_id']}.json"
     source.write_text(json.dumps(payload))
     return qualification._operator_artifact(
         operator_root,
@@ -199,7 +200,8 @@ def test_eai14_08_projection_cli_derives_conclusion_from_actual_report(tmp_path)
     metadata = freezer.freeze_candidate(bundle, archive, codesign_runner=ad_hoc_codesign_runner)
     metadata_path = tmp_path / "metadata.json"
     metadata_path.write_text(json.dumps(metadata))
-    source = completed_case_report("server_wait", "insufficient_evidence", empty=True)
+    generated_case_id = "case_7f3a9c2e1b4d"
+    source = completed_case_report(generated_case_id, "insufficient_evidence", empty=True)
     source_path = tmp_path / "actual-report.json"
     source_path.write_text(json.dumps(source, indent=2))
     output = tmp_path / "server_wait.json"
@@ -218,12 +220,17 @@ def test_eai14_08_projection_cli_derives_conclusion_from_actual_report(tmp_path)
         "a" * 64,
         "--capture-sha256-after",
         "a" * 64,
+        "--scenario-id",
+        "server_wait",
         "--output",
         str(output),
     ]
     result = subprocess.run(args, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     projected = json.loads(output.read_text())
+    assert output.name == "server_wait.json"
+    assert projected["case_id"] == generated_case_id
+    assert projected["scenario_id"] == "server_wait"
     assert projected["conclusion_type"] == source["conclusion"]["type"]
     assert projected["findings"] == []
     assert projected["evidence_ids"] == ["ev-1", "ev-quality"]
@@ -248,14 +255,66 @@ def test_eai14_08_projection_cli_derives_conclusion_from_actual_report(tmp_path)
     assert rejected.returncode == 2
 
 
+def test_eai14_08_operator_procedure_prints_scenario_projection_invocation():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--candidate-bundle",
+            "candidate",
+            "--candidate-archive",
+            "archive",
+            "--candidate-metadata",
+            "metadata",
+            "--evidence-dir",
+            "evidence",
+            "--output",
+            "output",
+            "--print-operator-procedure",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--scenario-id high_rtt|server_wait|midstream" in result.stdout
+    assert "--output <scenario_id>.json" in result.stdout
+    assert "Never hand-author projection JSON" in result.stdout
+
+
+def test_eai14_08_projection_preserves_generated_case_id_and_binds_scenario(tmp_path):
+    qualification = qualification_module()
+    bundle, archive = candidate_fixture(tmp_path)
+    identity = qualification.candidate_identity(bundle, archive)
+    generated_case_id = "case_7f3a9c2e1b4d"
+    source = completed_case_report(generated_case_id)
+
+    projected = qualification.project_eai14_08_case_report(
+        source, identity, "a" * 64, "a" * 64, scenario_id="high_rtt"
+    )
+
+    assert projected["case_id"] == generated_case_id
+    assert projected["scenario_id"] == "high_rtt"
+    assert (
+        projected["source_report_sha256"]
+        == hashlib.sha256(
+            json.dumps(source, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        ).hexdigest()
+    )
+    assert validate_eai14_08_artifact(tmp_path, qualification, projected, identity)
+
+
 @pytest.mark.parametrize("case_id", ["high_rtt", "server_wait", "midstream"])
 def test_eai14_08_projection_retains_source_findings_and_case_evidence(tmp_path, case_id):
     qualification = qualification_module()
     bundle, archive = candidate_fixture(tmp_path)
     identity = qualification.candidate_identity(bundle, archive)
     report = completed_case_report(case_id)
-    projected = qualification.project_eai14_08_case_report(report, identity, "a" * 64, "a" * 64)
+    projected = qualification.project_eai14_08_case_report(
+        report, identity, "a" * 64, "a" * 64, scenario_id=case_id
+    )
     assert projected["case_id"] == case_id
+    assert projected["scenario_id"] == case_id
     assert projected["conclusion_type"] == "supported_finding"
     assert projected["findings"] == [{"finding_id": "finding-1", "evidence_ids": ["ev-1"]}]
     assert projected["evidence_ids"] == ["ev-1", "ev-quality"]
@@ -271,7 +330,7 @@ def test_eai14_08_projection_retains_source_findings_and_case_evidence(tmp_path,
         ("model_sha256", "f" * 64),
         ("llama_server_sha256", "f" * 64),
         ("original_capture_sha256_after", "f" * 64),
-        ("case_id", "unrecognized"),
+        ("scenario_id", "unrecognized"),
         ("provider_mode", "none"),
         ("findings", [{"finding_id": "finding-1", "evidence_ids": ["foreign-case-evidence"]}]),
     ],
@@ -306,7 +365,9 @@ def test_eai14_08_projection_rejects_invalid_source_report(tmp_path, mutation):
     report = completed_case_report("high_rtt")
     mutation(report)
     with pytest.raises(ValueError, match="operator_source_report_invalid"):
-        qualification.project_eai14_08_case_report(report, identity, "a" * 64, "a" * 64)
+        qualification.project_eai14_08_case_report(
+            report, identity, "a" * 64, "a" * 64, scenario_id="high_rtt"
+        )
 
 
 def operator_native_report(check_id, identity):
