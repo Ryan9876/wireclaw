@@ -2,6 +2,7 @@ import { expect, test, type Page, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { human } from '../src/ReportView';
 
 const captures = resolve('../../artifacts/web-captures');
 const visuals = resolve('test-results');
@@ -59,6 +60,16 @@ async function remove(page: Page) {
   await dialog.getByRole('button', { name: 'Delete case and stored files' }).click();
   await expect(page.getByText(/deleted, including its stored original capture/)).toBeVisible();
 }
+
+test.afterEach(async ({ page, request }, testInfo) => {
+  if (
+    testInfo.title !== 'single_window_capture_to_report_flow_has_no_dashboard_chrome' ||
+    testInfo.status === 'passed'
+  )
+    return;
+  const caseId = page.url().match(/#case=([a-f0-9]{32})$/)?.[1];
+  if (caseId) await request.delete(`/api/cases/${caseId}`);
+});
 
 test('intake has semantic labels, keyboard access, no overflow, and clean accessibility', async ({
   page,
@@ -480,7 +491,9 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   const drawer = page.getByRole('dialog', { name: 'Expert evidence' });
   const evidenceId = await drawer.getByLabel('Evidence record', { exact: true }).inputValue();
   const evidence = await (await request.get(`/api/cases/${id}/evidence/${evidenceId}`)).json();
-  await expect(drawer.getByRole('article', { name: 'Evidence record' })).toContainText(evidenceId);
+  await expect(
+    drawer.getByRole('article', { name: human(evidence.category), exact: true }),
+  ).toContainText(evidenceId);
   await expect(drawer).toContainText(evidence.summary);
   await expect(drawer.getByText('Packet frames', { exact: true })).toBeVisible();
   await expect(drawer.getByRole('heading', { name: 'Scope', exact: true })).toBeVisible();
@@ -524,8 +537,14 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
 
 test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_focus', async ({
   page,
+  request,
 }) => {
-  await analyze(page, 'high_rtt');
+  const caseId = await analyze(page, 'high_rtt');
+  const displayName = `high_rtt.pcap (${caseId.slice(0, 8)})`;
+  const renamed = await request.patch(`/api/cases/${caseId}`, {
+    data: { display_name: displayName },
+  });
+  expect(renamed.ok()).toBe(true);
   await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
   const history = page.getByRole('button', { name: 'Recent captures', exact: true });
   await history.focus();
@@ -533,7 +552,7 @@ test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_f
   const popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
   await expect(popover).toBeVisible();
   await expect(
-    popover.getByRole('button', { name: 'Open high_rtt.pcap', exact: true }),
+    popover.getByRole('button', { name: `Open ${displayName}`, exact: true }),
   ).toBeVisible();
   await axe(page);
   await page.screenshot({ path: resolve(visuals, 'task6-history-popover.png'), fullPage: true });
