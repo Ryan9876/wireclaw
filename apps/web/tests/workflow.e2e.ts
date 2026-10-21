@@ -6,6 +6,7 @@ import { human } from '../src/ReportView';
 
 const captures = resolve('../../artifacts/web-captures');
 const visuals = resolve('test-results');
+let historyCaseId: string | undefined;
 async function analyze(page: Page, capture: string, symptom = 'application is slow') {
   await page.goto('/');
   await page.getByLabel('Select capture').setInputFiles(resolve(captures, `${capture}.pcap`));
@@ -62,12 +63,19 @@ async function remove(page: Page) {
 }
 
 test.afterEach(async ({ page, request }, testInfo) => {
+  const isHistoryTest =
+    testInfo.title ===
+    'history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_focus';
+  const failedHistoryCase =
+    isHistoryTest && testInfo.status !== 'passed' ? historyCaseId : undefined;
+  historyCaseId = undefined;
   if (
-    testInfo.title !== 'single_window_capture_to_report_flow_has_no_dashboard_chrome' ||
+    (!isHistoryTest &&
+      testInfo.title !== 'single_window_capture_to_report_flow_has_no_dashboard_chrome') ||
     testInfo.status === 'passed'
   )
     return;
-  const caseId = page.url().match(/#case=([a-f0-9]{32})$/)?.[1];
+  const caseId = failedHistoryCase ?? page.url().match(/#case=([a-f0-9]{32})$/)?.[1];
   if (caseId) await request.delete(`/api/cases/${caseId}`);
 });
 
@@ -539,12 +547,21 @@ test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_f
   page,
   request,
 }) => {
-  const caseId = await analyze(page, 'high_rtt');
-  const displayName = `high_rtt.pcap (${caseId.slice(0, 8)})`;
-  const renamed = await request.patch(`/api/cases/${caseId}`, {
-    data: { display_name: displayName },
+  const created = await request.post('/api/cases', {
+    data: { symptom: 'application is slow' },
   });
-  expect(renamed.ok()).toBe(true);
+  expect(created.ok()).toBe(true);
+  const { id: caseId } = await created.json();
+  historyCaseId = caseId;
+  const ingested = await request.post(`/api/cases/${caseId}/capture`, {
+    headers: { 'content-type': 'application/octet-stream' },
+    data: readFileSync(resolve(captures, 'high_rtt.pcap')),
+  });
+  expect(ingested.ok()).toBe(true);
+  const investigated = await request.post(`/api/cases/${caseId}/investigate`);
+  expect(investigated.ok()).toBe(true);
+  await page.goto(`/#case=${caseId}`);
+  const displayName = `Capture ${caseId.slice(0, 8)}`;
   await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
   const history = page.getByRole('button', { name: 'Recent captures', exact: true });
   await history.focus();
