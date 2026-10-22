@@ -675,6 +675,12 @@ def test_case_metadata_migration_backfills_existing_cases(environment, version):
         report = client.get(f"/api/cases/{case_id}/report").json()
     with sqlite3.connect(root / "cases.sqlite3") as conn:
         # Reconstruct the previous schema from a real persisted case.
+        for table in ("artifacts", "runs", "evidence"):
+            for action in ("insert", "update"):
+                conn.execute(f"DROP TRIGGER {table}_capture_owner_{action}")
+            conn.execute(f"DROP INDEX {table}_capture")
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN capture_id")
+        conn.execute("DROP TABLE captures")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(cases)")}
         for column in ("capture_name", "display_name"):
             if column in columns:
@@ -695,7 +701,7 @@ def test_case_metadata_migration_backfills_existing_cases(environment, version):
         assert client.get(f"/api/cases/{case_id}/report").json() == report
         assert client.get("/api/cases").json()[0]["capture_bytes"] == len(captures["clean_tcp"])
         with client.app.state.service.db.connect() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
 
 
 def test_recent_cases_returns_bounded_metadata_without_sensitive_fields(environment):

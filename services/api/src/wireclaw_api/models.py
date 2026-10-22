@@ -19,6 +19,33 @@ class State(StrEnum):
     FAILED = "FAILED"
 
 
+class CaptureVantage(StrEnum):
+    UNKNOWN = "unknown"
+    CLIENT = "client"
+    NETWORK = "network"
+    SERVER = "server"
+    OTHER = "other"
+
+
+class CaptureNetworkSubtype(StrEnum):
+    FIREWALL = "Firewall"
+    ROUTER = "Router"
+    SWITCH = "Switch"
+    LOAD_BALANCER = "Load balancer"
+    PROXY = "Proxy"
+    WIRELESS = "Wireless"
+    OTHER_NETWORK_DEVICE = "Other network device"
+
+
+class CaptureStatus(StrEnum):
+    WAITING = "waiting"
+    PREPARING = "preparing"
+    ANALYZING = "analyzing"
+    ANALYZED = "analyzed"
+    CORRELATING = "correlating"
+    NEEDS_ATTENTION = "needs_attention"
+
+
 TRANSITIONS = {
     State.NEW: {State.INGESTING, State.FAILED},
     State.INGESTING: {State.VALIDATING_CAPTURE, State.FAILED},
@@ -44,6 +71,13 @@ def plain_label(value):
     return value
 
 
+def safe_capture_name(value):
+    value = plain_label(value).replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if not value or value in (".", ".."):
+        raise ValueError("invalid_capture_name")
+    return value
+
+
 class CreateCase(StrictModel):
     symptom: Annotated[str, Field(max_length=4096)]
     capture_name: Annotated[str, Field(max_length=255)] | None = None
@@ -53,10 +87,7 @@ class CreateCase(StrictModel):
     def safe_capture_name(cls, value):
         if value is None:
             return value
-        value = plain_label(value).replace("\\", "/").rsplit("/", 1)[-1].strip()
-        if not value or value in (".", ".."):
-            raise ValueError("invalid_capture_name")
-        return value
+        return safe_capture_name(value)
 
 
 class RenameCase(StrictModel):
@@ -66,6 +97,43 @@ class RenameCase(StrictModel):
     @classmethod
     def safe_display_name(cls, value):
         return plain_label(value)
+
+
+class CreateCapture(StrictModel):
+    capture_name: Annotated[str, Field(max_length=255)]
+    vantage_type: Annotated[CaptureVantage, Field(strict=False)] = CaptureVantage.UNKNOWN
+    vantage_subtype: Annotated[CaptureNetworkSubtype, Field(strict=False)] | None = None
+
+    @field_validator("capture_name")
+    @classmethod
+    def validate_capture_name(cls, value):
+        return safe_capture_name(value)
+
+    @model_validator(mode="after")
+    def validate_subtype(self):
+        if self.vantage_subtype is not None and self.vantage_type != CaptureVantage.NETWORK:
+            raise ValueError("invalid_vantage_subtype")
+        return self
+
+
+class UpdateCapture(StrictModel):
+    display_name: Annotated[str, Field(max_length=120)] | None = None
+    vantage_type: Annotated[CaptureVantage, Field(strict=False)] | None = None
+    vantage_subtype: Annotated[CaptureNetworkSubtype, Field(strict=False)] | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value):
+        return plain_label(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_subtype(self):
+        if self.vantage_subtype is not None and self.vantage_type not in (
+            None,
+            CaptureVantage.NETWORK,
+        ):
+            raise ValueError("invalid_vantage_subtype")
+        return self
 
 
 class FollowupRequest(StrictModel):
@@ -136,6 +204,38 @@ class CapabilityRequest(StrictModel):
 
 FindingId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{1,128}$")]
 ArtifactId = Annotated[str, Field(pattern=r"^[a-f0-9]{32}$")]
+
+
+class CaptureResponse(StrictModel):
+    id: ArtifactId
+    case_id: ArtifactId
+    capture_name: Annotated[str, Field(max_length=255)]
+    display_name: Annotated[str, Field(max_length=120)] | None
+    original_artifact_id: ArtifactId | None
+    sha256: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")] | None
+    bytes: Annotated[int, Field(ge=0)] | None
+    vantage_type: Annotated[CaptureVantage, Field(strict=False)]
+    vantage_subtype: Annotated[CaptureNetworkSubtype, Field(strict=False)] | None
+    status: Annotated[CaptureStatus, Field(strict=False)]
+    last_error: Annotated[str, Field(max_length=256)] | None
+    created: Annotated[str, Field(max_length=64)]
+    updated: Annotated[str, Field(max_length=64)]
+
+    @field_validator("capture_name")
+    @classmethod
+    def validate_capture_name(cls, value):
+        return safe_capture_name(value)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value):
+        return plain_label(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_subtype(self):
+        if self.vantage_subtype is not None and self.vantage_type != CaptureVantage.NETWORK:
+            raise ValueError("invalid_vantage_subtype")
+        return self
 
 
 class EvidenceCaptureRequest(StrictModel):

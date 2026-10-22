@@ -3,10 +3,12 @@
 import gc
 import hashlib
 import json
+import sqlite3
 import warnings
 from threading import get_ident
 
 import httpx
+import pytest
 import wireclaw_api.app as api_module
 import wireclaw_api.gate7_service as gate7_module
 from fastapi.testclient import TestClient
@@ -21,6 +23,424 @@ from wireclaw_api.providers import openai_compatible
 from wireclaw_api.providers.models import ProviderResult
 from wireclaw_api.reasoning import loop, persistence
 from wireclaw_api.service import Service as Gate3Service
+from wireclaw_api.storage import Database, Files
+
+LEGACY_V3_SCHEMA = """
+CREATE TABLE cases (
+ id TEXT PRIMARY KEY, symptom TEXT NOT NULL, state TEXT NOT NULL,
+ created TEXT NOT NULL, updated TEXT NOT NULL, capture_sha TEXT,
+ original_id TEXT, quality TEXT, last_error TEXT,
+ capture_name TEXT, display_name TEXT);
+CREATE TABLE history (
+ case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+ seq INTEGER NOT NULL, state TEXT NOT NULL, at TEXT NOT NULL,
+ PRIMARY KEY(case_id, seq));
+CREATE TABLE artifacts (
+ id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL, relative_path TEXT NOT NULL, sha256 TEXT NOT NULL,
+ bytes INTEGER NOT NULL, parent_sha TEXT NOT NULL,
+ UNIQUE(case_id, relative_path));
+CREATE TABLE runs (
+ id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+ request_key TEXT NOT NULL, capability TEXT NOT NULL, parameters TEXT NOT NULL,
+ status TEXT NOT NULL, error TEXT, versions TEXT, configuration TEXT,
+ evidence_ids TEXT, created TEXT NOT NULL);
+CREATE INDEX run_requests ON runs(case_id, request_key, status);
+CREATE TABLE evidence (
+ case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+ id TEXT NOT NULL, record TEXT NOT NULL, run_id TEXT NOT NULL REFERENCES runs(id),
+ PRIMARY KEY(case_id, id));
+CREATE TABLE deletions (case_id TEXT PRIMARY KEY, trash_path TEXT NOT NULL);
+CREATE TABLE reasoning_steps (
+ case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+ step_id TEXT NOT NULL, sequence INTEGER NOT NULL, at TEXT NOT NULL, metadata TEXT NOT NULL,
+ PRIMARY KEY(case_id, step_id), UNIQUE(case_id, sequence));
+PRAGMA user_version = 3;
+"""
+
+
+def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
+    files = Files(tmp_path / "legacy")
+    case_id, original_id, report_id, normalized_id = "a" * 32, "b" * 32, "c" * 32, "3" * 32
+    original_bytes = b"legacy source capture bytes"
+    capture_sha = hashlib.sha256(original_bytes).hexdigest()
+    report_sha = "e" * 64
+    source_path = files.path(f"cases/{case_id}/source.pcap")
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(original_bytes)
+    with sqlite3.connect(files.path("cases.sqlite3")) as conn:
+        conn.executescript(LEGACY_V3_SCHEMA)
+        conn.execute(
+            "INSERT INTO cases VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                case_id,
+                "slow",
+                "COMPLETE",
+                "2026-01-01",
+                "2026-01-02",
+                capture_sha,
+                original_id,
+                "good",
+                None,
+                "trace.pcap",
+                "Edge capture",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO cases VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "9" * 32,
+                "waiting",
+                "NEW",
+                "2026-01-01",
+                "2026-01-01",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO artifacts VALUES(?,?,?,?,?,?,?)",
+            (
+                original_id,
+                case_id,
+                "original",
+                f"cases/{case_id}/source.pcap",
+                capture_sha,
+                len(original_bytes),
+                capture_sha,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO artifacts VALUES(?,?,?,?,?,?,?)",
+            (report_id, case_id, "report", "cases/report.json", report_sha, 50, capture_sha),
+        )
+        conn.execute(
+            "INSERT INTO artifacts VALUES(?,?,?,?,?,?,?)",
+            (
+                normalized_id,
+                case_id,
+                "normalized",
+                "cases/normalized.json",
+                "4" * 64,
+                30,
+                capture_sha,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO runs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "f" * 32,
+                case_id,
+                "r1",
+                "baseline",
+                "{}",
+                "complete",
+                None,
+                None,
+                None,
+                None,
+                "2026-01-02",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO runs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "1" * 32,
+                case_id,
+                "r2",
+                "assemble_report",
+                "{}",
+                "complete",
+                None,
+                None,
+                None,
+                None,
+                "2026-01-02",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO runs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "2" * 32,
+                case_id,
+                "r3",
+                "diagnostics",
+                "{}",
+                "complete",
+                None,
+                None,
+                None,
+                None,
+                "2026-01-02",
+            ),
+        )
+        conn.execute(
+            "INSERT INTO evidence VALUES(?,?,?,?)",
+            (case_id, "ev_capture", "{}", "f" * 32),
+        )
+        conn.execute(
+            "INSERT INTO evidence VALUES(?,?,?,?)",
+            (case_id, "ev_report", "{}", "1" * 32),
+        )
+        conn.execute(
+            "INSERT INTO evidence VALUES(?,?,?,?)",
+            (case_id, "ev_diagnostics", "{}", "2" * 32),
+        )
+    db = Database(files)
+    with db.connect() as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        captures = [dict(row) for row in conn.execute("SELECT * FROM captures")]
+        assert len(captures) == 1
+        assert (
+            conn.execute("SELECT count(*) FROM captures WHERE case_id=?", ("9" * 32,)).fetchone()[0]
+            == 0
+        )
+        uncaptured = conn.execute(
+            "SELECT original_id,state FROM cases WHERE id=?", ("9" * 32,)
+        ).fetchone()
+        assert (uncaptured["original_id"], uncaptured["state"]) == (None, "NEW")
+        capture = captures[0]
+        assert {
+            key: capture[key]
+            for key in (
+                "case_id",
+                "capture_name",
+                "display_name",
+                "original_artifact_id",
+                "sha256",
+                "bytes",
+            )
+        } == {
+            "case_id": case_id,
+            "capture_name": "trace.pcap",
+            "display_name": "Edge capture",
+            "original_artifact_id": original_id,
+            "sha256": capture_sha,
+            "bytes": len(original_bytes),
+        }
+        assert capture["vantage_type"] == "unknown"
+        assert capture["status"] == "analyzed"
+        assert (
+            conn.execute("SELECT capture_id FROM artifacts WHERE id=?", (original_id,)).fetchone()[
+                0
+            ]
+            == capture["id"]
+        )
+        assert (
+            conn.execute(
+                "SELECT capture_id FROM artifacts WHERE id=?", (normalized_id,)
+            ).fetchone()[0]
+            == capture["id"]
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM artifacts WHERE id=?", (report_id,)).fetchone()[0]
+            is None
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM runs WHERE id=?", ("f" * 32,)).fetchone()[0]
+            == capture["id"]
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM runs WHERE id=?", ("2" * 32,)).fetchone()[0]
+            == capture["id"]
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM runs WHERE id=?", ("1" * 32,)).fetchone()[0]
+            is None
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM evidence WHERE id='ev_capture'").fetchone()[0]
+            == capture["id"]
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM evidence WHERE id='ev_diagnostics'").fetchone()[0]
+            == capture["id"]
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM evidence WHERE id='ev_report'").fetchone()[0]
+            is None
+        )
+    Database(files)
+    with db.connect() as conn:
+        assert conn.execute("SELECT count(*) FROM captures").fetchone()[0] == 1
+    assert source_path.read_bytes() == original_bytes
+    service = Gate3Service(files.root, Policy())
+    try:
+        assert service.artifact(case_id, original_id)[1].read_bytes() == original_bytes
+        assert service.get(case_id)["original_id"] == original_id
+    finally:
+        service.close()
+
+
+def test_capture_models_bound_names_vantage_and_subtype():
+    from pydantic import ValidationError
+    from wireclaw_api.models import (
+        CaptureResponse,
+        CaptureStatus,
+        CaptureVantage,
+        CreateCapture,
+        UpdateCapture,
+    )
+
+    for value in ("unknown", "client", "network", "server", "other"):
+        assert CreateCapture(
+            capture_name="trace.pcap", vantage_type=value
+        ).vantage_type == CaptureVantage(value)
+    for value in (
+        "Firewall",
+        "Router",
+        "Switch",
+        "Load balancer",
+        "Proxy",
+        "Wireless",
+        "Other network device",
+    ):
+        assert (
+            CreateCapture(
+                capture_name="trace.pcap", vantage_type="network", vantage_subtype=value
+            ).vantage_subtype
+            == value
+        )
+    assert CreateCapture(capture_name="trace.pcap").vantage_type == CaptureVantage.UNKNOWN
+    assert UpdateCapture(display_name="  Edge  ").display_name == "Edge"
+    assert UpdateCapture(vantage_type="network", vantage_subtype="Proxy").vantage_subtype == "Proxy"
+    assert {status.value for status in CaptureStatus} == {
+        "waiting",
+        "preparing",
+        "analyzing",
+        "analyzed",
+        "correlating",
+        "needs_attention",
+    }
+    response = {
+        "id": "a" * 32,
+        "case_id": "b" * 32,
+        "capture_name": "trace.pcap",
+        "display_name": None,
+        "original_artifact_id": "c" * 32,
+        "sha256": "d" * 64,
+        "bytes": 123,
+        "vantage_type": "network",
+        "vantage_subtype": "Router",
+        "status": "analyzed",
+        "last_error": None,
+        "created": "2026-01-01",
+        "updated": "2026-01-02",
+    }
+    assert CaptureResponse.model_validate(response).status == CaptureStatus.ANALYZED
+    for kwargs in (
+        {"capture_name": " "},
+        {"capture_name": "x" * 256},
+        {"capture_name": "trace.pcap", "vantage_type": 12},
+        {"capture_name": "trace.pcap", "vantage_type": True},
+        {"capture_name": "trace.pcap", "vantage_type": "device"},
+        {"capture_name": "trace.pcap", "vantage_type": "client", "vantage_subtype": "Router"},
+        {"capture_name": "trace.pcap", "vantage_type": "network", "vantage_subtype": "Unknown box"},
+        {"capture_name": "trace.pcap", "extra": "bad"},
+    ):
+        with pytest.raises(ValidationError):
+            CreateCapture(**kwargs)
+    for kwargs in (
+        {"display_name": " "},
+        {"display_name": "x" * 121},
+        {"display_name": 12},
+        {"vantage_type": "outside"},
+        {"vantage_type": "client", "vantage_subtype": "Router"},
+        {"extra": "bad"},
+    ):
+        with pytest.raises(ValidationError):
+            UpdateCapture(**kwargs)
+    for change in (
+        {"status": "ready"},
+        {"vantage_type": "outside"},
+        {"bytes": "123"},
+        {"bytes": -1},
+        {"sha256": "not-a-sha"},
+        {"capture_name": "a\n"},
+        {"display_name": "x" * 121},
+        {"last_error": "x" * 257},
+        {"vantage_type": "client"},
+        {"extra": "bad"},
+    ):
+        with pytest.raises(ValidationError):
+            CaptureResponse.model_validate(response | change)
+
+
+def test_existing_single_capture_inserts_remain_compatible(tmp_path):
+    service, case_id = prepared_service(tmp_path / "data", Policy())
+    artifact_path = service.files.case(case_id) / "legacy.bin"
+    artifact_path.write_bytes(b"legacy")
+    with service.db.connect() as conn:
+        artifact_id = service.register(conn, case_id, artifact_path, "normalized", "a" * 64)
+        assert (
+            conn.execute("SELECT capture_id FROM artifacts WHERE id=?", (artifact_id,)).fetchone()[
+                0
+            ]
+            is None
+        )
+        assert (
+            conn.execute("SELECT count(*) FROM runs WHERE case_id=?", (case_id,)).fetchone()[0] == 1
+        )
+        assert (
+            conn.execute("SELECT count(*) FROM evidence WHERE case_id=?", (case_id,)).fetchone()[0]
+            == 2
+        )
+
+
+def test_capture_provenance_rejects_cross_case_ids(tmp_path):
+    db = Database(Files(tmp_path / "data"))
+    owner_id, other_id, capture_id = "a" * 32, "b" * 32, "c" * 32
+    with db.connect() as conn:
+        for case_id in (owner_id, other_id):
+            conn.execute(
+                "INSERT INTO cases(id,symptom,state,created,updated) VALUES(?,?,?,?,?)",
+                (case_id, "slow", "NEW", "2026-01-01", "2026-01-01"),
+            )
+        conn.execute(
+            "INSERT INTO captures(id,case_id,capture_name,vantage_type,status,created,updated) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (capture_id, owner_id, "trace.pcap", "unknown", "waiting", "2026-01-01", "2026-01-01"),
+        )
+        conn.execute(
+            "INSERT INTO artifacts(id,case_id,kind,relative_path,sha256,bytes,parent_sha) "
+            "VALUES(?,?,?,?,?,?,?)",
+            ("d" * 32, other_id, "normalized", "cases/snapshot", "e" * 64, 1, "f" * 64),
+        )
+        conn.execute(
+            "INSERT INTO runs(id,case_id,request_key,capability,parameters,status,created) "
+            "VALUES(?,?,?,?,?,?,?)",
+            ("1" * 32, other_id, "key", "baseline", "{}", "complete", "2026-01-01"),
+        )
+        conn.execute(
+            "INSERT INTO evidence(case_id,id,record,run_id) VALUES(?,?,?,?)",
+            (other_id, "ev", "{}", "1" * 32),
+        )
+        for table, row_id in (
+            ("artifacts", "d" * 32),
+            ("runs", "1" * 32),
+            ("evidence", "ev"),
+        ):
+            with pytest.raises(sqlite3.IntegrityError, match="capture_case_mismatch"):
+                conn.execute(f"UPDATE {table} SET capture_id=? WHERE id=?", (capture_id, row_id))
+        with pytest.raises(sqlite3.IntegrityError, match="capture_case_mismatch"):
+            conn.execute(
+                "INSERT INTO artifacts(id,case_id,kind,relative_path,sha256,bytes,parent_sha,"
+                "capture_id) VALUES(?,?,?,?,?,?,?,?)",
+                (
+                    "2" * 32,
+                    other_id,
+                    "normalized",
+                    "cases/other",
+                    "e" * 64,
+                    1,
+                    "f" * 64,
+                    capture_id,
+                ),
+            )
 
 
 def prepared_service(tmp_path, policy):
@@ -798,7 +1218,7 @@ def test_rules_only_report_exposes_mode_and_keeps_database_reasoning_table(tmp_p
             "embedded_failure_code": None,
         }
         with service.db.connect() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
             assert conn.execute("SELECT count(*) FROM reasoning_steps").fetchone()[0] == 0
     finally:
         service.close()

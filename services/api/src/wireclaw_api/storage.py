@@ -1,5 +1,6 @@
 """Confined application paths, explicit schema and single-process ownership."""
 
+import hashlib
 import json
 import os
 import re
@@ -75,7 +76,7 @@ class OwnerLock:
         self.stream.close()
 
 
-SCHEMA = """
+SCHEMA_V3 = """
 CREATE TABLE cases (
  id TEXT PRIMARY KEY, symptom TEXT NOT NULL, state TEXT NOT NULL,
  created TEXT NOT NULL, updated TEXT NOT NULL, capture_sha TEXT,
@@ -118,7 +119,7 @@ class Database:
         with self.connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
             if version == 0:
-                conn.executescript("BEGIN IMMEDIATE;" + SCHEMA + "COMMIT;")
+                conn.executescript("BEGIN IMMEDIATE;" + SCHEMA_V3 + "COMMIT;")
                 version = 3
             if version == 1:
                 conn.executescript(
@@ -139,8 +140,105 @@ class Database:
                     "PRAGMA user_version=3; COMMIT;"
                 )
                 version = 3
-            if version != 3:
+            if version == 3:
+                self._migrate_v4(conn)
+                version = 4
+            if version != 4:
                 raise ApiError("unsupported_schema_version", 500)
+
+    @staticmethod
+    def _migrate_v4(conn):
+        # Upgrade the schema and provenance together so an interrupted upgrade
+        # leaves the v3 database intact for the next startup.
+        try:
+            conn.executescript(
+                "BEGIN IMMEDIATE;"
+                "CREATE TABLE captures ("
+                "id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,"
+                "capture_name TEXT NOT NULL, display_name TEXT, original_artifact_id TEXT,"
+                "sha256 TEXT, bytes INTEGER, vantage_type TEXT NOT NULL DEFAULT 'unknown',"
+                "vantage_subtype TEXT, status TEXT NOT NULL DEFAULT 'waiting', last_error TEXT,"
+                "created TEXT NOT NULL, updated TEXT NOT NULL);"
+                "CREATE INDEX captures_case ON captures(case_id);"
+                "CREATE UNIQUE INDEX captures_original ON captures(case_id,original_artifact_id);"
+                "ALTER TABLE artifacts ADD COLUMN capture_id TEXT REFERENCES captures(id);"
+                "ALTER TABLE runs ADD COLUMN capture_id TEXT REFERENCES captures(id);"
+                "ALTER TABLE evidence ADD COLUMN capture_id TEXT REFERENCES captures(id);"
+                "CREATE INDEX artifacts_capture ON artifacts(case_id,capture_id);"
+                "CREATE INDEX runs_capture ON runs(case_id,capture_id);"
+                "CREATE INDEX evidence_capture ON evidence(case_id,capture_id);"
+            )
+            for table in ("artifacts", "runs", "evidence"):
+                for action in ("INSERT", "UPDATE"):
+                    conn.execute(
+                        f"CREATE TRIGGER {table}_capture_owner_{action.lower()} "
+                        f"BEFORE {action} ON {table} "
+                        "WHEN NEW.capture_id IS NOT NULL AND NOT EXISTS ("
+                        "SELECT 1 FROM captures WHERE id=NEW.capture_id AND case_id=NEW.case_id) "
+                        "BEGIN SELECT RAISE(ABORT, 'capture_case_mismatch'); END"
+                    )
+            cases = conn.execute(
+                "SELECT id,state,capture_name,display_name,original_id,capture_sha,created,updated "
+                "FROM cases WHERE original_id IS NOT NULL"
+            ).fetchall()
+            for case in cases:
+                source = conn.execute(
+                    "SELECT sha256,bytes FROM artifacts WHERE id=? AND case_id=? AND kind='original'",
+                    (case["original_id"], case["id"]),
+                ).fetchone()
+                capture_id = hashlib.sha256(
+                    f"capture:{case['id']}:{case['original_id']}".encode()
+                ).hexdigest()[:32]
+                status = {
+                    "INGESTING": "preparing",
+                    "VALIDATING_CAPTURE": "preparing",
+                    "BASELINE_ANALYSIS": "analyzing",
+                    "INVESTIGATING": "analyzing",
+                    "FAILED": "needs_attention",
+                }.get(case["state"], "analyzed" if source else "needs_attention")
+                if source is None:
+                    status = "needs_attention"
+                conn.execute(
+                    "INSERT INTO captures(id,case_id,capture_name,display_name,"
+                    "original_artifact_id,sha256,bytes,vantage_type,status,created,updated) "
+                    "VALUES(?,?,?,?,?,?,?,'unknown',?,?,?)",
+                    (
+                        capture_id,
+                        case["id"],
+                        case["capture_name"] or f"Capture {case['id'][:8]}",
+                        case["display_name"],
+                        case["original_id"],
+                        case["capture_sha"] or (source["sha256"] if source else None),
+                        source["bytes"] if source else None,
+                        status,
+                        case["created"],
+                        case["updated"],
+                    ),
+                )
+                if source is None:
+                    continue
+                conn.execute(
+                    "UPDATE artifacts SET capture_id=? WHERE case_id=? AND "
+                    "((id=? AND kind='original') OR (kind='normalized' AND parent_sha=?))",
+                    (capture_id, case["id"], case["original_id"], source["sha256"]),
+                )
+                conn.execute(
+                    "UPDATE runs SET capture_id=? WHERE case_id=? AND "
+                    "(capability IN ('ingest','baseline','diagnostics','get_capture_metadata',"
+                    "'assess_capture_quality','list_protocols','list_endpoints','list_conversations') "
+                    "OR capability LIKE 'analyze_%')",
+                    (capture_id, case["id"]),
+                )
+                conn.execute(
+                    "UPDATE evidence SET capture_id=? WHERE case_id=? AND run_id IN "
+                    "(SELECT id FROM runs WHERE case_id=? AND capture_id=?)",
+                    (capture_id, case["id"], case["id"], capture_id),
+                )
+            conn.execute("PRAGMA user_version=4")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
 
     @contextmanager
     def connect(self):

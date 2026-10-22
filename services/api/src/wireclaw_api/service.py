@@ -139,7 +139,10 @@ class Service:
                     "evidence_ids": json.loads(r["evidence_ids"]) if r["evidence_ids"] else [],
                 }
                 for r in conn.execute(
-                    "SELECT * FROM runs WHERE case_id=? ORDER BY created", (case_id,)
+                    "SELECT id,case_id,request_key,capability,parameters,status,error,"
+                    "versions,configuration,evidence_ids,created "
+                    "FROM runs WHERE case_id=? ORDER BY created",
+                    (case_id,),
                 )
             ]
             case["artifacts"] = self._artifacts(conn, case_id)
@@ -193,7 +196,8 @@ class Service:
                 raise ApiError("run_count_limit", 429)
             run_id = identifier()
             conn.execute(
-                "INSERT INTO runs VALUES(?,?,?,?,?,'running',NULL,NULL,NULL,NULL,?)",
+                "INSERT INTO runs(id,case_id,request_key,capability,parameters,status,created) "
+                "VALUES(?,?,?,?,?,'running',?)",
                 (run_id, case_id, key, capability, encode(parameters), now()),
             )
             return run_id, False
@@ -245,7 +249,8 @@ class Service:
                 digest.update(chunk)
         artifact_id = identifier()
         conn.execute(
-            "INSERT INTO artifacts VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO artifacts(id,case_id,kind,relative_path,sha256,bytes,parent_sha) "
+            "VALUES(?,?,?,?,?,?,?)",
             (
                 artifact_id,
                 case_id,
@@ -358,7 +363,8 @@ class Service:
                 self.register(conn, case_id, path, "normalized", result["capture_sha256"])
                 for item in records:
                     conn.execute(
-                        "INSERT INTO evidence VALUES(?,?,?,?) ON CONFLICT(case_id,id) "
+                        "INSERT INTO evidence(case_id,id,record,run_id) VALUES(?,?,?,?) "
+                        "ON CONFLICT(case_id,id) "
                         "DO UPDATE SET record=excluded.record,run_id=excluded.run_id",
                         (case_id, item["id"], encode(item), run_id),
                     )
