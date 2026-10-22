@@ -1488,6 +1488,34 @@ def test_followup_embedded_provider_uses_answer_schema(tmp_path, monkeypatch):
         assert "action" not in schema["properties"]
 
 
+def test_followup_requests_bounded_tokens_and_accepts_a_concise_case_cited_answer(
+    tmp_path, monkeypatch
+):
+    client, service, case_id, requests = followup_client(tmp_path, monkeypatch)
+    evidence_id = service.evidence_records(case_id)[0]["id"]
+    answer = (
+        "The available evidence cannot identify where the delay occurred. "
+        "A capture at both endpoints would show whether the server received the connection promptly."
+    )
+
+    class Provider:
+        def propose(self, request):
+            requests.append(request)
+            return ProviderResult(
+                content=json.dumps({"answer": answer, "evidence_ids": [evidence_id]})
+            )
+
+    monkeypatch.setattr(loop, "make_provider", lambda _policy: Provider())
+    with client:
+        response = client.post(
+            f"/api/cases/{case_id}/followups", json={"question": "Where did the delay occur?"}
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"answer": answer, "evidence_ids": [evidence_id]}
+    assert requests[0].max_output_tokens == 640
+
+
 def test_followup_accepts_maximum_answer_and_caps_provider_response_bytes(
     tmp_path, monkeypatch, caplog
 ):

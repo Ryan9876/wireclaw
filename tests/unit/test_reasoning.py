@@ -18,6 +18,7 @@ from wireclaw_api.reasoning import loop
 from wireclaw_api.reasoning.capabilities import validate_request
 from wireclaw_api.reasoning.context import SYSTEM_INSTRUCTION, build_context
 from wireclaw_api.reasoning.contracts import ACTION_ADAPTER
+from wireclaw_api.reasoning.followup import SYSTEM_INSTRUCTION as FOLLOWUP_SYSTEM_INSTRUCTION
 
 
 def test_provider_configuration_is_startup_only_and_cloud_requires_https():
@@ -34,6 +35,40 @@ def test_provider_configuration_is_startup_only_and_cloud_requires_https():
         provider_model="test-model",
     )
     assert local.provider_mode is ProviderMode.LOCAL
+
+
+def test_reasoning_request_output_token_limit_is_optional_and_bounded():
+    base = dict(
+        model="model",
+        context_json="{}",
+        system_instruction="instruction",
+        max_request_bytes=4096,
+        max_response_bytes=4096,
+    )
+    assert ReasoningRequest(**base).max_output_tokens is None
+    assert ReasoningRequest(**base, max_output_tokens=640).max_output_tokens == 640
+    for value in (0, True, 4097):
+        with pytest.raises(ValueError, match="invalid_max_output_tokens"):
+            ReasoningRequest(**base, max_output_tokens=value)
+
+
+def test_followup_instruction_requires_concise_plain_language():
+    instruction = FOLLOWUP_SYSTEM_INSTRUCTION.lower()
+    for required in (
+        "junior network engineer",
+        "plain, natural language",
+        "answer the specific question",
+        "what the capture shows",
+        "what remains unknown",
+        "direct answer",
+        "practical next step",
+        "2,000 characters",
+        "4,000 characters",
+        "evidence ids",
+        "uncertainty",
+        "analyzer field names",
+    ):
+        assert required in instruction
 
 
 def test_provider_timeout_from_environment_defaults_to_60_and_reads_120(monkeypatch):
@@ -612,6 +647,39 @@ def test_provider_connection_failure_is_normalized(monkeypatch):
     result = provider.propose(ReasoningRequest("local-model", "{}", SYSTEM_INSTRUCTION, 4096, 4096))
     assert result.failure_code == "provider_unavailable"
     assert "sensitive provider body" not in repr(result)
+
+
+def test_provider_forwards_optional_output_token_limit_only_when_set(monkeypatch):
+    captured = []
+    original_client = httpx.AsyncClient
+
+    def handler(request):
+        captured.append(request)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: original_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    provider = OpenAICompatibleProvider(
+        mode=ProviderMode.LOCAL,
+        base_url="http://127.0.0.1:1234/v1",
+        model="local-model",
+        timeout_seconds=5,
+        api_key=None,
+    )
+    common = dict(
+        model="local-model",
+        context_json="{}",
+        system_instruction="instruction",
+        max_request_bytes=4096,
+        max_response_bytes=4096,
+    )
+    assert provider.propose(ReasoningRequest(**common, max_output_tokens=640)).content == "ok"
+    assert json.loads(captured[-1].content)["max_tokens"] == 640
+    assert provider.propose(ReasoningRequest(**common)).content == "ok"
+    assert "max_tokens" not in json.loads(captured[-1].content)
 
 
 @pytest.mark.parametrize(

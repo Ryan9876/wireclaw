@@ -80,6 +80,9 @@ class OpenAICompatibleProvider:
             ],
             "temperature": 0,
         }
+        if request.max_output_tokens is not None:
+            # llama.cpp accepts the OpenAI-compatible `max_tokens` completion limit.
+            request_body["max_tokens"] = request.max_output_tokens
         if self.mode == ProviderMode.EMBEDDED.value:
             request_body["response_format"] = {
                 "type": "json_schema",
