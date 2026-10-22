@@ -958,50 +958,65 @@ main {
   gap: 11px;
   font-size: 13px;
 }
-.processing-wave {
-  width: 42px;
-  height: 24px;
-  overflow: hidden;
+.processing-claw {
+  width: 40px;
+  height: 29px;
+  overflow: visible;
   flex: none;
-  color: #315d7a;
+  color: #2676a5;
 }
-.processing-wave path {
+.processing-claw path {
+  fill: currentColor;
+  stroke: #194e70;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+.processing-claw .claw-arm {
+  opacity: 0.75;
+}
+.processing-claw .claw-palm {
+  fill: #4595bc;
+}
+.processing-claw .claw-highlight {
   fill: none;
-  stroke: currentColor;
+  stroke: #a4d9ed;
   stroke-linecap: round;
-  stroke-width: 2.2;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: wave-drift 1.2s linear infinite;
+  stroke-width: 1.3;
 }
-.processing-wave .wave-back {
-  opacity: 0.42;
-  animation-delay: -0.48s;
+.processing-claw .claw-upper-jaw {
+  transform-box: view-box;
+  transform-origin: 28px 24px;
+  transform: rotate(-18deg);
+  animation: claw-snap 1.1s ease-in-out infinite;
 }
-.processing-wave .wave-front {
-  opacity: 0.86;
+.processing[data-motion='calm'] .claw-upper-jaw {
+  animation-duration: 1.65s;
 }
-.processing[data-motion='calm'] .processing-wave path {
+.processing[data-motion='reasoning'] .claw-upper-jaw {
+  animation-duration: 0.7s;
+}
+.processing[data-motion='settling'] .claw-upper-jaw {
   animation-duration: 1.8s;
 }
-.processing[data-motion='moderate'] .processing-wave path {
-  animation-duration: 1.2s;
-}
-.processing[data-motion='reasoning'] .processing-wave path {
-  animation-duration: 0.8s;
-  stroke-width: 2.5;
-  transform: scaleY(1.12);
-}
-.processing[data-motion='settling'] .processing-wave path {
-  animation-duration: 1.8s;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes wave-drift {
-  from {
-    translate: 0 0;
+@keyframes claw-snap {
+  0%,
+  100% {
+    transform: rotate(-18deg);
   }
-  to {
-    translate: -24px 0;
+  18% {
+    transform: rotate(3deg);
+  }
+  30% {
+    transform: rotate(-6deg);
+  }
+  45% {
+    transform: rotate(-18deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .processing-claw .claw-upper-jaw {
+    animation: none;
+    transform: rotate(-18deg);
   }
 }
 .processing-error-mark {

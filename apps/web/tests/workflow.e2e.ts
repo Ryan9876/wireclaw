@@ -491,18 +491,20 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   await expect(processing).toContainText('Analyzing network traffic…');
   await expect(processing).toHaveAttribute('aria-live', 'polite');
   await expect(processing).toHaveAttribute('data-motion', 'moderate');
-  expect(
-    await page
-      .locator('.wave-front')
-      .evaluate((element) => getComputedStyle(element).animationName),
-  ).not.toBe('none');
+  const claw = processing.locator('svg.processing-claw');
+  await expect(claw).toHaveAttribute('aria-hidden', 'true');
+  const jaw = claw.locator('.claw-upper-jaw');
+  await expect(jaw).toHaveCount(1);
+  const motion = await jaw.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { name: style.animationName, duration: style.animationDuration };
+  });
+  expect(motion.name).toBe('claw-snap');
+  expect(motion.duration).toBe('1.1s');
   await page.screenshot({ path: resolve(visuals, 'processing-desktop.png'), fullPage: true });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  expect(
-    await page
-      .locator('.wave-front')
-      .evaluate((element) => getComputedStyle(element).animationName),
-  ).toBe('none');
+  expect(await jaw.evaluate((element) => getComputedStyle(element).animationName)).toBe('none');
+  expect(await jaw.evaluate((element) => getComputedStyle(element).transform)).not.toBe('none');
   releaseInvestigation();
   await expect(
     page.getByRole('heading', { name: "Here's what I found", exact: true }),

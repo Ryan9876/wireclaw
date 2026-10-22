@@ -462,7 +462,7 @@ describe('conversation-first OSI analysis presentation', () => {
     expect(screen.getByRole('img', { name: 'Wireclaw' })).toBeVisible();
   });
 
-  it('maps persisted lifecycle states to the appropriate processing wave and stops on error', async () => {
+  it('maps persisted lifecycle states to the processing claw and stops on error', async () => {
     const ingesting = structuredClone(supported);
     ingesting.case.state = 'INGESTING';
     openExisting(ingesting);
@@ -475,14 +475,20 @@ describe('conversation-first OSI analysis presentation', () => {
     ['BASELINE_ANALYSIS', 'Analyzing network traffic…', 'moderate', 'none'],
     ['INVESTIGATING', 'Investigating the likely cause…', 'reasoning', 'openai_compatible_local'],
     ['ASSEMBLING_REPORT', 'Preparing your report…', 'settling', 'none'],
-  ] as const)('maps %s to the matching wave state', (state, label, motion, providerMode) => {
+  ] as const)('maps %s to the matching claw state', (state, label, motion, providerMode) => {
     const record = { ...supported.case, state, provider_mode: providerMode } as Case;
     render(<Progress record={record} />);
-    expect(screen.getByTestId('processing-wave')).toHaveTextContent(label);
-    expect(screen.getByTestId('processing-wave')).toHaveAttribute('data-motion', motion);
+    const status = screen.getByTestId('processing-wave');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    expect(status).toHaveTextContent(label);
+    expect(status).toHaveAttribute('data-motion', motion);
+    expect(status.querySelector('svg.processing-claw')).toHaveAttribute('aria-hidden', 'true');
+    expect(status.querySelector('.claw-upper-jaw')).toBeInTheDocument();
+    expect(status.querySelector('.claw-lower-jaw')).toBeInTheDocument();
   });
 
-  it('removes the wave on completion and stops it immediately on error', () => {
+  it('removes the claw on completion and stops it immediately on error', () => {
     const complete = { ...supported.case, state: 'COMPLETE' } as Case;
     const { rerender } = render(<Progress record={complete} />);
     expect(screen.queryByTestId('processing-wave')).toBeNull();

@@ -28,9 +28,20 @@ export function ProcessingWave({
       data-testid={testId}
       data-motion={motion}
     >
-      <svg className="processing-wave" viewBox="0 0 54 24" aria-hidden="true">
-        <path className="wave-back" d="M-20 12C-12 5-4 5 4 12s16 7 24 0 16-7 24 0 16 7 24 0" />
-        <path className="wave-front" d="M-20 12c8 7 16 7 24 0s16-7 24 0 16 7 24 0 16-7 24 0" />
+      <svg className="processing-claw" viewBox="0 0 56 40" aria-hidden="true" focusable="false">
+        <path className="claw-arm" d="M3 29c8-5 16-6 23-5l3 7c-8-1-16 1-24 6Z" />
+        <path
+          className="claw-lower-jaw"
+          d="M20 26c1-7 7-11 15-10 5 1 9 4 11 8l7 3-7 2c-3 5-9 8-16 7-7-1-11-4-10-10Z"
+        />
+        <path
+          className="claw-palm"
+          d="M23 24c2-4 6-6 11-6 2 0 4 1 6 2-3 4-5 9-5 14-7 1-13-2-12-10Z"
+        />
+        <g className="claw-upper-jaw">
+          <path d="M27 23c2-8 10-15 18-15 4 0 7 1 9 3l-10 4c-2 4-5 8-10 12Z" />
+          <path className="claw-highlight" d="M34 20c4-5 8-7 12-8" />
+        </g>
       </svg>
       <span>{label}</span>
     </div>
