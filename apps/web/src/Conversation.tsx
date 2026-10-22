@@ -60,13 +60,16 @@ export function Conversation({
               <article className="reply" aria-label="Explanation about this report">
                 <p className="answer-label">Wireclaw · About this report</p>
                 <p>{turn.response.answer}</p>
-                <div className="evidence-links">
-                  {turn.response.evidence_ids.map((id) => (
-                    <button key={id} className="evidence-id" onClick={() => onEvidence([id])}>
-                      {id}
+                {turn.response.evidence_ids.length > 0 && (
+                  <div className="evidence-links">
+                    <button
+                      className="supporting-evidence"
+                      onClick={() => onEvidence(turn.response!.evidence_ids)}
+                    >
+                      View supporting evidence ({turn.response.evidence_ids.length})
                     </button>
-                  ))}
-                </div>
+                  </div>
+                )}
               </article>
             )}
             {busy && index === turns.length - 1 && (

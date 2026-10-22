@@ -760,7 +760,7 @@ describe('approved conversation window', () => {
         new Response(
           JSON.stringify({
             answer: 'The capture cannot identify the exact device.',
-            evidence_ids: [enabled.evidence[0].id],
+            evidence_ids: enabled.evidence.slice(0, 2).map((item) => item.id),
           }),
           { status: 200 },
         ),
@@ -779,10 +779,82 @@ describe('approved conversation window', () => {
     );
     expect(screen.getByText('Which device?')).toBeVisible();
     expect(screen.getByText('What would validate this?')).toBeVisible();
+    const answer = screen.getAllByRole('article', { name: 'Explanation about this report' })[0];
+    expect(
+      within(answer).getByRole('button', { name: 'View supporting evidence (2)' }),
+    ).toBeVisible();
+    expect(within(answer).getAllByRole('button')).toHaveLength(1);
+    for (const item of enabled.evidence.slice(0, 2))
+      expect(within(answer).queryByText(item.id)).not.toBeInTheDocument();
     expect(fetch.mock.calls.map((call) => JSON.parse(call[1].body))).toEqual([
       { question: 'Which device?' },
       { question: 'What would validate this?' },
     ]);
+    await userEvent.click(
+      within(answer).getByRole('button', { name: 'View supporting evidence (2)' }),
+    );
+    const drawer = await screen.findByRole('dialog', { name: 'Technical evidence' });
+    expect(within(drawer).getByRole('combobox', { name: 'Evidence record' })).toBeVisible();
+    expect(api.evidence).toHaveBeenCalledWith(
+      enabled.case.id,
+      enabled.evidence[0].id,
+      expect.any(AbortSignal),
+    );
+    await userEvent.selectOptions(within(drawer).getByRole('combobox'), enabled.evidence[1].id);
+    await waitFor(() =>
+      expect(api.evidence).toHaveBeenCalledWith(
+        enabled.case.id,
+        enabled.evidence[1].id,
+        expect.any(AbortSignal),
+      ),
+    );
+  });
+  it('followup_supporting_evidence_action_is_keyboard_activatable', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    vi.spyOn(api, 'followup').mockResolvedValue({
+      answer: 'The capture cannot identify the exact device.',
+      evidence_ids: enabled.evidence.slice(0, 2).map((item) => item.id),
+    });
+    openExisting(enabled);
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Which device?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const action = await screen.findByRole('button', { name: 'View supporting evidence (2)' });
+    action.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(await screen.findByRole('dialog', { name: 'Technical evidence' })).toBeVisible();
+  });
+  it('followup_with_no_evidence_has_no_supporting_evidence_action', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    vi.spyOn(api, 'followup').mockResolvedValue({
+      answer: 'The capture cannot distinguish the fault domain.',
+      evidence_ids: [],
+    });
+    openExisting(enabled);
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const answer = await screen.findByRole('article', { name: 'Explanation about this report' });
+    expect(
+      within(answer).getByText('The capture cannot distinguish the fault domain.'),
+    ).toBeVisible();
+    expect(
+      within(answer).queryByRole('button', { name: /supporting evidence/i }),
+    ).not.toBeInTheDocument();
   });
   it('shows the reasoning wave only while a follow-up provider request is pending', async () => {
     const enabled = structuredClone(supported);

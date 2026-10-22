@@ -885,7 +885,7 @@ for (const width of [1440, 390]) {
     await page
       .getByRole('article', { name: 'Explanation about this report' })
       .last()
-      .getByRole('button', { name: evidenceId, exact: true })
+      .getByRole('button', { name: 'View supporting evidence (1)', exact: true })
       .click();
     await expect(
       page
