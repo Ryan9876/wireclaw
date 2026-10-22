@@ -73,7 +73,7 @@ export function App() {
         <div className="header-actions">
           {!id && (
             <details className="header-recovery">
-              <summary>Recover an existing local case</summary>
+              <summary>Recover existing case</summary>
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -149,7 +149,7 @@ export function App() {
           </div>
         )}
         {record && (
-          <>
+          <div className="conversation-feed">
             {record.original_id && (
               <div className="selected-file">
                 <span aria-hidden="true">▤</span>
@@ -289,7 +289,7 @@ export function App() {
                 Retrieving and verifying the current report…
               </p>
             )}
-          </>
+          </div>
         )}
         {deleteTarget && (
           <Dialog

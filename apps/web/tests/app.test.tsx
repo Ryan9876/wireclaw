@@ -273,7 +273,7 @@ describe('primary intake and recovery workflow', () => {
   it('rejects an invalid recovery path and does not issue a case lookup', async () => {
     fixture();
     render(<App />);
-    await userEvent.click(screen.getByText('Recover an existing local case'));
+    await userEvent.click(screen.getByText('Recover existing case'));
     await userEvent.type(screen.getByLabelText('Case ID'), '../outside');
     await userEvent.click(screen.getByRole('button', { name: 'Recover case' }));
     expect(screen.getByRole('alert')).toHaveTextContent('32-character');
@@ -347,9 +347,22 @@ describe('evidence and uncertainty presentation', () => {
   it('keeps capture limitations visible outside the expert view', async () => {
     openExisting(limited as Fixture);
     expect(await screen.findByText(/Capture quality was limited/i)).toBeVisible();
-    expect(
-      screen.getAllByText(limited.report.capture_quality.limitations[0]).length,
-    ).toBeGreaterThan(0);
+    const summary = document.querySelector('.quality-note')!;
+    expect(summary).toHaveTextContent('Possible capture drops');
+    expect(summary).not.toHaveTextContent('capture_drops');
+    await userEvent.click(screen.getByText('Technical report details'));
+    const quality = screen.getByRole('heading', {
+      name: 'Capture quality: limited',
+    }).parentElement!;
+    expect(quality).toHaveTextContent('Possible capture drops');
+    expect(quality).toHaveTextContent('Possible duplicate capture artifacts');
+    expect(quality).not.toHaveTextContent('duplicate_capture_artifacts');
+    const investigationLimits = screen.getByText(
+      'Additional investigation limitations',
+    ).parentElement!;
+    expect(investigationLimits).toHaveTextContent('Possible capture drops');
+    expect(investigationLimits).toHaveTextContent('Possible duplicate capture artifacts');
+    expect(investigationLimits).not.toHaveTextContent('duplicate_capture_artifacts');
   });
   it('preserves measured classes and incomplete-subtotal qualification', async () => {
     openExisting();
@@ -402,13 +415,16 @@ describe('conversation-first OSI analysis presentation', () => {
     openExisting();
     const result = await screen.findByRole('region', { name: 'Analysis results' });
     const application = within(result).getAllByTestId('osi-layer-card')[0];
-    expect(application).toHaveTextContent('The report contains no application-layer finding.');
     expect(application).toHaveTextContent(
-      'No finding here does not show that the layer is fault-free.',
+      "This capture doesn't contain enough application-layer evidence to judge this layer.",
+    );
+    expect(application).toHaveTextContent(
+      'The missing evidence does not prove that this layer is fault-free.',
     );
     expect(application).not.toHaveTextContent(
       /the layer is (?:healthy|ruled out)|working normally/i,
     );
+    expect(application).not.toHaveTextContent(/support was available to rate/i);
   });
 
   it('keeps packet details hidden until requested and preserves evidence and Wireshark actions', async () => {
@@ -430,11 +446,17 @@ describe('conversation-first OSI analysis presentation', () => {
     expect(within(result).getByText('Wireshark display filter')).toBeVisible();
   });
 
+  it('shows a visible recovery action in the header', () => {
+    fixture();
+    render(<App />);
+    expect(screen.getByText('Recover existing case')).toBeVisible();
+  });
+
   it('keeps recovery in the upper header and removes the old intake helper copy', async () => {
     fixture();
     render(<App />);
     const header = screen.getByRole('banner');
-    expect(within(header).getByText('Recover an existing local case')).toBeVisible();
+    expect(within(header).getByText('Recover existing case')).toBeVisible();
     expect(screen.queryByText('Your capture stays in your local Wireclaw workspace.')).toBeNull();
     expect(screen.queryByText(/Context is not packet evidence/)).toBeNull();
     expect(screen.getByRole('img', { name: 'Wireclaw' })).toBeVisible();
@@ -706,7 +728,7 @@ describe('approved conversation window', () => {
     expect(screen.queryByTestId('followup-wave')).toBeNull();
   });
 
-  it('keeps_report_above_followup_turns', async () => {
+  it('keeps the complete original analysis before each follow-up question and answer', async () => {
     const enabled = structuredClone(supported);
     enabled.case.provider_mode = 'openai_compatible_local';
     enabled.case.ai_status = {
@@ -728,8 +750,17 @@ describe('approved conversation window', () => {
     const report = await screen.findByRole('region', { name: 'Analysis results' });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const question = await screen.findByText('Why?', { exact: true });
     const reply = await screen.findByText('More evidence is needed.');
-    expect(report.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const nextStep = within(report).getByRole('heading', { name: 'What to check next' });
+    expect(
+      report.compareDocumentPosition(question) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      nextStep.compareDocumentPosition(question) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(question.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(report.parentElement).toHaveClass('conversation-feed');
     await userEvent.click(screen.getByRole('button', { name: 'New case' }));
     expect(screen.queryByText('More evidence is needed.')).not.toBeInTheDocument();
   });

@@ -933,6 +933,10 @@ main {
   padding-top: 30px;
   padding-bottom: 190px;
 }
+.conversation-feed {
+  display: flex;
+  flex-direction: column;
+}
 .intake {
   padding-top: clamp(60px, 17vh, 170px);
 }

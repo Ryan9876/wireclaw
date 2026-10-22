@@ -11,6 +11,13 @@ import {
 } from './api';
 
 export const human = (value: string) => value.replaceAll('_', ' ').replaceAll('.', ' ');
+const limitationLabels: Record<string, string> = {
+  capture_drops: 'Possible capture drops',
+  one_sided_conversations: 'One-sided conversations',
+  midstream_indicators: 'Midstream connection indicators',
+  duplicate_capture_artifacts: 'Possible duplicate capture artifacts',
+};
+export const humanLimitation = (value: string) => limitationLabels[value] ?? human(value);
 const domains: Record<string, string> = {
   client: 'Client',
   local_network: 'Local network',
@@ -29,7 +36,7 @@ export function TextList({ title, values }: { title: string; values?: string[] }
       <h3>{title}</h3>
       <ul>
         {values.map((value, i) => (
-          <li key={i}>{value}</li>
+          <li key={i}>{humanLimitation(value)}</li>
         ))}
       </ul>
     </section>
@@ -407,7 +414,8 @@ export function ReportView({
         </p>
         {quality.state !== 'good' && (
           <p className="quality-note">
-            <strong>Capture quality was {human(quality.state)}.</strong> {quality.limitations[0]}
+            <strong>Capture quality was {human(quality.state)}.</strong>{' '}
+            {quality.limitations[0] && humanLimitation(quality.limitations[0])}
           </p>
         )}
         {strongestFinding && conclusionText !== plainObservation(strongestFinding) && (
@@ -501,15 +509,14 @@ export function ReportView({
                 <>
                   <h4>What Wireclaw saw</h4>
                   <p className="layer-explanation">
-                    The report contains no {layer.assessmentName} finding. This capture does not
-                    provide enough layer-specific evidence to assess it.
+                    This capture doesn't contain enough {layer.assessmentName} evidence to judge
+                    this layer.
                   </p>
                   <h4>Why this cannot be ruled out</h4>
                   <p className="layer-caveat">
-                    No finding here does not show that the layer is fault-free. More targeted or
-                    additional capture evidence may be needed.
+                    The missing evidence does not prove that this layer is fault-free. A capture
+                    with visibility at the relevant point may be needed.
                   </p>
-                  <p className="layer-support">No layer-specific support was available to rate.</p>
                 </>
               )}
             </article>
@@ -530,7 +537,7 @@ export function ReportView({
           {quality.limitations.length ? (
             <ul>
               {quality.limitations.map((item, index) => (
-                <li key={index}>{item}</li>
+                <li key={index}>{humanLimitation(item)}</li>
               ))}
             </ul>
           ) : (

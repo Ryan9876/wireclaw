@@ -2,7 +2,7 @@ import { expect, test, type Page, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { human } from '../src/ReportView';
+import { human, humanLimitation } from '../src/ReportView';
 
 const captures = resolve('../../artifacts/web-captures');
 const visuals = resolve('test-results');
@@ -442,9 +442,13 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   await page.goto('/');
   const logo = page.getByRole('img', { name: 'Wireclaw', exact: true });
   await expect(logo).toBeVisible();
+  const logoResponse = await request.get('/brand/wireclaw-logo.jpeg');
+  expect(logoResponse.ok()).toBe(true);
+  expect(logoResponse.headers()['content-type']).toContain('image/jpeg');
   await expect
     .poll(() => logo.evaluate((image) => (image as HTMLImageElement).naturalWidth))
     .toBeGreaterThan(0);
+  await expect(page.getByText('Recover existing case', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByRole('navigation')).toHaveCount(0);
   await expect(page.locator('aside')).toHaveCount(0);
@@ -502,6 +506,13 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
     expect(readFileSync(storedOriginal)).toEqual(sourceBytes);
   const report = await (await request.get(`/api/cases/${id}/report`)).json();
   await expect(page.locator('.selected-file')).toContainText('high_rtt.pcap');
+  await page.getByText('Technical report details', { exact: true }).click();
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const reportDetails = await page.locator('.report-technical').boundingBox();
+  const fixedComposer = await page.locator('.composer-wrap').boundingBox();
+  expect(reportDetails).not.toBeNull();
+  expect(fixedComposer).not.toBeNull();
+  expect(reportDetails!.y + reportDetails!.height).toBeLessThanOrEqual(fixedComposer!.y - 12);
   await expect(page.getByLabel('Question about this report')).toBeDisabled();
   await expect(page.getByText(/Follow-up is unavailable in rules-only mode/)).toBeVisible();
   await page.getByText('Technical evidence', { exact: true }).first().click();
@@ -543,7 +554,8 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   for (const value of [...leaves(evidence.scope), ...leaves(evidence.value)])
     await expect(drawer).toContainText(value);
   if (evidence.display_filter) await expect(drawer).toContainText(evidence.display_filter);
-  for (const limitation of evidence.limitations) await expect(drawer).toContainText(limitation);
+  for (const limitation of evidence.limitations)
+    await expect(drawer).toContainText(humanLimitation(limitation));
   await axe(page);
   await page.keyboard.press('Escape');
   await page
@@ -657,6 +669,16 @@ for (const width of [1440, 390]) {
       page.getByRole('heading', { name: "Here's what I found", exact: true }),
     ).toBeVisible();
     const report = await (await request.get(`/api/cases/${id}/report`)).json();
+    if (width === 390) {
+      await page.getByText('Technical report details', { exact: true }).click();
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      const reportDetails = await page.locator('.report-technical').boundingBox();
+      const fixedComposer = await page.locator('.composer-wrap').boundingBox();
+      expect(reportDetails).not.toBeNull();
+      expect(fixedComposer).not.toBeNull();
+      expect(reportDetails!.y + reportDetails!.height).toBeLessThanOrEqual(fixedComposer!.y - 12);
+      await page.getByText('Technical report details', { exact: true }).click();
+    }
     const evidenceId = report.findings[0].evidence_ids[0];
     const status = {
       effective_provider_mode: 'openai_compatible_local',
@@ -714,6 +736,31 @@ for (const width of [1440, 390]) {
       await expect(page.getByRole('status').filter({ hasText: 'Explanation ready.' })).toHaveText(
         'Explanation ready.',
       );
+      const analysis = page.getByRole('region', { name: 'Analysis results' });
+      const questionMessage = page.locator('.followups .user-question').last();
+      const answerMessage = page
+        .getByRole('article', { name: 'Explanation about this report' })
+        .last();
+      expect(
+        await analysis.evaluate(
+          (element) =>
+            !!(
+              element.compareDocumentPosition(document.querySelector('.followups')!) &
+              Node.DOCUMENT_POSITION_FOLLOWING
+            ),
+        ),
+      ).toBe(true);
+      expect(
+        await questionMessage.evaluate(
+          (element) =>
+            !!(
+              element.compareDocumentPosition(
+                document.querySelector('.followups .turn:last-child article.reply')!,
+              ) & Node.DOCUMENT_POSITION_FOLLOWING
+            ),
+        ),
+      ).toBe(true);
+      await expect(answerMessage).toBeVisible();
     }
     expect(questions).toEqual([
       { question: 'Which device?' },
