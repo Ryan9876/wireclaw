@@ -2,7 +2,7 @@ import { expect, test, type Page, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { human, humanLimitation } from '../src/ReportView';
+import { humanLimitation } from '../src/ReportView';
 
 const captures = resolve('../../artifacts/web-captures');
 const visuals = resolve('test-results');
@@ -145,8 +145,8 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await page.screenshot({ path: resolve(visuals, 'supported-desktop.png'), fullPage: true });
   const evidenceButton = page.getByRole('button', { name: 'Show Packet Evidence' });
   await evidenceButton.click();
-  const drawer = page.getByRole('dialog', { name: 'Expert evidence' });
-  await expect(drawer.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
+  const drawer = page.getByRole('dialog', { name: 'Technical evidence' });
+  await expect(drawer.getByRole('heading', { name: 'What this shows' })).toBeVisible();
   await axe(page);
   await noOverflow(page);
   await page.screenshot({ path: resolve(visuals, 'evidence-desktop.png'), fullPage: true });
@@ -281,7 +281,7 @@ for (const width of [390, 768, 1024]) {
     await page.screenshot({ path: resolve(visuals, `supported-${width}.png`), fullPage: true });
     await page.getByText('Technical evidence', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Show Packet Evidence' }).click();
-    await expect(page.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What this shows' })).toBeVisible();
     await noOverflow(page);
     await axe(page);
     await page.keyboard.press('Escape');
@@ -546,31 +546,21 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   await noOverflow(page);
   await page.screenshot({ path: resolve(visuals, 'task6-desktop-analysis.png'), fullPage: true });
   await page.getByRole('button', { name: 'Show Packet Evidence', exact: true }).click();
-  const drawer = page.getByRole('dialog', { name: 'Expert evidence' });
+  const drawer = page.getByRole('dialog', { name: 'Technical evidence' });
   const evidenceId = await drawer.getByLabel('Evidence record', { exact: true }).inputValue();
   const evidence = await (await request.get(`/api/cases/${id}/evidence/${evidenceId}`)).json();
-  await expect(
-    drawer.getByRole('article', { name: human(evidence.category), exact: true }),
-  ).toContainText(evidenceId);
-  await expect(drawer).toContainText(evidence.summary);
-  await expect(drawer.getByText('Packet frames', { exact: true })).toBeVisible();
-  await expect(drawer.getByRole('heading', { name: 'Scope', exact: true })).toBeVisible();
-  await expect(
-    drawer.getByRole('heading', { name: 'Normalized values', exact: true }),
-  ).toBeVisible();
-  if (evidence.frame_refs?.length)
-    await expect(drawer).toContainText(evidence.frame_refs.join(', '));
+  await expect(drawer.getByRole('heading', { name: 'What this shows' })).toBeVisible();
+  await expect(drawer.getByRole('heading', { name: 'Measurements' })).toBeVisible();
+  await expect(drawer.getByText('Packets', { exact: true })).toBeVisible();
+  const raw = drawer.locator('.evidence-raw pre');
+  await expect(raw).toBeHidden();
+  await drawer.getByText('Raw record').click();
+  await expect(raw).toBeVisible();
+  await expect(raw).toContainText(evidenceId);
   for (const text of [evidence.source.capability, evidence.source.tool, evidence.source.version]) {
-    await expect(drawer).toContainText(text);
+    await expect(raw).toContainText(text);
   }
-  const leaves = (value: unknown): string[] =>
-    value === null
-      ? ['Unknown / unobserved']
-      : typeof value === 'object'
-        ? Object.values(value).flatMap(leaves)
-        : [String(value)];
-  for (const value of [...leaves(evidence.scope), ...leaves(evidence.value)])
-    await expect(drawer).toContainText(value);
+  expect(JSON.parse(await raw.innerText())).toEqual(evidence);
   if (evidence.display_filter) await expect(drawer).toContainText(evidence.display_filter);
   for (const limitation of evidence.limitations)
     await expect(drawer).toContainText(humanLimitation(limitation));
@@ -633,8 +623,8 @@ test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_f
   const evidence = page.getByRole('button', { name: 'Show Packet Evidence', exact: true });
   await evidence.focus();
   await page.keyboard.press('Enter');
-  const drawer = page.getByRole('dialog', { name: 'Expert evidence' });
-  await expect(drawer.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
+  const drawer = page.getByRole('dialog', { name: 'Technical evidence' });
+  await expect(drawer.getByRole('heading', { name: 'What this shows' })).toBeVisible();
   for (let i = 0; i < 5; i++) {
     await page.keyboard.press('Tab');
     expect(await drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
@@ -668,11 +658,107 @@ test('conversation_report_and_actions_have_no_overflow_at_390px', async ({ page 
   await axe(page);
   await page.screenshot({ path: resolve(visuals, 'task6-mobile-390.png'), fullPage: true });
   await page.getByRole('button', { name: 'Show Packet Evidence', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What this shows' })).toBeVisible();
   await noOverflow(page);
   await axe(page);
   await page.keyboard.press('Escape');
   await remove(page);
+});
+
+test('technical evidence presents supported facts and sparse records at desktop and mobile widths', async ({
+  page,
+}) => {
+  const fixture = JSON.parse(readFileSync(resolve('tests/fixtures/supported.json'), 'utf8'));
+  const categories = ['analyze_tcp_establishment', 'analyze_tcp_health', 'assess_capture_quality'];
+  const records = categories.map((category) =>
+    fixture.evidence.find((item: { category: string }) => item.category === category),
+  );
+  const sparse = {
+    ...records[2],
+    id: 'ev_sparse',
+    category: 'future_signal',
+    scope: {},
+    frame_refs: [],
+    display_filter: null,
+    summary: 'Sparse observation',
+    value: {},
+  };
+  records.push(sparse);
+  fixture.report.findings[0].evidence_ids = records.map((item: { id: string }) => item.id);
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const prefix = `/api/cases/${fixture.case.id}`;
+    let body: unknown;
+    if (path === '/api/config/capabilities')
+      body = {
+        provider_mode: 'none',
+        limits: { max_capture_bytes: 64 * 1024 * 1024 },
+        ai: {
+          effective_provider_mode: 'none',
+          embedded_availability: 'not_applicable',
+          model: null,
+          failure_code: null,
+        },
+      };
+    else if (path === prefix) body = fixture.case;
+    else if (path === `${prefix}/report`) body = fixture.report;
+    else if (path.startsWith(`${prefix}/evidence/`))
+      body = records.find(
+        (item: { id: string }) => item.id === decodeURIComponent(path.split('/').at(-1)!),
+      );
+    await route.fulfill({
+      status: body ? 200 : 404,
+      contentType: 'application/json',
+      body: JSON.stringify(body ?? { error: { code: 'not_found' } }),
+    });
+  });
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto(`/#case=${fixture.case.id}`);
+  await expect(page.getByRole('heading', { name: "Here's what I found" })).toBeVisible();
+  await page.getByText('Technical evidence', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'Show Packet Evidence' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Technical evidence' });
+  await expect(drawer.getByRole('heading', { name: 'TCP connection setup' })).toBeVisible();
+  await expect(drawer.getByText('192.0.2.1:50000')).toBeVisible();
+  await expect(drawer.getByText('192.0.2.2:443')).toBeVisible();
+  await expect(drawer.getByText('1–5')).toBeVisible();
+  await expect(drawer.getByText('tcp.stream == 0', { exact: true })).toBeVisible();
+  await drawer.getByRole('button', { name: 'Copy Wireshark Display Filter' }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('tcp.stream == 0');
+  const raw = drawer.locator('.evidence-raw pre');
+  await expect(raw).toBeHidden();
+  await drawer.getByText('Raw record').click();
+  await expect(raw).toBeVisible();
+  expect(JSON.parse(await raw.innerText())).toEqual(records[0]);
+  await drawer.getByText('Raw record').click();
+  await drawer.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.screenshot({ path: resolve(visuals, 'technical-evidence-desktop.png') });
+  await drawer.getByLabel('Evidence record').selectOption(records[1].id);
+  await expect(drawer.getByRole('heading', { name: 'TCP connection health' })).toBeVisible();
+  await expect(drawer.getByText('Retransmission indicators')).toBeVisible();
+  await expect(drawer.getByText('Duplicate ACK indicators')).toBeVisible();
+  await expect(drawer.getByText('Client', { exact: true })).toHaveCount(0);
+  await expect(drawer.getByText('Source', { exact: true })).toBeVisible();
+  await page.screenshot({ path: resolve(visuals, 'technical-evidence-health.png') });
+  await drawer.getByLabel('Evidence record').selectOption(records[2].id);
+  await expect(drawer.getByRole('heading', { name: 'Capture quality' })).toBeVisible();
+  await expect(drawer.getByText('Capture-wide')).toBeVisible();
+  await expect(drawer.getByText('Client', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: resolve(visuals, 'technical-evidence-quality.png') });
+  await drawer.getByLabel('Evidence record').selectOption(sparse.id);
+  await expect(drawer.getByRole('heading', { name: 'Future signal' })).toBeVisible();
+  await expect(drawer.getByText('No packet references recorded')).toBeVisible();
+  await expect(drawer.getByText('Client', { exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await noOverflow(page);
+  const bounds = await drawer.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  expect(bounds!.width).toBeGreaterThanOrEqual(388);
+  await axe(page);
+  await page.screenshot({ path: resolve(visuals, 'technical-evidence-mobile.png') });
 });
 
 for (const width of [1440, 390]) {
@@ -803,8 +889,8 @@ for (const width of [1440, 390]) {
       .click();
     await expect(
       page
-        .getByRole('dialog', { name: 'Expert evidence' })
-        .getByRole('heading', { name: 'Normalized values' }),
+        .getByRole('dialog', { name: 'Technical evidence' })
+        .getByRole('heading', { name: 'What this shows' }),
     ).toBeVisible();
     await page.keyboard.press('Escape');
     expect(await (await request.get(`/api/cases/${id}/report`)).json()).toEqual(report);

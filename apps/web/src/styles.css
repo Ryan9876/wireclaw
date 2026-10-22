@@ -631,31 +631,71 @@ dialog::backdrop {
   margin: 0;
 }
 dialog.evidence-drawer {
-  width: min(480px, 100vw);
+  width: min(540px, 100vw);
+  max-width: 100vw;
+  box-sizing: border-box;
   margin: 0 0 0 auto;
   height: 100dvh;
   max-height: 100dvh;
   border-radius: 0;
 }
-.record-meta {
+.evidence-drawer article,
+.evidence-drawer .evidence-section,
+.evidence-drawer .evidence-raw {
+  min-width: 0;
+}
+.evidence-picker {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.evidence-intro {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 12px 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
-.normalized-values {
-  margin: 12px 0;
+.evidence-intro h3 {
+  margin: 0;
+  font-size: 21px;
 }
-.normalized-values > div {
-  padding: 8px 0;
+.evidence-intro .tag {
+  flex: none;
+}
+.evidence-section {
+  padding: 18px 0;
   border-bottom: 1px solid var(--line);
 }
-.normalized-array {
-  padding-left: 16px;
-  max-width: 100%;
+.evidence-section h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
 }
-.normalized-values dd {
-  font-size: 13px;
+.evidence-section p {
+  margin: 0 0 12px;
+}
+.evidence-facts {
+  margin: 0;
+}
+.evidence-facts dd,
+.evidence-drawer pre {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.evidence-filter,
+.evidence-raw pre {
+  white-space: pre-wrap;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+.evidence-raw {
+  margin: 18px 0 4px;
+}
+.evidence-raw summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.evidence-raw pre {
+  font-size: 12px;
 }
 .skip-link {
   position: absolute;
@@ -748,9 +788,18 @@ input.sr-only:focus-visible {
   dialog.evidence-drawer {
     margin: auto 0 0;
     width: 100%;
-    height: 88dvh;
+    max-width: 100vw;
+    inset-inline: 0;
+    height: 92dvh;
     border-radius: 16px 16px 0 0;
     padding: 20px 18px;
+  }
+  .evidence-intro {
+    display: block;
+  }
+  .evidence-intro .tag {
+    display: inline-block;
+    margin-top: 8px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

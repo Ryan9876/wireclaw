@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
+import { EvidenceDrawer } from '../src/EvidenceDrawer';
 import { Progress } from '../src/Progress';
 import {
   api,
@@ -95,6 +96,84 @@ beforeEach(() => {
     embedded_availability: 'not_applicable',
     model: null,
     failure_code: null,
+  });
+});
+
+describe('technical evidence drawer', () => {
+  function show(record: Evidence) {
+    vi.spyOn(api, 'evidence').mockResolvedValue(record);
+    return render(
+      <EvidenceDrawer caseId={supported.case.id} ids={[record.id]} onClose={vi.fn()} />,
+    );
+  }
+
+  it('explains a TCP connection setup before showing raw provenance', async () => {
+    const record = supported.evidence.find(
+      (item) => item.category === 'analyze_tcp_establishment',
+    )!;
+    show(record);
+    const drawer = screen.getByRole('dialog', { name: 'Technical evidence' });
+    expect(
+      await within(drawer).findByRole('heading', { name: 'TCP connection setup' }),
+    ).toBeVisible();
+    expect(within(drawer).getByText('Derived evidence')).toBeVisible();
+    expect(within(drawer).getByRole('heading', { name: 'What this shows' })).toBeVisible();
+    expect(within(drawer).getByText('192.0.2.1:50000')).toBeVisible();
+    expect(within(drawer).getByText('192.0.2.2:443')).toBeVisible();
+    expect(within(drawer).getByText('1–5')).toBeVisible();
+    expect(within(drawer).getByRole('heading', { name: 'Measurements' })).toBeVisible();
+    expect(within(drawer).getByRole('heading', { name: 'Inspect in Wireshark' })).toBeVisible();
+    expect(within(drawer).getByText('tcp.stream == 0')).toBeVisible();
+    const raw = within(drawer).getByText('Raw record').parentElement!.querySelector('pre')!;
+    expect(raw).not.toBeVisible();
+    await userEvent.click(within(drawer).getByText('Raw record'));
+    expect(raw).toBeVisible();
+    expect(raw).toHaveTextContent(record.id);
+    expect(raw).toHaveTextContent(record.source.capability);
+  });
+
+  it('does not infer endpoint roles from a sparse or capture quality record', async () => {
+    const record = structuredClone(
+      supported.evidence.find((item) => item.category === 'assess_capture_quality')!,
+    );
+    record.scope = { capture: true };
+    show(record);
+    const drawer = screen.getByRole('dialog', { name: 'Technical evidence' });
+    expect(await within(drawer).findByRole('heading', { name: 'Capture quality' })).toBeVisible();
+    expect(within(drawer).queryByText('Client')).not.toBeInTheDocument();
+    expect(within(drawer).queryByText('Server')).not.toBeInTheDocument();
+    expect(within(drawer).getByText('Capture-wide')).toBeVisible();
+  });
+
+  it('shows TCP health indicators without claiming physical loss', async () => {
+    const record = supported.evidence.find((item) => item.category === 'analyze_tcp_health')!;
+    show(record);
+    const drawer = screen.getByRole('dialog', { name: 'Technical evidence' });
+    expect(
+      await within(drawer).findByRole('heading', { name: 'TCP connection health' }),
+    ).toBeVisible();
+    expect(within(drawer).getByText('Retransmission indicators').parentElement).toHaveTextContent(
+      '0',
+    );
+    expect(within(drawer).getByText('Duplicate ACK indicators').parentElement).toHaveTextContent(
+      '0',
+    );
+    expect(within(drawer).queryByText('Client')).not.toBeInTheDocument();
+  });
+
+  it('uses generic labels and keeps missing packet details explicit', async () => {
+    const record = {
+      ...supported.evidence[0],
+      category: 'future_signal',
+      scope: {},
+      frame_refs: [],
+    };
+    show(record);
+    const drawer = screen.getByRole('dialog', { name: 'Technical evidence' });
+    expect(await within(drawer).findByRole('heading', { name: 'Future signal' })).toBeVisible();
+    expect(within(drawer).getByText('No packet references recorded')).toBeVisible();
+    expect(within(drawer).queryByText('Client')).not.toBeInTheDocument();
+    expect(within(drawer).queryByText('Server')).not.toBeInTheDocument();
   });
 });
 
@@ -372,20 +451,19 @@ describe('evidence and uncertainty presentation', () => {
     expect(screen.getByText(/derived \(measured\)/i)).toBeVisible();
     expect(screen.getByText(/not complete end-to-end transaction time/)).toBeVisible();
   });
-  it('shows normalized evidence, tool version, and scope in a secondary drawer', async () => {
+  it('keeps normalized provenance available in the secondary drawer', async () => {
     openExisting();
     await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.click(screen.getByRole('button', { name: 'Show Packet Evidence' }));
-    const dialog = screen.getByRole('dialog', { name: 'Expert evidence' });
-    expect(await within(dialog).findByRole('heading', { name: 'Normalized values' })).toBeVisible();
-    expect(within(dialog).getByLabelText('Evidence record')).toBeVisible();
-    expect(within(dialog).getByRole('article', { name: 'analyze rtt' })).toBeVisible();
-    expect(
-      within(dialog).queryByRole('article', { name: 'Evidence record' }),
-    ).not.toBeInTheDocument();
-    expect(within(dialog).getByText('Tool / version')).toBeVisible();
-    expect(within(dialog).getByText('Scope')).toBeVisible();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Close expert evidence' }));
+    const dialog = screen.getByRole('dialog', { name: 'Technical evidence' });
+    expect(await within(dialog).findByRole('heading', { name: 'What this shows' })).toBeVisible();
+    expect(within(dialog).getByRole('heading', { name: 'Measurements' })).toBeVisible();
+    const raw = within(dialog).getByText('Raw record').parentElement!.querySelector('pre')!;
+    expect(raw).not.toBeVisible();
+    await userEvent.click(within(dialog).getByText('Raw record'));
+    expect(raw).toHaveTextContent('"source"');
+    expect(raw).toHaveTextContent('"scope"');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close technical evidence' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
   it('renders untrusted symptom as text rather than executable HTML', async () => {
@@ -434,8 +512,8 @@ describe('conversation-first OSI analysis presentation', () => {
       within(result).getByRole('button', { name: 'Open Full Capture in Wireshark' }),
     ).not.toBeVisible();
     await userEvent.click(within(result).getByRole('button', { name: /View evidence/i }));
-    const drawer = await screen.findByRole('dialog', { name: 'Expert evidence' });
-    expect(await within(drawer).findByText('Tool / version')).toBeVisible();
+    const drawer = await screen.findByRole('dialog', { name: 'Technical evidence' });
+    expect(await within(drawer).findByRole('heading', { name: 'What this shows' })).toBeVisible();
     await userEvent.click(within(result).getByText('Technical evidence'));
     expect(
       within(result).getByRole('button', { name: 'Open Full Capture in Wireshark' }),
