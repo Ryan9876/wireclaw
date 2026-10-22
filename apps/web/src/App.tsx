@@ -70,17 +70,42 @@ export function App() {
           <span aria-hidden="true">◉</span> Local capture analysis{' '}
           <span className="separator">/</span> {aiStatusLabel(currentAIStatus)}
         </div>
-        <RecentCaptures
-          key={historyVersion}
-          activeId={id}
-          disabled={busy}
-          onOpen={(caseId) => {
-            setPendingFiles(undefined);
-            investigation.recover(caseId);
-          }}
-          onRename={investigation.updateMetadata}
-          onDelete={(row) => setDeleteTarget(row)}
-        />
+        <div className="header-actions">
+          {!id && (
+            <details className="header-recovery">
+              <summary>Recover an existing local case</summary>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  investigation.recover(recoveryId.trim());
+                }}
+              >
+                <label htmlFor="recover-id">Case ID</label>
+                <input
+                  id="recover-id"
+                  value={recoveryId}
+                  onChange={(event) => setRecoveryId(event.target.value)}
+                  maxLength={32}
+                  placeholder="32-character case ID"
+                />
+                <button type="submit" disabled={busy}>
+                  Recover case
+                </button>
+              </form>
+            </details>
+          )}
+          <RecentCaptures
+            key={historyVersion}
+            activeId={id}
+            disabled={busy}
+            onOpen={(caseId) => {
+              setPendingFiles(undefined);
+              investigation.recover(caseId);
+            }}
+            onRename={investigation.updateMetadata}
+            onDelete={(row) => setDeleteTarget(row)}
+          />
+        </div>
       </header>
       <main id="main" tabIndex={-1}>
         <h1 className="sr-only">Capture investigation</h1>
@@ -116,31 +141,6 @@ export function App() {
         {!id && (
           <>
             <Intake busy={busy} initialFiles={pendingFiles} onStart={investigation.start} />
-            <details className="recovery">
-              <summary>Recover an existing local case</summary>
-              <p className="muted">
-                Bookmark a case to return after reload. Or enter its logical case ID; no file path
-                or URL is accepted.
-              </p>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  investigation.recover(recoveryId.trim());
-                }}
-              >
-                <label htmlFor="recover-id">Case ID</label>
-                <input
-                  id="recover-id"
-                  value={recoveryId}
-                  onChange={(event) => setRecoveryId(event.target.value)}
-                  maxLength={32}
-                  placeholder="32-character case ID"
-                />
-                <button type="submit" disabled={busy}>
-                  Recover case
-                </button>
-              </form>
-            </details>
           </>
         )}
         {id && !record && !error && (

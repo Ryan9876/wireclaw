@@ -36,6 +36,39 @@ export function TextList({ title, values }: { title: string; values?: string[] }
   );
 }
 
+function plainObservation(finding: Report['findings'][number]) {
+  if (finding.category === 'tcp.rtt') {
+    const match = finding.statement.match(/median ACK RTT of ([\d.]+) ms across (\d+) sample/);
+    if (match)
+      return `TCP acknowledgements took about ${Number(match[1])} ms to return at the median, measured across ${match[2]} samples.`;
+  }
+  if (finding.category === 'tcp.establishment_delay') {
+    const setup = finding.statement.match(/establishment took ([\d.]+) ms/);
+    const repeated = finding.statement.match(/repeated SYN evidence appears in (\d+) frame/);
+    if (setup && repeated)
+      return `TCP connection setup took about ${(Number(setup[1]) / 1000).toFixed(1)} seconds, with repeat connection attempts in ${repeated[1]} frames.`;
+    if (setup)
+      return `TCP connection setup took about ${(Number(setup[1]) / 1000).toFixed(1)} seconds.`;
+  }
+  return finding.statement;
+}
+
+function LayerIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 6.5h16M4 12h16M4 17.5h16"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <circle cx="7" cy="6.5" r="1" fill="currentColor" />
+      <circle cx="17" cy="12" r="1" fill="currentColor" />
+      <circle cx="10" cy="17.5" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 function EvidenceLinks({
   ids,
   onEvidence,
@@ -303,58 +336,211 @@ export function ReportView({
       });
     return () => controller.abort();
   }, [report.case_id]);
+
+  const layerDefinitions = [
+    {
+      number: '7',
+      name: 'Application',
+      assessmentName: 'application-layer',
+      categories: ['dns.timing', 'server.application_wait'],
+    },
+    {
+      number: '4',
+      name: 'Transport / TCP',
+      assessmentName: 'transport-layer',
+      categories: [
+        'tcp.establishment_delay',
+        'tcp.establishment_failure',
+        'tcp.retransmission',
+        'tcp.retransmission_rate',
+        'tcp.rtt',
+        'tcp.receive_window',
+        'tcp.reordering',
+        'tcp.reset',
+      ],
+    },
+    {
+      number: '3',
+      name: 'Network / IP',
+      assessmentName: 'network-layer',
+      categories: ['ip.fragmentation', 'ip.mtu', 'ip.routing_error'],
+    },
+    {
+      number: '2',
+      name: 'Data Link / Ethernet',
+      assessmentName: 'data-link layer',
+      categories: ['ethernet.frame_error', 'ethernet.crc_error', 'arp.failure', 'wifi.retry'],
+    },
+  ];
+  const layerFindings = layerDefinitions.map((layer) => ({
+    ...layer,
+    findings: report.findings.filter((finding) => layer.categories.includes(finding.category)),
+  }));
+  const reportEvidenceIds = new Set(conclusion.evidence_ids);
+  const strongestFinding = report.findings.find((finding) =>
+    finding.evidence_ids.some((id) => reportEvidenceIds.has(id)),
+  );
+  const conclusionText =
+    strongestFinding && conclusion.statement === strongestFinding.statement
+      ? plainObservation(strongestFinding)
+      : conclusion.statement;
+  const nextStep =
+    report.recommended_next_evidence?.[0] ??
+    report.findings.flatMap((finding) => finding.recommended_validation)[0] ??
+    report.remaining_hypotheses.flatMap((hypothesis) => hypothesis.next_evidence)[0];
+  const layerStatus = (findings: Report['findings'], isStrongest: boolean) =>
+    !findings.length
+      ? 'Not assessable from this capture'
+      : isStrongest
+        ? 'Strongest signal'
+        : 'Possible contributor';
+
   return (
-    <div className="report">
-      <section className="summary panel" aria-labelledby="conclusion-heading">
+    <section className="report" role="region" aria-label="Analysis results">
+      <article className="summary-message assistant-message" aria-labelledby="conclusion-heading">
         <p className="answer-label">Wireclaw · {aiStatusLabel(statusForReport)}</p>
         <h2 className="result-kind" id="conclusion-heading">
-          {conclusion.type === 'insufficient_evidence'
-            ? 'Insufficient evidence'
-            : 'Supported finding'}
+          Here's what I found
         </h2>
         <p className="conclusion" role="status">
-          {conclusion.statement}
+          {conclusionText}
         </p>
-        <EvidenceLinks ids={conclusion.evidence_ids} onEvidence={onEvidence} />
-        <dl className="result-facts">
-          <div>
-            <dt>Confidence</dt>
-            <dd>{human(conclusion.confidence)}</dd>
-          </div>
-          <div>
-            <dt>Fault domain</dt>
-            <dd>{domainText(conclusion.fault_domains)}</dd>
-          </div>
-          <div>
-            <dt>Capture quality</dt>
-            <dd>{human(quality.state)}</dd>
-          </div>
-        </dl>
-        <p className="muted">
-          Conclusions are inferred from deterministic evidence. Confidence describes support for the
-          conclusion; it does not prove a root cause.
-        </p>
-        <TextList title="Investigation limitations" values={report.limitations.slice(0, 1)} />
-        <TextList title="Recommended next evidence" values={report.recommended_next_evidence} />
-      </section>
-      <section className="panel quality" aria-labelledby="quality-heading">
-        <h2 id="quality-heading">Capture quality: {human(quality.state)}</h2>
-        {quality.limitations.length ? (
-          <ul>
-            {quality.limitations.map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ul>
-        ) : (
-          <p>No material capture-quality limitation recorded by the analyzer.</p>
+        {quality.state !== 'good' && (
+          <p className="quality-note">
+            <strong>Capture quality was {human(quality.state)}.</strong> {quality.limitations[0]}
+          </p>
         )}
-        <EvidenceLinks ids={quality.evidence_ids} onEvidence={onEvidence} />
-      </section>
-      <details className="technical-detail">
-        <summary>Time attribution and measurement details</summary>
+        {strongestFinding && conclusionText !== plainObservation(strongestFinding) && (
+          <p className="summary-support">
+            The clearest supporting observation is: {plainObservation(strongestFinding)}
+          </p>
+        )}
+        <p className="muted summary-caveat">
+          The report describes what this capture supports. It does not prove a root cause beyond the
+          evidence shown here.
+        </p>
+      </article>
+      <div className="layer-sequence" aria-label="Network layer findings">
+        {layerFindings.map((layer) => {
+          const isStrongest =
+            conclusion.type === 'supported_finding' &&
+            !!strongestFinding &&
+            layer.findings.some((finding) => finding.id === strongestFinding.id);
+          const status = layerStatus(layer.findings, isStrongest);
+          const evidenceIds = [
+            ...new Set(layer.findings.flatMap((finding) => finding.evidence_ids)),
+          ];
+          return (
+            <article
+              key={layer.number}
+              className={`layer-card ${isStrongest ? 'layer-card-strongest' : ''}`}
+              data-testid="osi-layer-card"
+              data-layer={layer.number}
+              aria-labelledby={`layer-${layer.number}-title`}
+            >
+              <div className="layer-card-heading">
+                <span className="layer-icon" aria-hidden="true">
+                  <LayerIcon />
+                </span>
+                <div className="layer-title-group">
+                  <h3 id={`layer-${layer.number}-title`}>{layer.name}</h3>
+                  <span className="layer-number">OSI layer {layer.number}</span>
+                </div>
+                <span className={`layer-status ${isStrongest ? 'emphasized' : ''}`}>{status}</span>
+              </div>
+              {layer.findings.length ? (
+                <>
+                  <h4>What Wireclaw saw</h4>
+                  {layer.findings.map((finding) => (
+                    <div className="layer-observation" key={finding.id}>
+                      <strong>{finding.title}</strong>
+                      <p>{plainObservation(finding)}</p>
+                    </div>
+                  ))}
+                  <h4>
+                    {isStrongest ? 'Why this is the strongest signal' : 'Why this may contribute'}
+                  </h4>
+                  <p className="layer-explanation">
+                    {isStrongest
+                      ? 'This report finding is directly cited by the overall conclusion. It supports a concern at this layer, but the capture does not establish the exact fault source.'
+                      : 'The report includes a finding at this layer, so it may contribute. The available evidence does not identify it as the main cause.'}
+                  </p>
+                  {layer.findings[0].alternate_explanations[0] && (
+                    <p className="layer-caveat">{layer.findings[0].alternate_explanations[0]}</p>
+                  )}
+                  <p className="layer-support">
+                    <strong>
+                      {human(layer.findings[0].confidence)[0].toUpperCase()}
+                      {human(layer.findings[0].confidence).slice(1)} support
+                    </strong>
+                    <span>Support for this finding, not certainty about root cause</span>
+                  </p>
+                  <button
+                    className="view-evidence quiet"
+                    onClick={() => onEvidence(evidenceIds)}
+                    aria-label={`View evidence for ${layer.name}`}
+                  >
+                    View evidence <span aria-hidden="true">({evidenceIds.length})</span>
+                  </button>
+                  <details className="technical-detail layer-technical">
+                    <summary>Technical evidence</summary>
+                    {layer.findings.map((finding) => (
+                      <Finding
+                        key={finding.id}
+                        finding={finding}
+                        caseId={report.case_id}
+                        originalId={originalId}
+                        bridgeAvailable={bridgeAvailable}
+                        onBridgeState={setBridgeAvailable}
+                        onEvidence={onEvidence}
+                      />
+                    ))}
+                  </details>
+                </>
+              ) : (
+                <>
+                  <h4>What Wireclaw saw</h4>
+                  <p className="layer-explanation">
+                    The report contains no {layer.assessmentName} finding. This capture does not
+                    provide enough layer-specific evidence to assess it.
+                  </p>
+                  <h4>Why this cannot be ruled out</h4>
+                  <p className="layer-caveat">
+                    No finding here does not show that the layer is fault-free. More targeted or
+                    additional capture evidence may be needed.
+                  </p>
+                  <p className="layer-support">No layer-specific support was available to rate.</p>
+                </>
+              )}
+            </article>
+          );
+        })}
+      </div>
+      {nextStep && (
+        <article className="next-step-message assistant-message">
+          <p className="answer-label">Wireclaw · Next step</p>
+          <h3>What to check next</h3>
+          <p>{nextStep}</p>
+        </article>
+      )}
+      <details className="technical-detail report-technical">
+        <summary>Technical report details</summary>
+        <section className="quality" aria-labelledby="quality-heading">
+          <h3 id="quality-heading">Capture quality: {human(quality.state)}</h3>
+          {quality.limitations.length ? (
+            <ul>
+              {quality.limitations.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>No material capture-quality limitation recorded by the analyzer.</p>
+          )}
+          <EvidenceLinks ids={quality.evidence_ids} onEvidence={onEvidence} />
+        </section>
         <section aria-labelledby="time-heading">
           <div className="section-heading">
-            <h2 id="time-heading">Time attribution</h2>
+            <h3 id="time-heading">Time attribution</h3>
             {time && (
               <span className="tag">
                 Stage subtotal:{' '}
@@ -413,55 +599,41 @@ export function ReportView({
             stage not listed above.
           </p>
         </section>
-      </details>
-      <section aria-labelledby="findings-heading">
-        <div className="section-heading">
-          <h2 id="findings-heading">
-            Findings <span className="count">{report.findings.length}</span>
-          </h2>
-          <span className="muted">Backend priority order</span>
-        </div>
-        {report.findings.length ? (
-          report.findings.map((finding) => (
-            <Finding
-              key={finding.id}
-              finding={finding}
-              caseId={report.case_id}
-              originalId={originalId}
-              bridgeAvailable={bridgeAvailable}
-              onBridgeState={setBridgeAvailable}
-              onEvidence={onEvidence}
-            />
-          ))
-        ) : (
-          <div className="panel">
-            <p>
-              No supported diagnostic finding in this capture. Review the remaining hypotheses and
-              next evidence below.
-            </p>
-          </div>
+        {report.findings.some(
+          (finding) => !layerFindings.some((layer) => layer.findings.includes(finding)),
+        ) && (
+          <section aria-labelledby="other-findings-heading">
+            <h3 id="other-findings-heading">Other report findings</h3>
+            {report.findings
+              .filter((finding) => !layerFindings.some((layer) => layer.findings.includes(finding)))
+              .map((finding) => (
+                <Finding
+                  key={finding.id}
+                  finding={finding}
+                  caseId={report.case_id}
+                  originalId={originalId}
+                  bridgeAvailable={bridgeAvailable}
+                  onBridgeState={setBridgeAvailable}
+                  onEvidence={onEvidence}
+                />
+              ))}
+          </section>
         )}
-      </section>
-      {report.remaining_hypotheses.length > 0 && (
-        <section className="panel" aria-labelledby="hypotheses-heading">
-          <h2 id="hypotheses-heading">Remaining hypotheses</h2>
-          <p className="muted">Possibilities to discriminate, not established findings.</p>
-          {report.remaining_hypotheses.map((hypothesis, index) => (
-            <article className="hypothesis" key={index}>
-              <h3>{hypothesis.statement}</h3>
-              <p>Possible domain: {domainText(hypothesis.fault_domains)}</p>
-              <EvidenceLinks ids={hypothesis.evidence_ids} onEvidence={onEvidence} />
-              <TextList title="Evidence needed" values={hypothesis.next_evidence} />
-            </article>
-          ))}
-        </section>
-      )}
-      <details className="panel">
-        <summary>Investigation limitations, analyzer versions & report provenance</summary>
-        <TextList
-          title="Additional investigation limitations"
-          values={report.limitations.slice(1)}
-        />
+        {report.remaining_hypotheses.length > 0 && (
+          <section aria-labelledby="hypotheses-heading">
+            <h3 id="hypotheses-heading">Remaining possibilities</h3>
+            <p className="muted">Possibilities to discriminate, not established findings.</p>
+            {report.remaining_hypotheses.map((hypothesis, index) => (
+              <article className="hypothesis" key={index}>
+                <h4>{hypothesis.statement}</h4>
+                <p>Possible area: {domainText(hypothesis.fault_domains)}</p>
+                <EvidenceLinks ids={hypothesis.evidence_ids} onEvidence={onEvidence} />
+                <TextList title="Evidence needed" values={hypothesis.next_evidence} />
+              </article>
+            ))}
+          </section>
+        )}
+        <TextList title="Additional investigation limitations" values={report.limitations} />
         <dl className="facts">
           {Object.entries(report.analyzer_versions).map(([tool, version]) => (
             <div key={tool}>
@@ -481,6 +653,6 @@ export function ReportView({
           </div>
         </dl>
       </details>
-    </div>
+    </section>
   );
 }

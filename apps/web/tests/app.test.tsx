@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/App';
+import { Progress } from '../src/Progress';
 import {
   api,
   ApiError,
@@ -167,7 +168,7 @@ describe('primary intake and recovery workflow', () => {
     const user = await fillIntake();
     expect(screen.getByText('trace.pcap')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Send' }));
-    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
     expect(api.create).toHaveBeenCalledWith('application is slow', 'trace.pcap');
     expect(api.upload).toHaveBeenCalledTimes(1);
     expect(api.investigate).toHaveBeenCalledTimes(1);
@@ -217,6 +218,10 @@ describe('primary intake and recovery workflow', () => {
   });
   it('does not offer evidence generation when the API is unavailable', async () => {
     openExisting(supported, 'api_unavailable');
+    await userEvent.click(await screen.findByRole('heading', { name: "Here's what I found" }));
+    await userEvent.click(
+      within(screen.getAllByTestId('osi-layer-card')[1]).getByText('Technical evidence'),
+    );
     await waitFor(() => expect(screen.getByText(/The local API is unavailable/)).toBeVisible());
     expect(
       screen.queryByRole('button', { name: 'Create evidence capture without opening Wireshark' }),
@@ -241,7 +246,7 @@ describe('primary intake and recovery workflow', () => {
   });
   it('recovers a completed case without any mutation', async () => {
     openExisting();
-    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
     expect(api.create).not.toHaveBeenCalled();
     expect(api.upload).not.toHaveBeenCalled();
     expect(api.investigate).not.toHaveBeenCalled();
@@ -253,14 +258,14 @@ describe('primary intake and recovery workflow', () => {
     expect(await screen.findByRole('button', { name: 'Continue investigation' })).toBeEnabled();
     expect(api.investigate).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Continue investigation' }));
-    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
   });
   it('renders actual backend progress without a fake percentage', async () => {
     openExisting();
     current.state = 'INVESTIGATING';
     current.runs = [{ ...current.runs[0], status: 'running' }];
-    expect(await screen.findByText('Analyzing deterministic evidence')).toBeVisible();
-    expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    expect(await screen.findByText('Analyzing network traffic…')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByText('Case details'));
     expect(screen.getByRole('button', { name: 'Delete case' })).toBeDisabled();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -298,15 +303,17 @@ describe('evidence and uncertainty presentation', () => {
     };
     openExisting(fallback);
     expect(await screen.findByText(/Local embedded AI unavailable/)).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: "Here's what I found" })).toBeVisible();
   });
 
-  it('presents supported result with backend confidence and fault domains', async () => {
+  it('presents plain-language support and keeps fault domains in technical evidence', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
-    expect(screen.getAllByText('Local network · Network path')[0]).toBeVisible();
-    expect(screen.getByText(/confidence · Inferred/)).toBeVisible();
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    const transport = screen.getAllByTestId('osi-layer-card')[1];
+    expect(within(transport as HTMLElement).getByText(/Medium support/)).toBeVisible();
     expect(screen.getByText(/does not prove a root cause/)).toBeVisible();
+    await userEvent.click(within(transport as HTMLElement).getByText('Technical evidence'));
+    expect(screen.getByText('Local network · Network path')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Open Full Capture in Wireshark' })).toBeDisabled();
     expect(
       screen.getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
@@ -318,6 +325,10 @@ describe('evidence and uncertainty presentation', () => {
     vi.mocked(api.bridgeGrant).mockRejectedValue(new ApiError('finding_not_found', 404));
     window.history.replaceState(null, '', `/#case=${supported.case.id}`);
     render(<App />);
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    await userEvent.click(
+      within(screen.getAllByTestId('osi-layer-card')[1]).getByText('Technical evidence'),
+    );
     const full = await screen.findByRole('button', { name: 'Open Full Capture in Wireshark' });
     await waitFor(() => expect(full).toBeEnabled());
     await userEvent.click(full);
@@ -327,28 +338,30 @@ describe('evidence and uncertainty presentation', () => {
   });
   it('treats insufficient_evidence as a completed result with next evidence', async () => {
     openExisting(insufficient as Fixture);
-    expect(await screen.findByRole('heading', { name: 'Insufficient evidence' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Remaining hypotheses' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'What to check next' })).toBeVisible();
+    await userEvent.click(screen.getByText('Technical report details'));
+    expect(screen.getByRole('heading', { name: 'Remaining possibilities' })).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Investigation failed' })).not.toBeInTheDocument();
   });
   it('keeps capture limitations visible outside the expert view', async () => {
     openExisting(limited as Fixture);
-    expect(await screen.findByRole('heading', { name: /Capture quality: limited/i })).toBeVisible();
+    expect(await screen.findByText(/Capture quality was limited/i)).toBeVisible();
     expect(
       screen.getAllByText(limited.report.capture_quality.limitations[0]).length,
     ).toBeGreaterThan(0);
   });
   it('preserves measured classes and incomplete-subtotal qualification', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
-    await userEvent.click(screen.getByText('Time attribution and measurement details'));
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    await userEvent.click(screen.getByText('Technical report details'));
     expect(screen.getByText(/Stage subtotal:/)).toBeVisible();
     expect(screen.getByText(/derived \(measured\)/i)).toBeVisible();
     expect(screen.getByText(/not complete end-to-end transaction time/)).toBeVisible();
   });
   it('shows normalized evidence, tool version, and scope in a secondary drawer', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.click(screen.getByRole('button', { name: 'Show Packet Evidence' }));
     const dialog = screen.getByRole('dialog', { name: 'Expert evidence' });
     expect(await within(dialog).findByRole('heading', { name: 'Normalized values' })).toBeVisible();
@@ -374,10 +387,93 @@ describe('evidence and uncertainty presentation', () => {
   });
 });
 
+describe('conversation-first OSI analysis presentation', () => {
+  it('stacks the standard OSI cards in conversational order and emphasizes the strongest supported layer', async () => {
+    openExisting();
+    const result = await screen.findByRole('region', { name: 'Analysis results' });
+    const cards = within(result).getAllByTestId('osi-layer-card');
+    expect(cards.map((card) => card.getAttribute('data-layer'))).toEqual(['7', '4', '3', '2']);
+    expect(within(cards[1]).getByText('Strongest signal')).toBeVisible();
+    expect(within(cards[1]).getByText(/Medium support/i)).toBeVisible();
+    expect(within(cards[0]).getByText('Not assessable from this capture')).toBeVisible();
+  });
+
+  it('does not describe an unassessable layer as healthy or ruled out', async () => {
+    openExisting();
+    const result = await screen.findByRole('region', { name: 'Analysis results' });
+    const application = within(result).getAllByTestId('osi-layer-card')[0];
+    expect(application).toHaveTextContent('The report contains no application-layer finding.');
+    expect(application).toHaveTextContent(
+      'No finding here does not show that the layer is fault-free.',
+    );
+    expect(application).not.toHaveTextContent(
+      /the layer is (?:healthy|ruled out)|working normally/i,
+    );
+  });
+
+  it('keeps packet details hidden until requested and preserves evidence and Wireshark actions', async () => {
+    openExisting();
+    const result = await screen.findByRole('region', { name: 'Analysis results' });
+    expect(
+      within(result).getByRole('button', { name: 'Open Full Capture in Wireshark' }),
+    ).not.toBeVisible();
+    await userEvent.click(within(result).getByRole('button', { name: /View evidence/i }));
+    const drawer = await screen.findByRole('dialog', { name: 'Expert evidence' });
+    expect(await within(drawer).findByText('Tool / version')).toBeVisible();
+    await userEvent.click(within(result).getByText('Technical evidence'));
+    expect(
+      within(result).getByRole('button', { name: 'Open Full Capture in Wireshark' }),
+    ).toBeVisible();
+    expect(
+      within(result).getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
+    ).toBeVisible();
+    expect(within(result).getByText('Wireshark display filter')).toBeVisible();
+  });
+
+  it('keeps recovery in the upper header and removes the old intake helper copy', async () => {
+    fixture();
+    render(<App />);
+    const header = screen.getByRole('banner');
+    expect(within(header).getByText('Recover an existing local case')).toBeVisible();
+    expect(screen.queryByText('Your capture stays in your local Wireclaw workspace.')).toBeNull();
+    expect(screen.queryByText(/Context is not packet evidence/)).toBeNull();
+    expect(screen.getByRole('img', { name: 'Wireclaw' })).toBeVisible();
+  });
+
+  it('maps persisted lifecycle states to the appropriate processing wave and stops on error', async () => {
+    const ingesting = structuredClone(supported);
+    ingesting.case.state = 'INGESTING';
+    openExisting(ingesting);
+    expect(await screen.findByText('Preparing capture…')).toBeVisible();
+    expect(screen.getByTestId('processing-wave')).toHaveAttribute('data-motion', 'calm');
+  });
+
+  it.each([
+    ['VALIDATING_CAPTURE', 'Checking capture…', 'calm', 'none'],
+    ['BASELINE_ANALYSIS', 'Analyzing network traffic…', 'moderate', 'none'],
+    ['INVESTIGATING', 'Investigating the likely cause…', 'reasoning', 'openai_compatible_local'],
+    ['ASSEMBLING_REPORT', 'Preparing your report…', 'settling', 'none'],
+  ] as const)('maps %s to the matching wave state', (state, label, motion, providerMode) => {
+    const record = { ...supported.case, state, provider_mode: providerMode } as Case;
+    render(<Progress record={record} />);
+    expect(screen.getByTestId('processing-wave')).toHaveTextContent(label);
+    expect(screen.getByTestId('processing-wave')).toHaveAttribute('data-motion', motion);
+  });
+
+  it('removes the wave on completion and stops it immediately on error', () => {
+    const complete = { ...supported.case, state: 'COMPLETE' } as Case;
+    const { rerender } = render(<Progress record={complete} />);
+    expect(screen.queryByTestId('processing-wave')).toBeNull();
+    rerender(<Progress record={{ ...complete, state: 'FAILED' }} />);
+    expect(screen.queryByTestId('processing-wave')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('Investigation stopped.');
+  });
+});
+
 describe('deliberate deletion', () => {
   it('requires confirmation and accurately reports successful file removal', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.click(screen.getByText('Case details'));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case' }));
     const dialog = screen.getByRole('dialog', { name: 'Delete this case?' });
@@ -389,7 +485,7 @@ describe('deliberate deletion', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete case and stored files' }));
     expect(await screen.findByText(/deleted, including its stored original/)).toBeVisible();
     expect(window.location.hash).toBe('');
-    expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
   });
   it('does not claim physical cleanup when cleanup_pending is true', async () => {
     openExisting();
@@ -399,7 +495,7 @@ describe('deliberate deletion', () => {
       registered_artifacts_deleted: false,
       cleanup_pending: true,
     });
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.click(screen.getByText('Case details'));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case and stored files' }));
@@ -408,7 +504,7 @@ describe('deliberate deletion', () => {
   it('keeps the case and dialog after a failed deletion', async () => {
     openExisting();
     vi.mocked(api.delete).mockRejectedValue(new ApiError('service_busy'));
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.click(screen.getByText('Case details'));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete case and stored files' }));
@@ -422,7 +518,7 @@ describe('deliberate deletion', () => {
 describe('report freshness races', () => {
   it('replaces the completed report after a later persisted revision', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     current = { ...current, updated: '2030-01-01T00:00:00Z' };
     vi.mocked(api.report).mockResolvedValue({
       ...supported.report,
@@ -431,11 +527,10 @@ describe('report freshness races', () => {
     expect(
       await screen.findByText('Later persisted report revision.', {}, { timeout: 3000 }),
     ).toBeVisible();
-    expect(
-      within(screen.getByRole('region', { name: 'Supported finding' })).queryByText(
-        supported.report.conclusion.statement,
-      ),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText('Later persisted report revision.')).toBeVisible();
+    expect(screen.getByText('Later persisted report revision.')).not.toHaveTextContent(
+      /TCP stream 0 has a measured median ACK RTT/,
+    );
   });
   it('hides a report when the verification snapshot changed during retrieval', async () => {
     openExisting();
@@ -444,7 +539,7 @@ describe('report freshness races', () => {
       return supported.report as Report;
     });
     expect(await screen.findByRole('heading', { name: 'Investigation failed' })).toBeVisible();
-    expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
   });
   it('does not restore a late report after changing to a new case', async () => {
     let resolve!: (value: Report) => void;
@@ -461,19 +556,19 @@ describe('report freshness races', () => {
       resolve(supported.report as Report);
     });
     expect(screen.getByRole('heading', { name: 'Start with a capture' })).toBeVisible();
-    expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
   });
   it('hides results on lost status connectivity and supports explicit recovery', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     vi.mocked(api.get).mockRejectedValue(new ApiError('network_unavailable'));
     expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent(
       'could not be reached',
     );
-    expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
     vi.mocked(api.get).mockResolvedValue(current);
     await userEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
-    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
   });
 });
 
@@ -502,7 +597,7 @@ describe('approved conversation window', () => {
     openExisting();
     current.state = 'INVESTIGATING';
     current.runs = [{ ...current.runs[0], status: 'running' }];
-    const status = await screen.findByText('Analyzing deterministic evidence');
+    const status = await screen.findByText('Analyzing network traffic…');
     expect(status.closest('[role="status"]')).toHaveAttribute('aria-live', 'polite');
     expect(screen.queryByRole('heading', { name: 'Investigation stages' })).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -510,10 +605,22 @@ describe('approved conversation window', () => {
   });
   it('renders_authoritative_conclusion_with_nearby_evidence_and_both_wireshark_actions', async () => {
     openExisting(supported);
-    await screen.findByRole('heading', { name: 'Supported finding' });
-    const result = screen.getByRole('region', { name: 'Supported finding' });
-    expect(within(result).getByText(supported.report.conclusion.statement)).toBeVisible();
-    expect(within(result).getAllByRole('button')[0]).toHaveClass('evidence-id');
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    const result = screen.getByRole('region', { name: 'Analysis results' });
+    expect(
+      within(result).getAllByText(
+        'TCP acknowledgements took about 200 ms to return at the median, measured across 3 samples.',
+      ),
+    ).toHaveLength(2);
+    expect(
+      within(result).getByRole('button', { name: 'View evidence for Transport / TCP' }),
+    ).toBeVisible();
+    expect(
+      within(result).getByRole('button', { name: 'Open Full Capture in Wireshark' }),
+    ).not.toBeVisible();
+    await userEvent.click(
+      within(screen.getAllByTestId('osi-layer-card')[1]).getByText('Technical evidence'),
+    );
     expect(screen.getByRole('button', { name: 'Open Full Capture in Wireshark' })).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
@@ -522,13 +629,13 @@ describe('approved conversation window', () => {
   });
   it('disables_followup_when_provider_mode_is_rules_only', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     expect(screen.getByLabelText('Question about this report')).toBeDisabled();
     expect(screen.getByText(/Follow-up is unavailable in rules-only mode/)).toBeVisible();
   });
   it('bookmarked_case_id_restores_existing_case_without_creating_a_case', async () => {
     openExisting();
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     expect(api.get).toHaveBeenCalledWith(supported.case.id, expect.any(AbortSignal));
     expect(api.create).not.toHaveBeenCalled();
     expect(api.investigate).not.toHaveBeenCalled();
@@ -554,7 +661,7 @@ describe('approved conversation window', () => {
     );
     vi.stubGlobal('fetch', fetch);
     openExisting(enabled);
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     const composer = screen.getByLabelText('Question about this report');
     await userEvent.type(composer, 'Which device?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -571,6 +678,34 @@ describe('approved conversation window', () => {
       { question: 'What would validate this?' },
     ]);
   });
+  it('shows the reasoning wave only while a follow-up provider request is pending', async () => {
+    const enabled = structuredClone(supported);
+    enabled.case.provider_mode = 'openai_compatible_local';
+    enabled.case.ai_status = {
+      effective_provider_mode: 'openai_compatible_local',
+      embedded_availability: 'not_applicable',
+      model: null,
+      failure_code: null,
+    };
+    let resolve!: (value: { answer: string; evidence_ids: string[] }) => void;
+    vi.spyOn(api, 'followup').mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    openExisting(enabled);
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+    const wave = await screen.findByTestId('followup-wave');
+    expect(wave).toHaveAttribute('data-motion', 'reasoning');
+    await act(async () =>
+      resolve({ answer: 'The capture cannot distinguish the fault domain.', evidence_ids: [] }),
+    );
+    expect(screen.queryByTestId('followup-wave')).toBeNull();
+  });
+
   it('keeps_report_above_followup_turns', async () => {
     const enabled = structuredClone(supported);
     enabled.case.provider_mode = 'openai_compatible_local';
@@ -590,7 +725,7 @@ describe('approved conversation window', () => {
       ),
     );
     openExisting(enabled);
-    const report = await screen.findByRole('region', { name: 'Supported finding' });
+    const report = await screen.findByRole('region', { name: 'Analysis results' });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     const reply = await screen.findByText('More evidence is needed.');
@@ -618,10 +753,13 @@ describe('follow-up recovery and case isolation', () => {
     vi.spyOn(api, 'followup')
       .mockRejectedValueOnce(new ApiError('provider_timeout'))
       .mockResolvedValueOnce({ answer: '<img src=x onerror="alert(1)">', evidence_ids: [] });
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('timed out');
+    await userEvent.click(
+      within(screen.getAllByTestId('osi-layer-card')[1]).getByText('Technical evidence'),
+    );
     expect(screen.getByRole('button', { name: 'Show Packet Evidence' })).toBeEnabled();
     await userEvent.type(screen.getByLabelText('Question about this report'), 'What next?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -634,7 +772,7 @@ describe('follow-up recovery and case isolation', () => {
       answer: 'Retained explanation.',
       evidence_ids: [],
     });
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('Retained explanation.');
@@ -643,7 +781,7 @@ describe('follow-up recovery and case isolation', () => {
     expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent(
       'could not be reached',
     );
-    expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Question about this report')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Attach a new capture' })).toBeDisabled();
@@ -651,7 +789,7 @@ describe('follow-up recovery and case isolation', () => {
     expect(screen.getByLabelText('Question about this report')).toHaveValue('Unsent draft');
     vi.mocked(api.get).mockResolvedValue(current);
     await userEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     expect(screen.getByText('Retained explanation.')).toBeVisible();
     expect(screen.getByText('Why?')).toBeVisible();
     expect(screen.getByLabelText('Question about this report')).toHaveValue('Unsent draft');
@@ -667,7 +805,7 @@ describe('follow-up recovery and case isolation', () => {
           resolve = done;
         }),
     );
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => expect(resolve).toBeDefined());
@@ -683,14 +821,14 @@ describe('follow-up recovery and case isolation', () => {
 
 it('uses_validated_file_intake_when_attaching_a_new_capture_from_a_report', async () => {
   openExisting();
-  await screen.findByRole('heading', { name: 'Supported finding' });
+  await screen.findByRole('heading', { name: "Here's what I found" });
   await userEvent.upload(
     screen.getByLabelText('Select new capture'),
     new File(['new capture'], 'next.pcapng'),
   );
   expect(screen.getByText('next.pcapng')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
-  expect(screen.queryByRole('heading', { name: 'Supported finding' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
   expect(api.create).not.toHaveBeenCalled();
 });
 
@@ -717,7 +855,7 @@ describe('recent captures', () => {
     expect(within(popover).getByText('Complete')).toBeVisible();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     await userEvent.click(within(popover).getByRole('button', { name: 'Open trace.pcap' }));
-    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
     expect(screen.queryByRole('dialog', { name: 'Recent captures' })).not.toBeInTheDocument();
     expect(api.create).not.toHaveBeenCalled();
     expect(api.upload).not.toHaveBeenCalled();
@@ -729,7 +867,7 @@ describe('recent captures', () => {
     async (active) => {
       if (active) {
         openExisting();
-        await screen.findByRole('heading', { name: 'Supported finding' });
+        await screen.findByRole('heading', { name: "Here's what I found" });
       } else {
         fixture();
         render(<App />);
@@ -774,7 +912,7 @@ describe('recent captures', () => {
       answer: 'The capture cannot identify the device.',
       evidence_ids: [],
     });
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Which device?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('The capture cannot identify the device.');
@@ -785,7 +923,7 @@ describe('recent captures', () => {
     const popover = await history();
     await userEvent.click(await within(popover).findByRole('button', { name: 'Open trace.pcap' }));
     expect(screen.queryByRole('dialog', { name: 'Recent captures' })).not.toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
     expect(screen.getByText('Which device?')).toBeVisible();
     expect(screen.getByText('The capture cannot identify the device.')).toBeVisible();
     expect(screen.getByLabelText('Question about this report')).toHaveValue(
@@ -812,7 +950,7 @@ describe('recent captures', () => {
       current = { ...current, name, display_name: name, updated: '2026-10-20T20:00:00Z' };
       return current;
     });
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('Retained answer.');
@@ -927,7 +1065,7 @@ describe('recent captures', () => {
     vi.spyOn(api, 'recent').mockResolvedValue([
       { ...row, id: next.id, name: next.name, state: next.state },
     ]);
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     await userEvent.type(screen.getByLabelText('Question about this report'), 'Why?');
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
     const popover = await history();
@@ -949,7 +1087,7 @@ describe('recent captures', () => {
           resolve = done;
         }),
     );
-    await screen.findByRole('heading', { name: 'Supported finding' });
+    await screen.findByRole('heading', { name: "Here's what I found" });
     const popover = await history();
     await userEvent.click(await within(popover).findByText('Actions for trace.pcap'));
     await userEvent.click(within(popover).getByRole('button', { name: 'Rename' }));
@@ -974,7 +1112,7 @@ describe('recent captures', () => {
   });
   it('bookmarked_case_id_restores_existing_case_without_creating_a_case', async () => {
     openExisting();
-    expect(await screen.findByRole('heading', { name: 'Supported finding' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
     expect(api.create).not.toHaveBeenCalled();
     expect(api.upload).not.toHaveBeenCalled();
     expect(api.investigate).not.toHaveBeenCalled();

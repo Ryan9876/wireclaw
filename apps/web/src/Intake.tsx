@@ -154,7 +154,6 @@ export function Intake({
         >
           {fileError || (tooLarge ? 'The selected capture exceeds the local size limit.' : '')}
         </p>
-        <p className="privacy">Your capture stays in your local Wireclaw workspace.</p>
         {limitError && (
           <div className="error" role="alert">
             <p>{limitError}</p>
@@ -205,7 +204,7 @@ export function Intake({
             </button>
           </div>
           <p className="composer-hint" id="symptom-help">
-            Attach a capture, then describe the issue. Context is not packet evidence.
+            Attach a capture and describe the issue to begin.
           </p>
         </div>
       </form>

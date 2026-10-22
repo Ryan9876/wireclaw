@@ -115,11 +115,14 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
     remoteRequests.push(request.url());
   });
   const id = await analyze(page, 'high_rtt');
-  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
+  ).toBeVisible();
   const report = await (await request.get(`/api/cases/${id}/report`)).json();
-  await expect(page.getByText(report.conclusion.statement, { exact: true }).first()).toBeVisible();
-  await page.getByText('Time attribution and measurement details', { exact: true }).click();
+  await expect(page.getByText(/TCP acknowledgements took about/).first()).toBeVisible();
+  await page.getByText('Technical report details', { exact: true }).click();
   await expect(page.getByText('Stage subtotal:', { exact: false })).toBeVisible();
+  await page.getByText('Technical evidence', { exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Open Full Capture in Wireshark' })).toBeDisabled();
   await expect(
     page.getByRole('button', { name: 'Open Evidence Capture in Wireshark' }),
@@ -159,7 +162,9 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await axe(page);
   await noOverflow(page);
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
+  ).toBeVisible();
   await page.getByText('Case details', { exact: true }).click();
   await page.getByRole('button', { name: 'Delete case', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Delete this case?' });
@@ -184,10 +189,11 @@ test('healthy capture completes with insufficient evidence and discriminating ne
 }) => {
   await analyze(page, 'clean_tcp');
   await expect(
-    page.getByRole('heading', { name: 'Insufficient evidence', exact: true }),
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Remaining hypotheses' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Recommended next evidence' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What to check next' })).toBeVisible();
+  await page.getByText('Technical report details', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Remaining possibilities' })).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Investigation failed', exact: true }),
   ).not.toBeVisible();
@@ -200,9 +206,9 @@ test('midstream capture keeps its quality limitations and uncertainty visible', 
   page,
 }) => {
   await analyze(page, 'midstream');
-  await expect(page.getByRole('heading', { name: /Capture quality: limited/i })).toBeVisible();
+  await expect(page.getByText(/Capture quality was limited/i)).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Insufficient evidence', exact: true }),
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/midstream/i).first()).toBeVisible();
   await axe(page);
@@ -220,7 +226,7 @@ test('malformed capture fails clearly, recovers across reload, and can be delete
   ).toBeVisible();
   await expect(page.getByText('Backend error:', { exact: false })).toBeVisible();
   await expect(
-    page.getByRole('status').filter({ hasText: 'Investigation failed' }),
+    page.getByRole('status').filter({ hasText: 'Investigation stopped.' }),
   ).toHaveAttribute('aria-live', 'polite');
   expect((await (await request.get(`/api/cases/${id}`)).json()).state).toBe('FAILED');
   await page.reload();
@@ -253,7 +259,9 @@ test('recovers uploaded idle case without automatically posting investigation', 
   await expect(page.getByRole('button', { name: 'Continue investigation' })).toBeVisible();
   expect(mutations).toEqual([]);
   await page.getByRole('button', { name: 'Continue investigation' }).click();
-  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
+  ).toBeVisible();
   expect(mutations).toHaveLength(1);
   await remove(page);
 });
@@ -266,11 +274,12 @@ for (const width of [390, 768, 1024]) {
     await axe(page);
     await analyze(page, 'high_rtt');
     await expect(
-      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+      page.getByRole('heading', { name: "Here's what I found", exact: true }),
     ).toBeVisible();
     await noOverflow(page);
     await axe(page);
     await page.screenshot({ path: resolve(visuals, `supported-${width}.png`), fullPage: true });
+    await page.getByText('Technical evidence', { exact: true }).first().click();
     await page.getByRole('button', { name: 'Show Packet Evidence' }).click();
     await expect(page.getByRole('heading', { name: 'Normalized values' })).toBeVisible();
     await noOverflow(page);
@@ -296,7 +305,7 @@ for (const width of [1440, 390]) {
     await hoveredContrast(page, send);
     await send.click();
     await expect(
-      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+      page.getByRole('heading', { name: "Here's what I found", exact: true }),
     ).toBeVisible();
     const id = new URL(page.url()).hash.slice(6);
     await page.getByText('Case details', { exact: true }).click();
@@ -349,7 +358,7 @@ for (const width of [1440, 390]) {
     await noOverflow(page);
     await popover.getByRole('button', { name: `Open ${captureName}`, exact: true }).press('Enter');
     await expect(
-      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+      page.getByRole('heading', { name: "Here's what I found", exact: true }),
     ).toBeVisible();
     await expect(historyButton).toBeFocused();
     expect(browserMutations).toEqual([]);
@@ -385,7 +394,7 @@ for (const width of [1440, 390]) {
     popover = page.getByRole('dialog', { name: 'Recent captures', exact: true });
     await popover.getByRole('button', { name: `Open ${displayName}`, exact: true }).press('Enter');
     await expect(
-      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+      page.getByRole('heading', { name: "Here's what I found", exact: true }),
     ).toBeVisible();
     expect(browserMutations).toHaveLength(1);
     await expect(historyButton).toBeFocused();
@@ -429,7 +438,7 @@ for (const width of [1440, 390]) {
 
 // These regressions exercise the compiled UI and real case/report/evidence API.
 test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ page, request }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
   const logo = page.getByRole('img', { name: 'Wireclaw', exact: true });
   await expect(logo).toBeVisible();
@@ -457,16 +466,27 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   });
   await page.getByRole('button', { name: 'Send', exact: true }).focus();
   await page.keyboard.press('Enter');
-  const processing = page
-    .getByRole('status')
-    .filter({ hasText: 'Assessing capture quality and baseline' });
+  const processing = page.getByTestId('processing-wave');
   await expect(processing).toBeVisible();
+  await expect(processing).toContainText('Analyzing network traffic…');
   await expect(processing).toHaveAttribute('aria-live', 'polite');
+  await expect(processing).toHaveAttribute('data-motion', 'moderate');
   expect(
-    await page.locator('.activity').evaluate((element) => getComputedStyle(element).animationName),
+    await page
+      .locator('.wave-front')
+      .evaluate((element) => getComputedStyle(element).animationName),
+  ).not.toBe('none');
+  await page.screenshot({ path: resolve(visuals, 'processing-desktop.png'), fullPage: true });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(
+    await page
+      .locator('.wave-front')
+      .evaluate((element) => getComputedStyle(element).animationName),
   ).toBe('none');
   releaseInvestigation();
-  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
+  ).toBeVisible();
   const id = new URL(page.url()).hash.slice(6);
   const before = await (await request.get(`/api/cases/${id}`)).json();
   const sourceBytes = readFileSync(resolve(captures, 'high_rtt.pcap'));
@@ -484,6 +504,7 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   await expect(page.locator('.selected-file')).toContainText('high_rtt.pcap');
   await expect(page.getByLabel('Question about this report')).toBeDisabled();
   await expect(page.getByText(/Follow-up is unavailable in rules-only mode/)).toBeVisible();
+  await page.getByText('Technical evidence', { exact: true }).first().click();
   for (const name of ['Open Full Capture in Wireshark', 'Open Evidence Capture in Wireshark']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
@@ -562,7 +583,9 @@ test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_f
   expect(investigated.ok()).toBe(true);
   await page.goto(`/#case=${caseId}`);
   const displayName = `Capture ${caseId.slice(0, 8)}`;
-  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
+  ).toBeVisible();
   const history = page.getByRole('button', { name: 'Recent captures', exact: true });
   await history.focus();
   await page.keyboard.press('Enter');
@@ -576,6 +599,7 @@ test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_f
   await page.keyboard.press('Escape');
   await expect(popover).not.toBeVisible();
   await expect(history).toBeFocused();
+  await page.getByText('Technical evidence', { exact: true }).first().click();
   const evidence = page.getByRole('button', { name: 'Show Packet Evidence', exact: true });
   await evidence.focus();
   await page.keyboard.press('Enter');
@@ -594,9 +618,12 @@ test('history_popover_and_evidence_drawer_are_keyboard_dismissible_and_restore_f
 test('conversation_report_and_actions_have_no_overflow_at_390px', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await analyze(page, 'high_rtt');
-  await expect(page.getByRole('heading', { name: 'Supported finding', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
+  ).toBeVisible();
   await expect(page.locator('.selected-file')).toContainText('high_rtt.pcap');
   await noOverflow(page);
+  await page.getByText('Technical evidence', { exact: true }).first().click();
   for (const name of ['Open Full Capture in Wireshark', 'Open Evidence Capture in Wireshark']) {
     const bounds = await page.getByRole('button', { name, exact: true }).boundingBox();
     expect(bounds).not.toBeNull();
@@ -627,7 +654,7 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const id = await analyze(page, 'high_rtt');
     await expect(
-      page.getByRole('heading', { name: 'Supported finding', exact: true }),
+      page.getByRole('heading', { name: "Here's what I found", exact: true }),
     ).toBeVisible();
     const report = await (await request.get(`/api/cases/${id}/report`)).json();
     const evidenceId = report.findings[0].evidence_ids[0];
@@ -650,8 +677,13 @@ for (const width of [1440, 390]) {
       });
     });
     const questions: unknown[] = [];
+    let releaseFirstFollowup!: () => void;
+    const firstFollowupWaiting = new Promise<void>((resolve) => {
+      releaseFirstFollowup = resolve;
+    });
     await page.route(`**/api/cases/${id}/followups`, async (route) => {
       questions.push(route.request().postDataJSON());
+      if (questions.length === 1) await firstFollowupWaiting;
       await route.fulfill({
         json: {
           answer:
@@ -667,6 +699,18 @@ for (const width of [1440, 390]) {
       await page.getByRole('button', { name: 'Send', exact: true }).focus();
       await page.keyboard.press('Enter');
       await expect(page.getByText(question, { exact: true })).toBeVisible();
+      if (questions.length === 1) {
+        const thinking = page.getByTestId('followup-wave');
+        await expect(thinking).toContainText('Thinking about your question…');
+        await expect(thinking).toHaveAttribute('data-motion', 'reasoning');
+        if (width === 1440)
+          await page.screenshot({
+            path: resolve(visuals, 'followup-thinking-desktop.png'),
+            fullPage: true,
+          });
+        releaseFirstFollowup();
+        await expect(thinking).not.toBeVisible();
+      }
       await expect(page.getByRole('status').filter({ hasText: 'Explanation ready.' })).toHaveText(
         'Explanation ready.',
       );

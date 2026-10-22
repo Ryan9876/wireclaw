@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage, type Followup } from './api';
+import { ProcessingWave } from './Progress';
 
 type Turn = { question: string; response?: Followup; error?: string };
 
@@ -68,6 +69,13 @@ export function Conversation({
                 </div>
               </article>
             )}
+            {busy && index === turns.length - 1 && (
+              <ProcessingWave
+                label="Thinking about your question…"
+                motion="reasoning"
+                testId="followup-wave"
+              />
+            )}
             {turn.error && (
               <p className="error" role="alert">
                 {turn.error}
@@ -80,7 +88,7 @@ export function Conversation({
         {!verified
           ? 'Recovering the verified report…'
           : busy
-            ? 'Answering your question…'
+            ? ''
             : turns.at(-1)?.response
               ? 'Explanation ready.'
               : ''}
