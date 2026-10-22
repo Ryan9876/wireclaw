@@ -25,7 +25,7 @@ function recordLabel(item: Evidence) {
       return 'A connection request was observed; setup did not complete in this capture.';
     if (state === 'reset_during_establishment')
       return 'A reset was observed during connection setup.';
-    if (state === 'midstream') return 'The connection was already in progress when capture began.';
+    if (state === 'midstream') return 'Connection setup was not observed in this capture.';
   }
   if (item.category === 'assess_capture_quality' && typeof item.value.state === 'string')
     return `Capture quality assessment: ${human(item.value.state)}.`;

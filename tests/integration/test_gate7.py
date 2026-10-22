@@ -1179,6 +1179,26 @@ def test_followup_invalid_citations_return_502_followup_response_invalid(tmp_pat
         assert_followup_error(client, case_id, 502, "followup_response_invalid")
 
 
+def test_followup_rejects_cited_evidence_ids_in_answer_prose(tmp_path, monkeypatch):
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    evidence_id = service.evidence_records(case_id)[0]["id"]
+
+    class Provider:
+        def propose(self, _request):
+            return ProviderResult(
+                content=json.dumps(
+                    {
+                        "answer": f"This record supports the observation: {evidence_id}.",
+                        "evidence_ids": [evidence_id],
+                    }
+                )
+            )
+
+    monkeypatch.setattr(loop, "make_provider", lambda _policy: Provider())
+    with client:
+        assert_followup_error(client, case_id, 502, "followup_response_invalid")
+
+
 def test_followup_invalid_question_returns_422_invalid_request(tmp_path, monkeypatch):
     client, _, case_id, requests = followup_client(tmp_path, monkeypatch)
     with client:

@@ -132,6 +132,21 @@ describe('technical evidence drawer', () => {
     expect(raw).toHaveTextContent(record.source.capability);
   });
 
+  it('describes a midstream record without claiming when the connection began', async () => {
+    const record = structuredClone(
+      supported.evidence.find((item) => item.category === 'analyze_tcp_establishment')!,
+    );
+    record.value.state = 'midstream';
+    show(record);
+    const drawer = screen.getByRole('dialog', { name: 'Technical evidence' });
+    expect(
+      await within(drawer).findByText('Connection setup was not observed in this capture.'),
+    ).toBeVisible();
+    expect(
+      within(drawer).queryByText(/already in progress when capture began/i),
+    ).not.toBeInTheDocument();
+  });
+
   it('does not infer endpoint roles from a sparse or capture quality record', async () => {
     const record = structuredClone(
       supported.evidence.find((item) => item.category === 'assess_capture_quality')!,

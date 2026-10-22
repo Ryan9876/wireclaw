@@ -140,6 +140,12 @@ def answer_followup(service, case_id: str, question: str) -> FollowupResponse:
         ):
             raise ValueError
         response = FollowupResponse.model_validate_json(result.content, strict=True)
+        # Evidence IDs belong in structured citations, never in user-facing prose.
+        if any(
+            evidence_id in response.answer
+            for evidence_id in (item["id"] for item in context["evidence"])
+        ):
+            raise ValueError
         # Membership is restricted to the bounded case-local evidence actually supplied.
         allowed_ids = {item["id"] for item in context["evidence"]}
         if not set(response.evidence_ids) <= allowed_ids:

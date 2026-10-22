@@ -534,20 +534,21 @@ test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ pa
   await expect(page.getByLabel('Question about this report')).toBeDisabled();
   await expect(page.getByText(/Follow-up is unavailable in rules-only mode/)).toBeVisible();
   await page.getByText('Technical evidence', { exact: true }).first().click();
+  const finding = report.findings.find(
+    (item: { wireshark: { applicable: boolean } }) => item.wireshark.applicable,
+  );
+  expect(finding.evidence_ids.length).toBeGreaterThan(0);
   for (const name of ['Open Full Capture in Wireshark', 'Open Evidence Capture in Wireshark']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
   }
-  const finding = report.findings.find(
-    (item: { wireshark: { applicable: boolean } }) => item.wireshark.applicable,
-  );
   await expect(page.locator('.validation-actions')).toContainText(finding.wireshark.display_filter);
   await axe(page);
   await noOverflow(page);
   await page.screenshot({ path: resolve(visuals, 'task6-desktop-analysis.png'), fullPage: true });
   await page.getByRole('button', { name: 'Show Packet Evidence', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: 'Technical evidence' });
-  const evidenceId = await drawer.getByLabel('Evidence record', { exact: true }).inputValue();
+  const evidenceId = finding.evidence_ids[0];
   const evidence = await (await request.get(`/api/cases/${id}/evidence/${evidenceId}`)).json();
   await expect(drawer.getByRole('heading', { name: 'What this shows' })).toBeVisible();
   await expect(drawer.getByRole('heading', { name: 'Measurements' })).toBeVisible();
@@ -783,7 +784,16 @@ for (const width of [1440, 390]) {
       expect(reportDetails!.y + reportDetails!.height).toBeLessThanOrEqual(fixedComposer!.y - 12);
       await page.getByText('Technical report details', { exact: true }).click();
     }
-    const evidenceId = report.findings[0].evidence_ids[0];
+    const evidenceInventory = await (
+      await request.get(`/api/cases/${id}/evidence?limit=100`)
+    ).json();
+    const evidenceIds: string[] = [
+      ...new Set([
+        ...report.findings.flatMap((finding: { evidence_ids: string[] }) => finding.evidence_ids),
+        ...evidenceInventory.evidence.map((record: { id: string }) => record.id),
+      ]),
+    ].slice(0, 2);
+    expect(evidenceIds).toHaveLength(2);
     const status = {
       effective_provider_mode: 'openai_compatible_local',
       embedded_availability: 'not_applicable',
@@ -814,7 +824,7 @@ for (const width of [1440, 390]) {
         json: {
           answer:
             'The capture does not identify the exact device. Validate with a capture at the other endpoint.',
-          evidence_ids: [evidenceId],
+          evidence_ids: questions.length === 1 ? evidenceIds : [],
         },
       });
     });
@@ -873,6 +883,21 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole('article', { name: 'Explanation about this report' })).toHaveCount(
       2,
     );
+    const answers = page.getByRole('article', { name: 'Explanation about this report' });
+    const citedAnswer = answers.nth(0);
+    const uncitedAnswer = answers.nth(1);
+    await expect(
+      citedAnswer.getByRole('button', { name: 'View supporting evidence (2)', exact: true }),
+    ).toHaveCount(1);
+    await expect(citedAnswer.getByRole('button')).toHaveCount(1);
+    for (const evidenceId of evidenceIds)
+      await expect(citedAnswer.getByText(evidenceId, { exact: true })).toHaveCount(0);
+    await expect(
+      uncitedAnswer.getByText('The capture does not identify the exact device.', { exact: false }),
+    ).toBeVisible();
+    await expect(uncitedAnswer.getByRole('button', { name: /supporting evidence/i })).toHaveCount(
+      0,
+    );
     await axe(page);
     await noOverflow(page);
     await page.screenshot({
@@ -882,16 +907,20 @@ for (const width of [1440, 390]) {
       ),
       fullPage: true,
     });
-    await page
-      .getByRole('article', { name: 'Explanation about this report' })
-      .last()
-      .getByRole('button', { name: 'View supporting evidence (1)', exact: true })
+    await citedAnswer
+      .getByRole('button', { name: 'View supporting evidence (2)', exact: true })
       .click();
-    await expect(
-      page
-        .getByRole('dialog', { name: 'Technical evidence' })
-        .getByRole('heading', { name: 'What this shows' }),
-    ).toBeVisible();
+    const drawer = page.getByRole('dialog', { name: 'Technical evidence' });
+    const recordPicker = drawer.getByLabel('Evidence record', { exact: true });
+    await expect(recordPicker.locator('option')).toHaveCount(2);
+    await expect(drawer.getByRole('heading', { name: 'What this shows' })).toBeVisible();
+    const secondEvidenceRequest = page.waitForRequest((request) =>
+      request.url().endsWith(`/evidence/${evidenceIds[1]}`),
+    );
+    await recordPicker.selectOption(evidenceIds[1]);
+    await secondEvidenceRequest;
+    await expect(recordPicker).toHaveValue(evidenceIds[1]);
+    await expect(drawer.getByRole('heading', { name: 'What this shows' })).toBeVisible();
     await page.keyboard.press('Escape');
     expect(await (await request.get(`/api/cases/${id}/report`)).json()).toEqual(report);
     await remove(page);
