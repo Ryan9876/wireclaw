@@ -62,6 +62,8 @@ PRAGMA user_version = 3;
 def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
     files = Files(tmp_path / "legacy")
     case_id, original_id, report_id, normalized_id = "a" * 32, "b" * 32, "c" * 32, "3" * 32
+    evidence_capture_id, provenance_id = "7" * 32, "8" * 32
+    failed_ingest_id, successful_ingest_id = "5" * 32, "6" * 32
     original_bytes = b"legacy source capture bytes"
     capture_sha = hashlib.sha256(original_bytes).hexdigest()
     report_sha = "e" * 64
@@ -130,6 +132,34 @@ def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
                 capture_sha,
             ),
         )
+        for artifact_id, kind in (
+            (evidence_capture_id, "evidence_capture"),
+            (provenance_id, "evidence_provenance"),
+        ):
+            conn.execute(
+                "INSERT INTO artifacts VALUES(?,?,?,?,?,?,?)",
+                (artifact_id, case_id, kind, f"cases/{kind}", "4" * 64, 30, capture_sha),
+            )
+        for run_id, status, error in (
+            (failed_ingest_id, "failed", "invalid_capture"),
+            (successful_ingest_id, "complete", None),
+        ):
+            conn.execute(
+                "INSERT INTO runs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    run_id,
+                    case_id,
+                    f"ingest-{status}",
+                    "ingest",
+                    "{}",
+                    status,
+                    error,
+                    None,
+                    None,
+                    None,
+                    "2026-01-01",
+                ),
+            )
         conn.execute(
             "INSERT INTO runs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (
@@ -190,6 +220,10 @@ def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
             "INSERT INTO evidence VALUES(?,?,?,?)",
             (case_id, "ev_diagnostics", "{}", "2" * 32),
         )
+        conn.execute(
+            "INSERT INTO evidence VALUES(?,?,?,?)",
+            (case_id, "ev_failed_ingest", "{}", failed_ingest_id),
+        )
     db = Database(files)
     with db.connect() as conn:
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
@@ -225,6 +259,18 @@ def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
         assert capture["vantage_type"] == "unknown"
         assert capture["status"] == "analyzed"
         assert (
+            conn.execute("SELECT capture_id FROM runs WHERE id=?", (failed_ingest_id,)).fetchone()[
+                0
+            ]
+            is None
+        )
+        assert (
+            conn.execute(
+                "SELECT capture_id FROM runs WHERE id=?", (successful_ingest_id,)
+            ).fetchone()[0]
+            == capture["id"]
+        )
+        assert (
             conn.execute("SELECT capture_id FROM artifacts WHERE id=?", (original_id,)).fetchone()[
                 0
             ]
@@ -236,6 +282,13 @@ def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
             ).fetchone()[0]
             == capture["id"]
         )
+        for artifact_id in (evidence_capture_id, provenance_id):
+            assert (
+                conn.execute(
+                    "SELECT capture_id FROM artifacts WHERE id=?", (artifact_id,)
+                ).fetchone()[0]
+                == capture["id"]
+            )
         assert (
             conn.execute("SELECT capture_id FROM artifacts WHERE id=?", (report_id,)).fetchone()[0]
             is None
@@ -262,6 +315,12 @@ def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
         )
         assert (
             conn.execute("SELECT capture_id FROM evidence WHERE id='ev_report'").fetchone()[0]
+            is None
+        )
+        assert (
+            conn.execute("SELECT capture_id FROM evidence WHERE id='ev_failed_ingest'").fetchone()[
+                0
+            ]
             is None
         )
     Database(files)

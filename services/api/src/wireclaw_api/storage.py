@@ -219,12 +219,15 @@ class Database:
                     continue
                 conn.execute(
                     "UPDATE artifacts SET capture_id=? WHERE case_id=? AND "
-                    "((id=? AND kind='original') OR (kind='normalized' AND parent_sha=?))",
+                    "((id=? AND kind='original') OR "
+                    "(kind IN ('normalized','evidence_capture','evidence_provenance') "
+                    "AND parent_sha=?))",
                     (capture_id, case["id"], case["original_id"], source["sha256"]),
                 )
                 conn.execute(
                     "UPDATE runs SET capture_id=? WHERE case_id=? AND "
-                    "(capability IN ('ingest','baseline','diagnostics','get_capture_metadata',"
+                    "((capability='ingest' AND status='complete') OR "
+                    "capability IN ('baseline','diagnostics','get_capture_metadata',"
                     "'assess_capture_quality','list_protocols','list_endpoints','list_conversations') "
                     "OR capability LIKE 'analyze_%')",
                     (capture_id, case["id"]),
