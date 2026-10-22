@@ -36,6 +36,23 @@ def client_for(root, policy=None):
     )
 
 
+def test_packaged_logo_is_served_from_fixed_route_with_security_headers(tmp_path):
+    dist = tmp_path / "web"
+    brand = dist / "brand"
+    brand.mkdir(parents=True)
+    logo = Path(__file__).resolve().parents[2] / "apps/web/public/brand/wireclaw-logo.jpeg"
+    shutil.copy2(logo, brand / "wireclaw-logo.jpeg")
+    with patch("wireclaw_api.web.WEB_DIST", dist), client_for(tmp_path / "data") as client:
+        response = client.get("/brand/wireclaw-logo.jpeg")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/jpeg")
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["cache-control"] == "no-store"
+        assert "img-src 'self'" in response.headers["content-security-policy"]
+        assert response.content == logo.read_bytes()
+        assert client.get("/brand/other.jpeg").status_code == 404
+
+
 def case(client, symptom="application is slow"):
     response = client.post("/api/cases", json={"symptom": symptom})
     assert response.status_code == 201, response.text

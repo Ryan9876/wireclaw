@@ -285,6 +285,15 @@ def test_release_stager_includes_the_production_build_context_and_native_launche
     assert '"README.md"' in PACKAGER
 
 
+def test_release_stager_copies_the_approved_logo_into_web_build_context(tmp_path):
+    packager = module_at(ROOT / "scripts/package_release.py", "package_release")
+    release = tmp_path / "wireclaw-release"
+    packager.stage_source_tree(release)
+    source_logo = ROOT / "apps/web/public/brand/wireclaw-logo.jpeg"
+    staged_logo = release / "apps/web/public/brand/wireclaw-logo.jpeg"
+    assert staged_logo.read_bytes() == source_logo.read_bytes()
+
+
 def test_release_stager_copies_embedded_timeout_default_into_bundle():
     env_template = (ROOT / "wireclaw-release/.env.example").read_text(encoding="utf-8")
     assert "WIRECLAW_PROVIDER_TIMEOUT_SECONDS=120" in env_template

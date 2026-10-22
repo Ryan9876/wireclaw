@@ -437,17 +437,33 @@ for (const width of [1440, 390]) {
 }
 
 // These regressions exercise the compiled UI and real case/report/evidence API.
-test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ page, request }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
+test('production header logo loads from the fixed same-origin asset route', async ({
+  page,
+  request,
+}) => {
   await page.goto('/');
   const logo = page.getByRole('img', { name: 'Wireclaw', exact: true });
   await expect(logo).toBeVisible();
   const logoResponse = await request.get('/brand/wireclaw-logo.jpeg');
   expect(logoResponse.ok()).toBe(true);
   expect(logoResponse.headers()['content-type']).toContain('image/jpeg');
+  expect(logoResponse.headers()['x-content-type-options']).toBe('nosniff');
+  expect(logoResponse.headers()['content-security-policy']).toContain("img-src 'self'");
+  expect((await logoResponse.body()).byteLength).toBeGreaterThan(0);
   await expect
-    .poll(() => logo.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+    .poll(() =>
+      logo.evaluate((image) => {
+        const element = image as HTMLImageElement;
+        return element.complete ? element.naturalWidth : 0;
+      }),
+    )
     .toBeGreaterThan(0);
+  expect((await request.get('/brand/other.jpeg')).status()).toBe(404);
+});
+
+test('single_window_capture_to_report_flow_has_no_dashboard_chrome', async ({ page, request }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
   await expect(page.getByText('Recover existing case', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByRole('navigation')).toHaveCount(0);

@@ -28,11 +28,26 @@ INCLUDED = (
     "apps/web/playwright.config.ts",
     "apps/web/eslint.config.js",
     "apps/web/src",
+    "apps/web/public",
     "apps/web/scripts",
     "services/analyzer/src/wireclaw_analyzer",
     "services/api/src/wireclaw_api",
     "launch/macos",
 )
+
+
+def stage_source_tree(stage: Path) -> None:
+    """Copy the production build context into a release staging directory."""
+    for item in INCLUDED:
+        source = ROOT / item
+        destination = stage / item
+        if source.is_dir():
+            shutil.copytree(
+                source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+            )
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
 
 
 def run(argv: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> str:
@@ -289,16 +304,7 @@ def main() -> int:
         raise SystemExit(f"output directory already exists: {output}")
     stage = output / "wireclaw-release"
     stage.mkdir(parents=True)
-    for item in INCLUDED:
-        source = ROOT / item
-        destination = stage / item
-        if source.is_dir():
-            shutil.copytree(
-                source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
-            )
-        else:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
+    stage_source_tree(stage)
     shutil.copy2(ROOT / "wireclaw-release/README.md", stage / "README.md")
     shutil.copy2(ROOT / "wireclaw-release/.env.example", stage / ".env.example")
     metadata_embedded_ai = stage_embedded_ai(args.embedded_ai_stage, stage)
