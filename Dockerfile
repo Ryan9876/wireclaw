@@ -66,6 +66,7 @@ WORKDIR /opt/wireclaw
 COPY pyproject.toml ./
 COPY tests/ tests/
 COPY scripts/ scripts/
+COPY apps/web/public/brand/wireclaw-logo.jpeg apps/web/public/brand/wireclaw-logo.jpeg
 ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/tmp/test-home \
     TMPDIR=/tmp

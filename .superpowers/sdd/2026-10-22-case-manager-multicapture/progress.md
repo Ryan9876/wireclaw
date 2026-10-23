@@ -118,3 +118,15 @@ Task 6: complete (commit `371491e feat: add persistent multi-capture case manage
 - Limitation: synthetic client/server fixture captures carry the same deterministic handshake and do not model independent clock skew, NAT, or middlebox ambiguity; those remain unqualified by this workflow.
 
 Task 7: complete after commit (production browser 21 passed; integration 145 passed; frontend 130 passed; lint/format/typecheck/Ruff/diff checks passed).
+
+## Task 8 execution — verification in progress; release gates blocked
+
+- RED/GREEN packaging-image fix: `docker build --target core-test -t wireclaw-core:task8-test .` initially failed because its test stage omitted `apps/web/public/brand/wireclaw-logo.jpeg`, required by the existing packaged-logo route test. Added that asset to the core-test stage. Rebuild passed: 595 unit/integration tests, 1 existing Starlette deprecation warning.
+- GREEN: packaging suite with local-only loopback access — `PYTHONPATH=.:services/api/src:services/analyzer/src .venv/bin/pytest -q tests/packaging` — 295 passed.
+- GREEN: provider privacy tests with local-only loopback access — 31 passed. Isolated slow subprocess bound test — 1 passed. Gate 3 validator with local-only loopback — 448 schema checks and all CLI/live API/evidence/bridge/deletion checks passed.
+- GREEN: production core-runtime image built; pinned analyzer versions verified as Python 3.12.3 and TShark/capinfos/editcap/mergecap 4.2.2. `scripts/validate_container_release.py` passed automated G9.1–G9.13 corpus, health/web, policy, rules-only investigation, evidence, restart persistence, immutable original, provider route, and privacy checks.
+- GREEN: full web build, lint, formatting, typecheck, and 130 frontend tests. Task 7 production browser suite passed 21 tests. Full Ruff check/format and compileall passed. Host bridge `go test ./...`, `go vet ./...`, `go build ./...` passed.
+- Host full pytest run: 882 passed, 8 failed. Three failures were local TShark 4.6.9 golden differences; pinned Docker core-test at locked TShark 4.2.2 passed all tests. The subprocess timeout/pipe test passed in isolation. Three provider privacy fixture tests passed when allowed to bind their intended 127.0.0.1 mock server. All tests are therefore covered by the passing pinned core suite plus the passing packaging suite; host-wide command itself remains recorded as non-green.
+- Blocker: exact-head GitHub Gate 6 jobs cannot be started/verified because `gh auth status` reports the configured token is invalid. The workflow also requires a push or PR to a configured branch; no push/PR was performed.
+- Blocker: no staged embedded-AI release assets are present, so the fresh macOS candidate package and hands-on frozen-candidate qualification cannot run. No candidate was created or frozen.
+- Task 8 remains incomplete until exact-head CI and candidate-bound qualification prerequisites are available. No final whole-branch review yet; run once after the branch reaches the final verification point.
