@@ -14,6 +14,7 @@ from pathlib import Path
 from wireclaw_analyzer import AnalyzerError, EvidenceExtractor
 
 from .gate4_service import Service as Gate4Service
+from .investigation import _frame_filter
 from .models import State
 from .service import identifier, now
 from .storage import ApiError, encode
@@ -34,6 +35,19 @@ class Service(Gate4Service):
                 return finding
         raise ApiError("finding_not_found", 404)
 
+    def _finding_capture_ids(self, case_id, finding):
+        case = self.get(case_id)
+        scope = finding.get("affected_scope") or {}
+        ids = scope.get("capture_ids")
+        if not isinstance(ids, list):
+            single = scope.get("capture_id")
+            ids = [single] if isinstance(single, str) else []
+        allowed = {capture["id"] for capture in case["captures"]}
+        selected = [capture_id for capture_id in ids if capture_id in allowed]
+        if not selected and case["captures"]:
+            selected = [case["captures"][0]["id"]]
+        return selected
+
     def _validate_filter(self, value):
         if value is None:
             return ""
@@ -43,12 +57,27 @@ class Service(Gate4Service):
             raise ApiError("invalid_display_filter", 422)
         return value
 
-    def _finding_filter(self, case_id, finding):
+    def _finding_filter(self, case_id, finding, capture_id=None):
         actions = finding.get("wireshark") or {}
         if not actions.get("applicable"):
             raise ApiError("wireshark_not_applicable", 409)
+        if capture_id is not None:
+            matched_frames = []
+            scope = finding.get("affected_scope") or {}
+            for descriptor in scope.get("matched_frames", []):
+                packet = descriptor.get(capture_id) if isinstance(descriptor, dict) else None
+                frame = packet.get("frame") if isinstance(packet, dict) else None
+                if type(frame) is int and frame > 0:
+                    matched_frames.append(frame)
+            if matched_frames:
+                candidate = _frame_filter(matched_frames, self.policy.max_display_filter_chars)
+                if candidate is None:
+                    raise ApiError("display_filter_limit", 422)
+                return candidate, "frame_set"
         display_filter = self._validate_filter(actions.get("display_filter"))
-        if display_filter:
+        if display_filter and (
+            capture_id is None or len(self._finding_capture_ids(case_id, finding)) <= 1
+        ):
             if re.fullmatch(r"\s*tcp\.stream\s*==\s*\d+\s*", display_filter):
                 mode = "tcp_stream"
             elif str(finding.get("category", "")).startswith("dns."):
@@ -62,6 +91,8 @@ class Service(Gate4Service):
         frames = []
         for evidence_id in finding["evidence_ids"]:
             record = self.evidence(case_id, evidence_id=evidence_id)
+            if capture_id is not None and record.get("capture_id") != capture_id:
+                continue
             for value in record.get("frame_refs", []):
                 if type(value) is int and value > 0:
                     frames.append(value)
@@ -74,15 +105,24 @@ class Service(Gate4Service):
         candidate = f"frame.number >= {frames[0]} && frame.number <= {frames[-1]}"
         return self._validate_filter(candidate), "bounded_frame_range"
 
-    def create_evidence_capture(self, case_id, finding_id):
+    def create_evidence_capture(self, case_id, finding_id, *, capture_id=None):
         case = self.get(case_id)
-        if case["state"] != State.COMPLETE or not case["original_id"]:
+        if case["state"] != State.COMPLETE:
             raise ApiError("report_not_ready")
         finding = self._finding(case_id, finding_id)
-        display_filter, mode = self._finding_filter(case_id, finding)
-        original, original_path = self.artifact(case_id, case["original_id"])
+        allowed_capture_ids = self._finding_capture_ids(case_id, finding)
+        if capture_id is None:
+            capture_id = allowed_capture_ids[0] if allowed_capture_ids else None
+        if capture_id is None or capture_id not in allowed_capture_ids:
+            raise ApiError("capture_not_in_finding", 409)
+        capture = next((item for item in case["captures"] if item["id"] == capture_id), None)
+        if capture is None or not capture.get("original_artifact_id"):
+            raise ApiError("original_artifact_required", 409)
+        display_filter, mode = self._finding_filter(case_id, finding, capture_id)
+        original_id = capture["original_artifact_id"]
+        original, original_path = self.artifact(case_id, original_id)
         reusable = self._find_reusable_evidence_capture(
-            case_id, finding_id, finding, original["sha256"], display_filter, mode
+            case_id, finding_id, finding, capture_id, original["sha256"], display_filter, mode
         )
         if reusable is not None:
             artifact, _ = reusable
@@ -120,12 +160,13 @@ class Service(Gate4Service):
                 display_filter,
                 max_bytes=self.policy.max_evidence_capture_bytes,
             )
-            self.artifact(case_id, case["original_id"])
+            self.artifact(case_id, original_id)
             tool_versions = self.analyzer_versions(case_id)
             provenance = {
                 "artifact_id": "",
                 "parent_sha256": original["sha256"],
                 "case_id": case_id,
+                "capture_id": capture_id,
                 "finding_id": finding_id,
                 "related_finding_ids": [finding_id],
                 "evidence_ids": list(finding["evidence_ids"]),
@@ -137,7 +178,12 @@ class Service(Gate4Service):
             }
             with self.db.connect() as conn:
                 artifact_id = self.register(
-                    conn, case_id, capture_path, "evidence_capture", original["sha256"]
+                    conn,
+                    case_id,
+                    capture_path,
+                    "evidence_capture",
+                    original["sha256"],
+                    capture_id=capture_id,
                 )
                 provenance["artifact_id"] = artifact_id
                 encoded = encode(provenance).encode()
@@ -149,7 +195,12 @@ class Service(Gate4Service):
                     os.fsync(stream.fileno())
                 provenance_path.chmod(0o400)
                 self.register(
-                    conn, case_id, provenance_path, "evidence_provenance", original["sha256"]
+                    conn,
+                    case_id,
+                    provenance_path,
+                    "evidence_provenance",
+                    original["sha256"],
+                    capture_id=capture_id,
                 )
             self.log(case_id, "evidence_capture", started, "complete")
             return {
@@ -173,7 +224,7 @@ class Service(Gate4Service):
             raise ApiError(code, 422) from None
 
     def _find_reusable_evidence_capture(
-        self, case_id, finding_id, finding, parent_sha, display_filter, mode
+        self, case_id, finding_id, finding, capture_id, parent_sha, display_filter, mode
     ):
         """Reuse only a capture whose registered bytes and paired provenance both verify."""
         with self.db.connect() as conn:
@@ -190,6 +241,7 @@ class Service(Gate4Service):
                 provenance = self._evidence_capture_provenance(case_id, artifact["id"])
                 if (
                     provenance.get("parent_sha256") == parent_sha
+                    and provenance.get("capture_id") == capture_id
                     and provenance.get("finding_id") == finding_id
                     and provenance.get("related_finding_ids") == [finding_id]
                     and provenance.get("evidence_ids") == list(finding["evidence_ids"])
@@ -288,19 +340,30 @@ class Service(Gate4Service):
         if case["state"] != State.COMPLETE:
             raise ApiError("report_not_ready")
         finding = self._finding(case_id, finding_id)
-        current_filter, _ = self._finding_filter(case_id, finding)
         artifact, _ = self.artifact(case_id, artifact_id)
         if artifact["kind"] not in ("original", "evidence_capture"):
             raise ApiError("capture_artifact_required", 409)
         if artifact["kind"] == "original":
-            if artifact_id != case["original_id"]:
+            capture = next(
+                (
+                    item
+                    for item in case["captures"]
+                    if item.get("original_artifact_id") == artifact_id
+                ),
+                None,
+            )
+            if capture is None or capture["id"] not in self._finding_capture_ids(case_id, finding):
                 raise ApiError("original_artifact_required", 409)
-            display_filter = current_filter
+            display_filter, _ = self._finding_filter(case_id, finding, capture["id"])
         else:
             provenance = self._evidence_capture_provenance(case_id, artifact_id)
             if provenance["finding_id"] != finding_id:
                 raise ApiError("evidence_finding_mismatch", 409)
+            capture_id = provenance.get("capture_id")
+            if capture_id not in self._finding_capture_ids(case_id, finding):
+                raise ApiError("evidence_provenance_mismatch", 409)
             display_filter = self._validate_filter(provenance["display_filter"])
+            current_filter, _ = self._finding_filter(case_id, finding, capture_id)
             if display_filter != current_filter:
                 raise ApiError("evidence_provenance_mismatch", 409)
 

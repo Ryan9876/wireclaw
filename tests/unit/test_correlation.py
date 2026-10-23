@@ -117,3 +117,19 @@ def test_clock_alignment_rejects_material_offset_disagreement_and_regression():
     )
     assert disagreement["usable"] is False
     assert regression["usable"] is False
+
+
+def test_clock_alignment_uses_repeated_packet_identity_to_tolerate_one_delayed_packet():
+    result = estimate_clock_alignment(
+        [
+            {"reference_time": 1.0, "observed_time": 1.01},
+            {"reference_time": 2.0, "observed_time": 2.01},
+            {"reference_time": 3.0, "observed_time": 0.1},
+            {"reference_time": 4.0, "observed_time": 4.01},
+            {"reference_time": 5.0, "observed_time": 5.01},
+        ]
+    )
+    assert result["offset_seconds"] == pytest.approx(0.01)
+    assert result["matched_count"] == 4
+    assert result["uncertainty_seconds"] == pytest.approx(0)
+    assert result["usable"] is True

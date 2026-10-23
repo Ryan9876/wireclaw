@@ -2619,6 +2619,11 @@
             "type": "string",
             "title": "Case Id"
           },
+          "capture_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Capture Id"
+          },
           "finding_id": {
             "type": "string",
             "title": "Finding Id"
@@ -2668,6 +2673,7 @@
           "artifact_id",
           "parent_sha256",
           "case_id",
+          "capture_id",
           "finding_id",
           "related_finding_ids",
           "evidence_ids",
@@ -2685,6 +2691,18 @@
             "type": "string",
             "pattern": "^[A-Za-z0-9_.-]{1,128}$",
             "title": "Finding Id"
+          },
+          "capture_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Id"
           }
         },
         "additionalProperties": false,

@@ -240,6 +240,7 @@ class CaptureResponse(StrictModel):
 
 class EvidenceCaptureRequest(StrictModel):
     finding_id: FindingId
+    capture_id: ArtifactId | None = None
 
 
 class BridgeGrantRequest(StrictModel):
@@ -251,6 +252,7 @@ class EvidenceCaptureProvenance(StrictModel):
     artifact_id: str
     parent_sha256: str
     case_id: str
+    capture_id: ArtifactId
     finding_id: str
     related_finding_ids: list[str]
     evidence_ids: list[str]

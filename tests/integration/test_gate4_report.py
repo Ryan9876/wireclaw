@@ -279,7 +279,43 @@ def test_investigate_analyzes_new_secondary_capture_and_rebuilds_localized_repor
         assert [capture["status"] for capture in captures] == ["analyzed", "analyzed"]
         runs_after = completed.json()["runs"]
         assert primary_run_ids.issubset({run["id"] for run in runs_after})
-        assert len(runs_after) == len(primary_run_ids) + 1
+        with client.app.state.service.db.connect() as conn:
+            secondary_runs = conn.execute(
+                "SELECT capability FROM runs WHERE case_id=? AND capture_id=?",
+                (case_id, second["id"]),
+            ).fetchall()
+        assert {run["capability"] for run in secondary_runs} >= {"baseline", "diagnostics"}
+        assert len(runs_after) == len(primary_run_ids) + 2
         report = client.get(f"/api/cases/{case_id}/report").json()
         assert report["cross_vantage"]["support"] == "stronger"
-        assert any(item["category"] == "tcp.server_response_delay" for item in report["findings"])
+        finding = next(
+            item for item in report["findings"] if item["category"] == "tcp.server_response_delay"
+        )
+        grant = client.post(
+            f"/api/cases/{case_id}/bridge-grants",
+            json={
+                "artifact_id": uploaded.json()["original_artifact_id"],
+                "finding_id": finding["id"],
+            },
+        )
+        assert grant.status_code == 200, grant.text
+        grant_data = client.app.state.service.files.path(
+            __import__("pathlib").Path("bridge") / "requests" / f"{grant.json()['request_id']}.json"
+        )
+        grant_manifest = __import__("json").loads(grant_data.read_text())
+        assert grant_manifest["artifact_id"] == uploaded.json()["original_artifact_id"]
+        assert grant_manifest["display_filter"] == "(frame.number >= 1 && frame.number <= 2)"
+        evidence_capture = client.post(
+            f"/api/cases/{case_id}/artifacts/evidence-capture",
+            json={"finding_id": finding["id"], "capture_id": second["id"]},
+        )
+        assert evidence_capture.status_code == 200, evidence_capture.text
+        assert evidence_capture.json()["provenance"]["capture_id"] == second["id"]
+        evidence_grant = client.post(
+            f"/api/cases/{case_id}/bridge-grants",
+            json={
+                "artifact_id": evidence_capture.json()["artifact_id"],
+                "finding_id": finding["id"],
+            },
+        )
+        assert evidence_grant.status_code == 200, evidence_grant.text

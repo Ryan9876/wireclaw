@@ -292,7 +292,7 @@ class Service:
             raise ApiError("artifact_integrity_failure")
         return dict(row), path
 
-    def register(self, conn, case_id, path, kind, parent_sha):
+    def register(self, conn, case_id, path, kind, parent_sha, *, capture_id=None):
         path = self.files.store.confined(path)
         total = path.stat().st_size
         if total > max(self.policy.analyzer.max_capture_bytes, self.policy.max_evidence_bytes):
@@ -303,8 +303,8 @@ class Service:
                 digest.update(chunk)
         artifact_id = identifier()
         conn.execute(
-            "INSERT INTO artifacts(id,case_id,kind,relative_path,sha256,bytes,parent_sha) "
-            "VALUES(?,?,?,?,?,?,?)",
+            "INSERT INTO artifacts(id,case_id,kind,relative_path,sha256,bytes,parent_sha,capture_id) "
+            "VALUES(?,?,?,?,?,?,?,?)",
             (
                 artifact_id,
                 case_id,
@@ -313,6 +313,7 @@ class Service:
                 digest.hexdigest(),
                 total,
                 parent_sha,
+                capture_id,
             ),
         )
         return artifact_id
@@ -448,6 +449,8 @@ class Service:
         capture = self.get_capture(case_id, capture_id)
         if capture["original_artifact_id"]:
             raise ApiError("capture_already_registered")
+        if capture["status"] not in ("waiting", "needs_attention"):
+            raise ApiError("capture_not_retryable", 409)
         path = self.capture_analyzer_root(case_id, capture_id) / "incoming"
         run_id = None
         started = time.monotonic()
@@ -687,6 +690,19 @@ class Service:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def save(self, case_id, run_id, result):
+        with self.db.connect() as conn:
+            run = conn.execute(
+                "SELECT capture_id FROM runs WHERE id=? AND case_id=?", (run_id, case_id)
+            ).fetchone()
+        if run is None:
+            raise ApiError("run_not_found", 404)
+        if run["capture_id"] is not None:
+            result = {
+                **result,
+                "evidence": [
+                    {**item, "capture_id": run["capture_id"]} for item in result["evidence"]
+                ],
+            }
         serialized = encode(result).encode()
         if len(serialized) > self.policy.max_evidence_bytes:
             raise ApiError("evidence_size_limit", 413)
@@ -723,11 +739,6 @@ class Service:
                     stream.write(serialized)
                     stream.flush()
                     os.fsync(stream.fileno())
-                run = conn.execute(
-                    "SELECT capture_id FROM runs WHERE id=? AND case_id=?", (run_id, case_id)
-                ).fetchone()
-                if run is None:
-                    raise ApiError("run_not_found", 404)
                 artifact_id = self.register(
                     conn, case_id, path, "normalized", result["capture_sha256"]
                 )
@@ -802,6 +813,11 @@ class Service:
                         {**item, "id": f"{item['id']}:{capture_id}"} for item in result["evidence"]
                     ],
                 }
+            if capture_id is not None:
+                result = {
+                    **result,
+                    "evidence": [{**item, "capture_id": capture_id} for item in result["evidence"]],
+                }
             self.save(case_id, run_id, result)
         except Exception as error:
             from wireclaw_analyzer import AnalyzerError
@@ -830,7 +846,7 @@ class Service:
             raise ApiError("capture_required")
         analyzer = self.analyzer(case_id, capture_id)
         artifact_id = capture["original_artifact_id"]
-        return self.execute(
+        baseline = self.execute(
             case_id,
             "baseline",
             {"artifact_id": artifact_id},
@@ -838,6 +854,15 @@ class Service:
             versions=analyzer.versions,
             capture_id=capture_id,
         )
+        diagnostics = self.execute(
+            case_id,
+            "diagnostics",
+            {"artifact_id": artifact_id},
+            lambda: analyzer.diagnose(capture["sha256"], include_http_timing=True),
+            versions=analyzer.versions,
+            capture_id=capture_id,
+        )
+        return {"baseline": baseline, "diagnostics": diagnostics}
 
     def investigate(self, case_id):
         case = self.get(case_id)
@@ -928,18 +953,23 @@ class Service:
             self.db.case(conn, case_id)
             if evidence_id:
                 row = conn.execute(
-                    "SELECT record FROM evidence WHERE case_id=? AND id=?", (case_id, evidence_id)
+                    "SELECT record,capture_id FROM evidence WHERE case_id=? AND id=?",
+                    (case_id, evidence_id),
                 ).fetchone()
                 if row is None:
                     raise ApiError("evidence_not_found", 404)
-                return json.loads(row["record"])
-            return [
-                json.loads(r["record"])
-                for r in conn.execute(
-                    "SELECT record FROM evidence WHERE case_id=? ORDER BY id LIMIT ? OFFSET ?",
-                    (case_id, limit, offset),
-                )
-            ]
+                record = json.loads(row["record"])
+                record.setdefault("capture_id", row["capture_id"])
+                return record
+            records = []
+            for row in conn.execute(
+                "SELECT record,capture_id FROM evidence WHERE case_id=? ORDER BY id LIMIT ? OFFSET ?",
+                (case_id, limit, offset),
+            ):
+                record = json.loads(row["record"])
+                record.setdefault("capture_id", row["capture_id"])
+                records.append(record)
+            return records
 
     def remove_tree(self, directory):
         self.files.checked_tree(directory)

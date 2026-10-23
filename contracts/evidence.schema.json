@@ -18,6 +18,7 @@
   "properties": {
     "schema_version": {"type": "string", "const": "1.0"},
     "id": {"type": "string", "minLength": 1},
+    "capture_id": {"oneOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
     "category": {"type": "string", "minLength": 1},
     "epistemic_class": {
       "type": "string",

@@ -50,11 +50,11 @@ export function useCase() {
       const before = await api.get(caseId, controller.signal);
       if (!active()) return;
       setRecord(before);
-      if (before.state !== 'COMPLETE' || isRunning(before)) {
-        publishedRevision.current = '';
-        setReport(null);
-      } else if (revision(before) !== publishedRevision.current) {
-        setReport(null);
+      if (
+        before.state === 'COMPLETE' &&
+        !isRunning(before) &&
+        revision(before) !== publishedRevision.current
+      ) {
         const result = await api.report(caseId, controller.signal);
         const after = await api.get(caseId, controller.signal);
         if (!active()) return;
@@ -75,9 +75,9 @@ export function useCase() {
       if (active()) setError('');
     } catch (failure) {
       if (active() && !controller.signal.aborted) {
-        setError(errorMessage(failure));
         setReport(null);
         publishedRevision.current = '';
+        setError(errorMessage(failure));
       }
     }
   }, []);
@@ -148,16 +148,40 @@ export function useCase() {
     const caseId = currentId.current;
     if (!caseId || !files.length) return;
     await mutate(async () => {
-      try {
-        for (const file of files.slice(0, 4)) {
+      let uploaded = false;
+      let uploadFailure: unknown;
+      const limit = Math.max(0, 4 - (record?.captures.length ?? 0));
+      for (const file of files.slice(0, limit)) {
+        try {
           const capture = await api.createCapture(caseId, file.name);
           await api.uploadCaptureData(caseId, capture.id, file);
+          uploaded = true;
+        } catch (failure) {
+          uploadFailure ??= failure;
         }
+      }
+      try {
+        if (uploaded) await api.investigate(caseId);
+      } catch (failure) {
+        uploadFailure ??= failure;
+      } finally {
+        await refresh(caseId);
+      }
+      if (uploadFailure) throw uploadFailure;
+    }, false);
+  }
+
+  async function retryCapture(captureId: string, file: File) {
+    const caseId = currentId.current;
+    if (!caseId) return;
+    await mutate(async () => {
+      try {
+        await api.uploadCaptureData(caseId, captureId, file);
         await api.investigate(caseId);
       } finally {
         await refresh(caseId);
       }
-    });
+    }, false);
   }
 
   async function updateCapture(
@@ -254,6 +278,7 @@ export function useCase() {
     start,
     resumeUpload,
     addCaptures,
+    retryCapture,
     updateCapture,
     removeCapture,
     investigate,

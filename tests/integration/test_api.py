@@ -658,7 +658,7 @@ def test_api_capability_result_matches_direct_analyzer(environment):
         direct = svc.analyzer(case_id).diagnose(record["capture_sha"])
         observed = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
         for item in direct["evidence"]:
-            assert item in observed
+            assert {**item, "capture_id": record["captures"][0]["id"]} in observed
         # Captures containing packet text never construct caller-controlled operations.
         runner = svc.analyzer(case_id).runner
         with pytest.raises(AnalyzerError):
@@ -948,6 +948,12 @@ def test_each_capture_analysis_persists_runs_artifacts_and_evidence_with_its_cap
             service.execute_capture_analysis(case_id, capture["id"])
         with client.app.state.service.db.connect() as conn:
             for capture in captures:
+                evidence_rows = conn.execute(
+                    "SELECT capture_id,record FROM evidence WHERE case_id=? AND capture_id=? LIMIT 1",
+                    (case_id, capture["id"]),
+                ).fetchall()
+                assert evidence_rows
+                assert json.loads(evidence_rows[0]["record"])["capture_id"] == capture["id"]
                 assert (
                     conn.execute(
                         "SELECT count(*) FROM runs WHERE case_id=? AND capture_id=? AND capability='baseline'",
@@ -1434,6 +1440,7 @@ def test_capture_review_primary_becomes_analyzed_when_legacy_investigation_compl
         assert sorted(run["capability"] for run in completed["runs"]) == [
             "baseline",
             "baseline",
+            "diagnostics",
             "diagnostics",
             "ingest",
             "ingest",

@@ -122,6 +122,7 @@ test('supported finding is the backend result; evidence drawer, reload, and dele
   await expect(page.getByText(/TCP acknowledgements took about/).first()).toBeVisible();
   await page.getByText('Technical report details', { exact: true }).click();
   await expect(page.getByText('Stage subtotal:', { exact: false })).toBeVisible();
+  await page.getByText('Technical report details', { exact: true }).click();
   await page.getByText('Technical evidence', { exact: true }).first().click();
   await expect(page.getByRole('button', { name: 'Open Full Capture in Wireshark' })).toBeDisabled();
   await expect(
@@ -468,6 +469,18 @@ test('multi-capture manager correlates, relabels, removes, and enforces four cap
   await expect.poll(hasServerDelay).toBe(true);
   const beforeRelabel = await (await request.get(`/api/cases/${id}/report`)).json();
   expect(beforeRelabel.cross_vantage.support).toBe('stronger');
+  const localizedFinding = page
+    .locator('article.finding')
+    .filter({ hasText: 'Server response delay observed across capture points' });
+  await expect(localizedFinding).toHaveCount(1);
+  await page.getByText('Technical report details', { exact: true }).click();
+  await localizedFinding.getByText('Packet details and alternate explanations').click();
+  const captureSource = localizedFinding.getByLabel(/^Capture source for /);
+  await expect(captureSource.locator('option')).toHaveCount(2);
+  await captureSource.selectOption({ label: 'server_vantage.pcap · server' });
+  await expect(localizedFinding.locator('pre')).toContainText('frame.number');
+  await expect(localizedFinding.locator('pre')).not.toContainText('tcp.stream');
+  await expect(localizedFinding.getByText('Cross-capture packet correlation')).toBeVisible();
   let uploadCount = 0;
   page.on('request', (event) => {
     if (event.method() === 'PUT' && new URL(event.url()).pathname.endsWith('/data')) uploadCount++;
@@ -922,6 +935,7 @@ for (const width of [1440, 390]) {
       });
     });
     await page.reload();
+    if (width === 390) await page.getByRole('button', { name: 'Collapse Case Manager' }).click();
     await expect(page.getByLabel('Question about this report')).toBeEnabled();
     for (const question of ['Which device?', 'What would validate this?']) {
       await page.getByLabel('Question about this report').fill(question);

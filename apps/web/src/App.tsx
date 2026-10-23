@@ -113,6 +113,7 @@ export function App() {
           record={record}
           busy={locked}
           onAdd={(files) => void investigation.addCaptures(files)}
+          onRetry={(captureId, file) => void investigation.retryCapture(captureId, file)}
           onUpdate={(captureId, changes) => void investigation.updateCapture(captureId, changes)}
           onRemove={(captureId) => void investigation.removeCapture(captureId)}
         />
@@ -238,11 +239,12 @@ export function App() {
                   </button>
                 </div>
               )}
-            {!busy && report && record.original_id && (
+            {report && record.original_id && (
               <ReportView
                 key={revision(record)}
                 report={report}
                 originalId={record.original_id}
+                captures={record.captures}
                 onEvidence={(ids) => {
                   if (ids.length) setEvidenceView({ report, ids });
                 }}

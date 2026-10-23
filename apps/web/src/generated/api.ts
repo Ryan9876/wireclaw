@@ -508,6 +508,8 @@ export interface components {
             parent_sha256: string;
             /** Case Id */
             case_id: string;
+            /** Capture Id */
+            capture_id: string;
             /** Finding Id */
             finding_id: string;
             /** Related Finding Ids */
@@ -533,6 +535,8 @@ export interface components {
         EvidenceCaptureRequest: {
             /** Finding Id */
             finding_id: string;
+            /** Capture Id */
+            capture_id?: string | null;
         };
         /** EvidenceCaptureResponse */
         EvidenceCaptureResponse: {

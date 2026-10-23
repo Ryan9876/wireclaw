@@ -8,12 +8,29 @@ import supported from './fixtures/supported.json';
 const record = structuredClone(supported.case) as unknown as Case;
 
 describe('Case Manager', () => {
+  it('offers recovery for a capture that needs attention', () => {
+    const failedRecord = structuredClone(record);
+    failedRecord.captures[0].status = 'needs_attention';
+    render(
+      <CaseManager
+        record={failedRecord}
+        busy={false}
+        onAdd={vi.fn()}
+        onRetry={vi.fn()}
+        onUpdate={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('Choose replacement file for Capture aaaaaaaa')).toBeVisible();
+  });
+
   it('shows capture identity, size, processing status, and unknown vantage', () => {
     render(
       <CaseManager
         record={record}
         busy={false}
         onAdd={vi.fn()}
+        onRetry={vi.fn()}
         onUpdate={vi.fn()}
         onRemove={vi.fn()}
       />,
@@ -33,6 +50,7 @@ describe('Case Manager', () => {
         record={record}
         busy={false}
         onAdd={vi.fn()}
+        onRetry={vi.fn()}
         onUpdate={onUpdate}
         onRemove={vi.fn()}
       />,
@@ -46,6 +64,7 @@ describe('Case Manager', () => {
         record={networkRecord}
         busy={false}
         onAdd={vi.fn()}
+        onRetry={vi.fn()}
         onUpdate={onUpdate}
         onRemove={vi.fn()}
       />,
@@ -62,6 +81,7 @@ describe('Case Manager', () => {
         record={record}
         busy={false}
         onAdd={onAdd}
+        onRetry={vi.fn()}
         onUpdate={vi.fn()}
         onRemove={onRemove}
       />,
@@ -85,6 +105,7 @@ describe('Case Manager', () => {
         record={record}
         busy={false}
         onAdd={vi.fn()}
+        onRetry={vi.fn()}
         onUpdate={vi.fn()}
         onRemove={vi.fn()}
       />,
@@ -108,6 +129,7 @@ it('enforces the four-capture limit in the manager', () => {
       record={fullCase}
       busy={false}
       onAdd={vi.fn()}
+      onRetry={vi.fn()}
       onUpdate={vi.fn()}
       onRemove={vi.fn()}
     />,

@@ -172,9 +172,12 @@ def estimate_clock_alignment(
             "matched_count": 0,
             "usable": False,
         }
-    offset = median(offsets)
-    uncertainty = max(abs(value - offset) for value in offsets)
-    enough = len(offsets) >= 3
+    initial_offset = median(offsets)
+    inliers = [value for value in offsets if abs(value - initial_offset) <= 0.05]
+    stable_offsets = inliers if len(inliers) >= 3 else offsets
+    offset = median(stable_offsets)
+    uncertainty = max(abs(value - offset) for value in stable_offsets)
+    enough = len(inliers) >= 3
     no_regression = not any(match.get("timing_regression") for match in matches)
     delay_bound = claimed_delay_seconds is None or (
         claimed_delay_seconds > 0 and uncertainty <= claimed_delay_seconds / 4
@@ -182,6 +185,6 @@ def estimate_clock_alignment(
     return {
         "offset_seconds": offset,
         "uncertainty_seconds": uncertainty,
-        "matched_count": len(offsets),
+        "matched_count": len(inliers) if enough else len(offsets),
         "usable": enough and uncertainty <= 0.05 and delay_bound and no_regression,
     }

@@ -23,20 +23,27 @@ export function CaseManager({
   record,
   busy,
   onAdd,
+  onRetry,
   onUpdate,
   onRemove,
 }: {
   record: Case;
   busy: boolean;
   onAdd: (files: File[]) => void;
+  onRetry: (captureId: string, file: File) => void;
   onUpdate: (
     captureId: string,
-    changes: { vantage_type?: CaptureVantage; vantage_subtype?: CaptureNetworkSubtype | null },
+    changes: {
+      display_name?: string | null;
+      vantage_type?: CaptureVantage;
+      vantage_subtype?: CaptureNetworkSubtype | null;
+    },
   ) => void;
   onRemove: (captureId: string) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [names, setNames] = useState<Record<string, string>>({});
   const [removeTarget, setRemoveTarget] = useState<Capture | null>(null);
   const captures = record.captures;
   const remaining = Math.max(0, 4 - captures.length);
@@ -74,6 +81,47 @@ export function CaseManager({
                 <p className={`capture-status status-${capture.status}`}>
                   {capture.status.replace('_', ' ').replace(/^./, (letter) => letter.toUpperCase())}
                 </p>
+                {capture.status === 'needs_attention' && (
+                  <>
+                    <label>
+                      Retry this capture with a file
+                      <input
+                        type="file"
+                        accept=".pcap,.pcapng,.cap,application/vnd.tcpdump.pcap"
+                        aria-label={`Choose replacement file for ${capture.capture_name}`}
+                        disabled={busy}
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (file) onRetry(capture.id, file);
+                          event.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                  </>
+                )}
+                <label>
+                  Capture name for {capture.capture_name}
+                  <input
+                    aria-label={`Capture name for ${capture.capture_name}`}
+                    maxLength={120}
+                    value={names[capture.id] ?? capture.display_name ?? capture.capture_name}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setNames((current) => ({ ...current, [capture.id]: event.target.value }))
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={busy || !names[capture.id]?.trim()}
+                  onClick={() => {
+                    const displayName = names[capture.id]?.trim();
+                    if (displayName) onUpdate(capture.id, { display_name: displayName });
+                  }}
+                >
+                  Save capture name
+                </button>
                 <label>
                   Vantage for {capture.display_name || capture.capture_name}
                   <select

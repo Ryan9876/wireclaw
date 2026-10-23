@@ -1332,6 +1332,43 @@ describe('recent captures', () => {
 });
 
 describe('persistent Case Manager', () => {
+  it('analyzes successful uploads in a batch and retains the prior report while updating', async () => {
+    openExisting();
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    const created = vi.spyOn(api, 'createCapture').mockImplementation(async (_caseId, name) => ({
+      ...supported.case.captures[0],
+      id: name.startsWith('first') ? 'b'.repeat(32) : 'c'.repeat(32),
+      capture_name: name,
+    }));
+    const upload = vi
+      .spyOn(api, 'uploadCaptureData')
+      .mockImplementation(async (_id, _capture, file) => {
+        if (file.name.startsWith('second')) throw new Error('Upload failed');
+        return supported.case.captures[0];
+      });
+    let finishInvestigation!: () => void;
+    const investigate = vi.spyOn(api, 'investigate').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishInvestigation = () => resolve(supported.case as Case);
+        }),
+    );
+
+    await userEvent.upload(screen.getByLabelText('Choose captures to add'), [
+      new File(['first'], 'first.pcap'),
+      new File(['second'], 'second.pcap'),
+    ]);
+    await waitFor(() => expect(investigate).toHaveBeenCalledWith(supported.case.id));
+    expect(created).toHaveBeenCalledTimes(2);
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('heading', { name: "Here's what I found" })).toBeVisible();
+    finishInvestigation();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The local operation could not finish. Refresh status before retrying.',
+    );
+    expect(screen.getByRole('heading', { name: "Here's what I found" })).toBeVisible();
+  });
+
   it('relabels without uploading and removes one capture while keeping the case', async () => {
     const value = structuredClone(supported);
     const second = {
@@ -1364,6 +1401,17 @@ describe('persistent Case Manager', () => {
       }),
     );
     expect(api.upload).not.toHaveBeenCalled();
+    const nameInput = screen.getByLabelText('Capture name for server.pcap');
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, 'Server side');
+    await userEvent.click(
+      within(nameInput.closest('li')!).getByRole('button', { name: 'Save capture name' }),
+    );
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(supported.case.id, second.id, {
+        display_name: 'Server side',
+      }),
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Remove server.pcap' }));
     const dialog = screen.getByRole('alertdialog', { name: 'Remove capture?' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Remove capture' }));

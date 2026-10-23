@@ -421,7 +421,9 @@ def create_app(data_root: Path, policy: Policy | None = None):
     )
     def evidence_capture(case_id: str, body: EvidenceCaptureRequest):
         with service().admission():
-            return service().create_evidence_capture(case_id, body.finding_id)
+            return service().create_evidence_capture(
+                case_id, body.finding_id, capture_id=body.capture_id
+            )
 
     @app.post("/api/cases/{case_id}/bridge-grants", response_model=BridgeGrantResponse)
     def bridge_grant(case_id: str, body: BridgeGrantRequest):

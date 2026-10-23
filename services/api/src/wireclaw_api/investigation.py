@@ -25,9 +25,9 @@ DEFAULT_MAX_DISPLAY_FILTER_CHARS = 2_048
 
 def localize_tcp_correlations(correlations: list[dict]) -> list[dict]:
     """Derive bounded TCP timing findings only from exact, clock-usable matches."""
-    by_pair = defaultdict(dict)
-    pair_meta = {}
-    pair_matches = defaultdict(list)
+    by_connection = defaultdict(dict)
+    connection_meta = {}
+    connection_matches = defaultdict(list)
     for correlation in correlations:
         if correlation.get("matching_strength") != "exact_packet_signature":
             continue
@@ -43,27 +43,63 @@ def localize_tcp_correlations(correlations: list[dict]) -> list[dict]:
         capture_evidence = correlation.get("capture_evidence_ids", {})
         if not all(capture_evidence.get(capture_id) for capture_id in pair):
             continue
-        pair_matches[pair].append(correlation)
         descriptors = frames[0]
+        packets = [descriptors.get(capture_id) for capture_id in pair]
+        if not all(isinstance(packet, dict) for packet in packets):
+            continue
+        reference = packets[0]
+        try:
+            src = (reference["src"], int(reference["src_port"]))
+            dst = (reference["dst"], int(reference["dst_port"]))
+            if reference.get("syn") is True and reference.get("ack") is False:
+                connection_key = (src, dst, int(reference["seq_raw"]))
+            elif reference.get("syn") is True and reference.get("ack") is True:
+                connection_key = (dst, src, (int(reference["ack_raw"]) - 1) & 0xFFFFFFFF)
+            else:
+                continue
+            if not 0 <= connection_key[2] <= 0xFFFFFFFF:
+                continue
+            for packet in packets[1:]:
+                packet_identity = (
+                    packet["src"],
+                    int(packet["src_port"]),
+                    packet["dst"],
+                    int(packet["dst_port"]),
+                    int(packet["seq_raw"]),
+                    int(packet["ack_raw"]),
+                )
+                reference_identity = (
+                    reference["src"],
+                    int(reference["src_port"]),
+                    reference["dst"],
+                    int(reference["dst_port"]),
+                    int(reference["seq_raw"]),
+                    int(reference["ack_raw"]),
+                )
+                if packet_identity != reference_identity:
+                    raise ValueError("capture_packet_identity_mismatch")
+        except (KeyError, TypeError, ValueError):
+            continue
+        connection = (pair, connection_key)
+        connection_matches[connection].append(correlation)
         for capture_id in pair:
             packet = descriptors.get(capture_id)
-            if not isinstance(packet, dict):
-                break
             is_syn = packet.get("syn") is True and packet.get("ack") is False
             is_syn_ack = packet.get("syn") is True and packet.get("ack") is True
             if is_syn:
-                by_pair[pair].setdefault("syn", {})[capture_id] = packet
+                by_connection[connection].setdefault("syn", {})[capture_id] = packet
             elif is_syn_ack:
-                by_pair[pair].setdefault("syn_ack", {})[capture_id] = packet
-            pair_meta[pair] = correlation
+                by_connection[connection].setdefault("syn_ack", {})[capture_id] = packet
+            connection_meta[connection] = correlation
 
     findings = []
-    for pair, events in by_pair.items():
+    for connection, events in by_connection.items():
+        pair, _connection_key = connection
         syn = events.get("syn", {})
         syn_ack = events.get("syn_ack", {})
         if set(syn) != set(pair) or set(syn_ack) != set(pair):
             continue
-        vantages = pair_meta[pair].get("capture_vantages", {})
+        vantages = connection_meta[connection].get("capture_vantages", {})
         client_id = next((item for item in pair if vantages.get(item) == "client"), None)
         server_id = next((item for item in pair if vantages.get(item) == "server"), None)
         if client_id is None or server_id is None:
@@ -73,7 +109,7 @@ def localize_tcp_correlations(correlations: list[dict]) -> list[dict]:
             server_syn = float(syn[server_id]["time"])
             client_syn_ack = float(syn_ack[client_id]["time"])
             server_syn_ack = float(syn_ack[server_id]["time"])
-            alignment = pair_meta[pair]["clock_alignment"]
+            alignment = connection_meta[connection]["clock_alignment"]
             offset = float(alignment["offset_seconds"])
             if pair[1] != server_id:
                 offset = -offset
@@ -98,6 +134,7 @@ def localize_tcp_correlations(correlations: list[dict]) -> list[dict]:
                 evidence_id
                 for correlation in correlations
                 if tuple(correlation.get("capture_ids", [])) == pair
+                and correlation in connection_matches[connection]
                 for evidence_id in correlation.get("evidence_ids", [])
                 if isinstance(evidence_id, str) and evidence_id
             }
@@ -124,7 +161,7 @@ def localize_tcp_correlations(correlations: list[dict]) -> list[dict]:
                     "capture_ids": list(pair),
                     "matched_frames": [
                         frame
-                        for correlation in pair_matches[pair]
+                        for correlation in connection_matches[connection]
                         for frame in correlation.get("matched_frames", [])
                     ],
                     "limitations": [
@@ -151,7 +188,7 @@ def localize_tcp_correlations(correlations: list[dict]) -> list[dict]:
                     "capture_ids": list(pair),
                     "matched_frames": [
                         frame
-                        for correlation in pair_matches[pair]
+                        for correlation in connection_matches[connection]
                         for frame in correlation.get("matched_frames", [])
                     ],
                     "limitations": [
@@ -169,6 +206,7 @@ class Candidate:
     conversation_index: int
     score: int
     reasons: tuple[str, ...]
+    capture_id: str | None = None
 
     @property
     def tcp_stream(self) -> int | None:
@@ -240,12 +278,15 @@ def _by_category(evidence: Iterable[dict[str, Any]]) -> dict[str, list[dict[str,
     return dict(grouped)
 
 
-def _by_stream(evidence: Iterable[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
-    grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+def _by_stream(
+    evidence: Iterable[dict[str, Any]],
+) -> dict[tuple[str | None, int], list[dict[str, Any]]]:
+    grouped: dict[tuple[str | None, int], list[dict[str, Any]]] = defaultdict(list)
     for item in evidence:
         stream = _scope_stream(item)
         if stream is not None:
-            grouped[stream].append(item)
+            capture_id = item.get("capture_id")
+            grouped[(capture_id if isinstance(capture_id, str) else None, stream)].append(item)
     for items in grouped.values():
         items.sort(key=lambda item: (str(item.get("category", "")), str(item.get("id", ""))))
     return dict(grouped)
@@ -297,8 +338,8 @@ def _explicit_context(symptom: str) -> tuple[set[str], set[int]]:
 
 def _conversations(
     evidence: Iterable[dict[str, Any]],
-) -> list[tuple[int, dict[str, Any]]]:
-    conversations: list[tuple[int, dict[str, Any]]] = []
+) -> list[tuple[int, dict[str, Any], str | None]]:
+    conversations: list[tuple[int, dict[str, Any], str | None]] = []
     index = 0
     for item in evidence:
         if item.get("category") != "list_conversations":
@@ -311,7 +352,10 @@ def _conversations(
             transport = record.get("transport")
             if not isinstance(transport, str) or not transport:
                 continue
-            conversations.append((index, record))
+            capture_id = item.get("capture_id")
+            conversations.append(
+                (index, record, capture_id if isinstance(capture_id, str) else None)
+            )
             index += 1
     return conversations
 
@@ -440,16 +484,17 @@ def _rank_candidates_all(symptom: str, evidence: list[dict[str, Any]]) -> list[C
     stream_items = _by_stream(evidence)
     conversations = _conversations(evidence)
     candidates = []
-    represented_tcp_streams: set[int] = set()
+    represented_tcp_streams: set[tuple[str | None, int]] = set()
 
-    for conversation_index, conversation in conversations:
+    for conversation_index, conversation, capture_id in conversations:
         transport = conversation.get("transport")
         stream = conversation.get("stream")
         stream = stream if isinstance(stream, int) and stream >= 0 else None
         if transport == "tcp" and stream is not None:
-            represented_tcp_streams.add(stream)
+            stream_key = (capture_id, stream)
+            represented_tcp_streams.add(stream_key)
             anomaly_score, anomaly_reasons = _candidate_signals(
-                stream_items.get(stream, []), families
+                stream_items.get(stream_key, []), families
             )
         else:
             anomaly_score, anomaly_reasons = 0, []
@@ -464,14 +509,28 @@ def _rank_candidates_all(symptom: str, evidence: list[dict[str, Any]]) -> list[C
                 conversation_index,
                 anomaly_score + context_score,
                 reasons,
+                capture_id,
             )
         )
 
     next_index = len(conversations)
-    for offset, stream in enumerate(sorted(set(stream_items) - represented_tcp_streams)):
-        anomaly_score, anomaly_reasons = _candidate_signals(stream_items.get(stream, []), families)
+    missing_streams = sorted(
+        set(stream_items) - represented_tcp_streams,
+        key=lambda key: (key[0] or "", key[1]),
+    )
+    for offset, (capture_id, stream) in enumerate(missing_streams):
+        anomaly_score, anomaly_reasons = _candidate_signals(
+            stream_items.get((capture_id, stream), []), families
+        )
         candidates.append(
-            Candidate("tcp", stream, next_index + offset, anomaly_score, tuple(anomaly_reasons))
+            Candidate(
+                "tcp",
+                stream,
+                next_index + offset,
+                anomaly_score,
+                tuple(anomaly_reasons),
+                capture_id,
+            )
         )
 
     return sorted(
@@ -507,8 +566,10 @@ def _evidence_id(item: dict[str, Any]) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _stream_item(index: dict[int, list[dict[str, Any]]], stream: int, category: str):
-    return next((item for item in index.get(stream, []) if item.get("category") == category), None)
+def _stream_item(index, stream_key, category: str):
+    return next(
+        (item for item in index.get(stream_key, []) if item.get("category") == category), None
+    )
 
 
 def _frame_filter(frames: Iterable[int], max_chars: int) -> str | None:
@@ -716,9 +777,12 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
         if stream is None:
             continue
         scope = {"tcp_stream": stream}
+        if candidate.capture_id is not None:
+            scope["capture_id"] = candidate.capture_id
+        stream_key = (candidate.capture_id, stream)
         bonus = min(candidate.score, 10)
 
-        establishment = _stream_item(stream_index, stream, "analyze_tcp_establishment")
+        establishment = _stream_item(stream_index, stream_key, "analyze_tcp_establishment")
         if establishment:
             value = (
                 establishment.get("value") if isinstance(establishment.get("value"), dict) else {}
@@ -777,7 +841,7 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                     )
                 )
 
-        health = _stream_item(stream_index, stream, "analyze_tcp_health")
+        health = _stream_item(stream_index, stream_key, "analyze_tcp_health")
         if health:
             value = health.get("value") if isinstance(health.get("value"), dict) else {}
             eid = _evidence_id(health)
@@ -834,7 +898,7 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                     )
                 )
 
-        rtt = _stream_item(stream_index, stream, "analyze_rtt")
+        rtt = _stream_item(stream_index, stream_key, "analyze_rtt")
         if rtt:
             value = rtt.get("value") if isinstance(rtt.get("value"), dict) else {}
             eid = _evidence_id(rtt)
@@ -865,7 +929,7 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                     )
                 )
 
-        window = _stream_item(stream_index, stream, "analyze_window_behavior")
+        window = _stream_item(stream_index, stream_key, "analyze_window_behavior")
         if window:
             value = window.get("value") if isinstance(window.get("value"), dict) else {}
             eid = _evidence_id(window)
@@ -893,7 +957,7 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                     )
                 )
 
-        resets = _stream_item(stream_index, stream, "analyze_tcp_resets")
+        resets = _stream_item(stream_index, stream_key, "analyze_tcp_resets")
         if resets:
             value = resets.get("value") if isinstance(resets.get("value"), dict) else {}
             eid = _evidence_id(resets)
@@ -922,7 +986,7 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                     )
                 )
 
-        tls = _stream_item(stream_index, stream, "analyze_tls_handshakes")
+        tls = _stream_item(stream_index, stream_key, "analyze_tls_handshakes")
         if tls:
             value = tls.get("value") if isinstance(tls.get("value"), dict) else {}
             eid = _evidence_id(tls)
@@ -967,7 +1031,7 @@ def _stream_findings(candidates, stream_index, quality, families) -> list[RuleFi
                         ),
                     )
                 )
-        http = _stream_item(stream_index, stream, "analyze_http_timing")
+        http = _stream_item(stream_index, stream_key, "analyze_http_timing")
         if http:
             value = http.get("value") if isinstance(http.get("value"), dict) else {}
             transactions = (
@@ -1072,7 +1136,8 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
     )
     if tcp_candidate is not None:
         stream = tcp_candidate.tcp_stream
-        establishment = _stream_item(stream_index, stream, "analyze_tcp_establishment")
+        stream_key = (tcp_candidate.capture_id, stream)
+        establishment = _stream_item(stream_index, stream_key, "analyze_tcp_establishment")
         if establishment:
             value = (
                 establishment.get("value") if isinstance(establishment.get("value"), dict) else {}
@@ -1088,7 +1153,7 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
                         "evidence_ids": [eid],
                     }
                 )
-        tls = _stream_item(stream_index, stream, "analyze_tls_handshakes")
+        tls = _stream_item(stream_index, stream_key, "analyze_tls_handshakes")
         if tls:
             value = tls.get("value") if isinstance(tls.get("value"), dict) else {}
             attempts = value.get("attempts") if isinstance(value.get("attempts"), list) else []
@@ -1123,7 +1188,7 @@ def _time_attribution(candidates, stream_index, grouped) -> dict[str, Any] | Non
                     limitations.append(
                         "TLS attribution ends at the first visible ServerHello milestone; encrypted session completion is not assumed."
                     )
-        http = _stream_item(stream_index, stream, "analyze_http_timing")
+        http = _stream_item(stream_index, stream_key, "analyze_http_timing")
         if http:
             value = http.get("value") if isinstance(http.get("value"), dict) else {}
             transactions = (
@@ -1488,7 +1553,11 @@ def build_investigation_result(
             ),
             "limitations": (
                 [
-                    "No exact packet-level cross-capture match was established; per-capture findings remain separate."
+                    (
+                        "TCP packets correlated across capture points, but timing or vantage evidence did not support localization; per-capture findings remain separate."
+                        if valid_correlations
+                        else "No exact packet-level cross-capture match was established; per-capture findings remain separate."
+                    )
                 ]
                 if capture_count > 1 and not localized
                 else []

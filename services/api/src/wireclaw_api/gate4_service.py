@@ -44,12 +44,15 @@ class Service(Gate3Service):
     def evidence_records(self, case_id):
         with self.db.connect() as conn:
             self.db.case(conn, case_id)
-            return [
-                json.loads(row["record"])
-                for row in conn.execute(
-                    "SELECT record FROM evidence WHERE case_id=? ORDER BY id", (case_id,)
-                )
-            ]
+            rows = conn.execute(
+                "SELECT record,capture_id FROM evidence WHERE case_id=? ORDER BY id", (case_id,)
+            )
+            records = []
+            for row in rows:
+                record = json.loads(row["record"])
+                record.setdefault("capture_id", row["capture_id"])
+                records.append(record)
+            return records
 
     def correlation_records(self, case_id):
         return []

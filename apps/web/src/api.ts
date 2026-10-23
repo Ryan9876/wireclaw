@@ -419,7 +419,7 @@ export const api = {
     id: string,
     captureId: string,
     changes: {
-      capture_name?: string;
+      display_name?: string | null;
       vantage_type?: CaptureVantage;
       vantage_subtype?: CaptureNetworkSubtype | null;
     },
@@ -427,11 +427,11 @@ export const api = {
     if (
       !Object.keys(changes).length ||
       Object.keys(changes).some(
-        (key) => !['capture_name', 'vantage_type', 'vantage_subtype'].includes(key),
+        (key) => !['display_name', 'vantage_type', 'vantage_subtype'].includes(key),
       )
     )
       throw new ApiError('invalid_request');
-    if (changes.capture_name !== undefined && !plainName(changes.capture_name, 255))
+    if (changes.display_name != null && !plainName(changes.display_name, 120))
       throw new ApiError('invalid_request');
     if (changes.vantage_type !== undefined && !captureVantages.includes(changes.vantage_type))
       throw new ApiError('invalid_request');
@@ -494,12 +494,19 @@ export const api = {
     if (!validEvidence(data) || data.id !== evidenceId) throw new ApiError('contract_mismatch');
     return data;
   },
-  async evidenceCapture(id: string, findingId: string): Promise<EvidenceCapture> {
+  async evidenceCapture(
+    id: string,
+    findingId: string,
+    captureId?: string,
+  ): Promise<EvidenceCapture> {
     if (!validFindingId(findingId)) throw new ApiError('invalid_finding_id');
     const data = (await request(`${casePath(id)}/artifacts/evidence-capture`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ finding_id: findingId }),
+      body: JSON.stringify({
+        finding_id: findingId,
+        ...(captureId ? { capture_id: captureId } : {}),
+      }),
     })) as Partial<EvidenceCapture>;
     if (
       typeof data.artifact_id !== 'string' ||

@@ -88,6 +88,29 @@ def test_high_rtt_rank_and_determinism():
     check_shape(r1)
 
 
+def test_capture_local_stream_numbers_do_not_share_diagnostic_scores():
+    first = ev(
+        "ev_first_conversations",
+        "list_conversations",
+        {"conversations": [{"transport": "tcp", "stream": 0, "a": {}, "b": {}}]},
+    )
+    first["capture_id"] = "capture-a"
+    second = ev(
+        "ev_second_conversations",
+        "list_conversations",
+        {"conversations": [{"transport": "tcp", "stream": 0, "a": {}, "b": {}}]},
+    )
+    second["capture_id"] = "capture-b"
+    reset = ev("ev_first_reset", "analyze_tcp_resets", {"count": 1}, stream=0)
+    reset["capture_id"] = "capture-a"
+
+    candidates = rank_candidates("disconnect", [first, second, reset])
+
+    assert {candidate.capture_id for candidate in candidates} == {"capture-a", "capture-b"}
+    second_candidate = next(item for item in candidates if item.capture_id == "capture-b")
+    assert "tcp_reset" not in second_candidate.reasons
+
+
 def test_zero_window_beats_generic_rtt_for_throughput():
     evidence = [
         quality(),

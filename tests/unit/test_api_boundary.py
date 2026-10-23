@@ -51,7 +51,7 @@ def test_default_loopback_and_gate6_routes(tmp_path):
     assert set(capability["properties"]) == {"artifact_id", "capability", "tcp_stream"}
     extraction = schemas["EvidenceCaptureRequest"]
     assert extraction["additionalProperties"] is False
-    assert set(extraction["properties"]) == {"finding_id"}
+    assert set(extraction["properties"]) == {"capture_id", "finding_id"}
     bridge = schemas["BridgeGrantRequest"]
     assert bridge["additionalProperties"] is False
     assert set(bridge["properties"]) == {"artifact_id", "finding_id"}

@@ -8,6 +8,7 @@
 export interface Evidence {
   schema_version: '1.0';
   id: string;
+  capture_id?: string | null;
   category: string;
   epistemic_class: 'observed' | 'derived';
   source: {

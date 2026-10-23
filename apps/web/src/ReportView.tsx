@@ -6,11 +6,49 @@ import {
   errorMessage,
   type Evidence,
   type AIStatus,
+  type Capture,
   type NativeBridgeState,
   type Report,
 } from './api';
 
 export const human = (value: string) => value.replaceAll('_', ' ').replaceAll('.', ' ');
+function matchedFrameFilter(finding: Report['findings'][number], captureId: string) {
+  const scope = finding.affected_scope as { matched_frames?: unknown } | undefined;
+  if (!Array.isArray(scope?.matched_frames)) return null;
+  const frames = [
+    ...new Set(
+      scope.matched_frames.flatMap((descriptor) => {
+        if (!descriptor || typeof descriptor !== 'object') return [];
+        const packet = (descriptor as Record<string, unknown>)[captureId];
+        if (!packet || typeof packet !== 'object') return [];
+        const frame = (packet as Record<string, unknown>).frame;
+        return typeof frame === 'number' && Number.isSafeInteger(frame) && frame > 0 ? [frame] : [];
+      }),
+    ),
+  ].sort((left, right) => left - right);
+  if (!frames.length) return null;
+  const runs: Array<[number, number]> = [];
+  let first = frames[0];
+  let previous = frames[0];
+  for (const frame of frames.slice(1)) {
+    if (frame === previous + 1) previous = frame;
+    else {
+      runs.push([first, previous]);
+      first = previous = frame;
+    }
+  }
+  runs.push([first, previous]);
+  const exact = runs
+    .map(([start, end]) =>
+      start === end
+        ? `frame.number == ${start}`
+        : `(frame.number >= ${start} && frame.number <= ${end})`,
+    )
+    .join(' || ');
+  if (exact.length <= 2048) return exact;
+  const end = Math.min(frames.at(-1)!, frames[0] + 4095);
+  return `frame.number >= ${frames[0]} && frame.number <= ${end}`;
+}
 const limitationLabels: Record<string, string> = {
   capture_drops: 'Possible capture drops',
   one_sided_conversations: 'One-sided conversations',
@@ -141,6 +179,8 @@ function Finding({
   finding,
   caseId,
   originalId,
+  captures,
+  correlations,
   bridgeAvailable,
   onBridgeState,
   onEvidence,
@@ -148,6 +188,8 @@ function Finding({
   finding: Report['findings'][number];
   caseId: string;
   originalId: string;
+  captures: Capture[];
+  correlations: Record<string, unknown>[];
   bridgeAvailable: NativeBridgeState;
   onBridgeState: (state: NativeBridgeState) => void;
   onEvidence: (ids: string[]) => void;
@@ -156,9 +198,35 @@ function Finding({
   const [actionStatus, setActionStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [evidenceArtifact, setEvidenceArtifact] = useState<string | null>(null);
+  const findingCaptureIds = (() => {
+    const scope = finding.affected_scope as
+      { capture_ids?: unknown; capture_id?: unknown } | undefined;
+    const ids = Array.isArray(scope?.capture_ids)
+      ? scope.capture_ids.filter((value): value is string => typeof value === 'string')
+      : typeof scope?.capture_id === 'string'
+        ? [scope.capture_id]
+        : [];
+    return ids.filter((id) => captures.some((capture) => capture.id === id));
+  })();
+  const [selectedCaptureId, setSelectedCaptureId] = useState(
+    findingCaptureIds[0] ?? captures[0]?.id ?? '',
+  );
+  const selectedCapture = captures.find((capture) => capture.id === selectedCaptureId);
+  const selectedOriginalId = selectedCapture?.original_artifact_id ?? originalId;
+  const activeFilter =
+    matchedFrameFilter(finding, selectedCaptureId) ?? finding.wireshark.display_filter;
+  const correlationCaptureIds = new Set(findingCaptureIds);
+  const findingCorrelations = correlations.filter((item) => {
+    const ids = item.capture_ids;
+    return (
+      Array.isArray(ids) &&
+      ids.length > 1 &&
+      ids.every((id) => correlationCaptureIds.has(String(id)))
+    );
+  });
   async function copy() {
     try {
-      await navigator.clipboard.writeText(finding.wireshark.display_filter ?? '');
+      await navigator.clipboard.writeText(activeFilter ?? '');
       setCopyStatus('Display filter copied.');
     } catch {
       setCopyStatus('Clipboard unavailable. Select and copy the visible filter manually.');
@@ -173,7 +241,7 @@ function Finding({
     setBusy(true);
     setActionStatus('');
     try {
-      await openArtifact(originalId, 'Full capture');
+      await openArtifact(selectedOriginalId, 'Full capture');
     } catch (error) {
       setActionStatus(errorMessage(error));
       if (error instanceof ApiError && error.code === 'bridge_unavailable')
@@ -190,7 +258,7 @@ function Finding({
     try {
       let artifactId = evidenceArtifact;
       if (!artifactId) {
-        const capture = await api.evidenceCapture(caseId, finding.id);
+        const capture = await api.evidenceCapture(caseId, finding.id, selectedCaptureId);
         artifactId = capture.artifact_id;
         setEvidenceArtifact(artifactId);
       }
@@ -227,7 +295,21 @@ function Finding({
         <p className="scope">
           <strong>Affected scope:</strong>{' '}
           {Object.entries(finding.affected_scope)
-            .map(([k, v]) => `${human(k)} ${String(v)}`)
+            .map(([k, v]) => {
+              if (k === 'capture_ids' && Array.isArray(v)) {
+                const labels = v.flatMap((id) => {
+                  const capture = captures.find((item) => item.id === id);
+                  return capture
+                    ? [`${capture.display_name || capture.capture_name} (${capture.vantage_type})`]
+                    : [];
+                });
+                return labels.length ? `Capture sources: ${labels.join(', ')}` : '';
+              }
+              if (k === 'matched_frames' && Array.isArray(v))
+                return `Matched packet pairs ${v.length}`;
+              return `${human(k)} ${String(v)}`;
+            })
+            .filter(Boolean)
             .join(' · ')}
         </p>
       )}
@@ -238,10 +320,60 @@ function Finding({
         <summary>Packet details and alternate explanations</summary>
         <TextList title="Additional limitations" values={finding.limitations.slice(1)} />
         <SupportingEvidence caseId={caseId} ids={finding.evidence_ids} />
+        {findingCorrelations.length > 0 && (
+          <section className="supporting-evidence">
+            <h4>Cross-capture packet correlation</h4>
+            <p>{findingCorrelations.length} deterministic packet matches support this finding.</p>
+            <ul>
+              {findingCaptureIds.map((captureId) => {
+                const capture = captures.find((item) => item.id === captureId);
+                if (!capture) return null;
+                const frameNumbers = findingCorrelations.flatMap((correlation) => {
+                  const descriptors = correlation.matched_frames;
+                  if (!Array.isArray(descriptors)) return [];
+                  return descriptors.flatMap((descriptor) => {
+                    if (!descriptor || typeof descriptor !== 'object') return [];
+                    const packet = (descriptor as Record<string, unknown>)[captureId];
+                    if (!packet || typeof packet !== 'object') return [];
+                    const frame = (packet as Record<string, unknown>).frame;
+                    return typeof frame === 'number' ? [frame] : [];
+                  });
+                });
+                return (
+                  <li key={captureId}>
+                    {capture.display_name || capture.capture_name} ({capture.vantage_type}): frame
+                    {frameNumbers.length === 1 ? '' : 's'} {frameNumbers.slice(0, 8).join(', ')}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
         <TextList title="Alternate explanations" values={finding.alternate_explanations} />
       </details>
       {finding.wireshark.applicable && (
         <div className="validation-actions">
+          {findingCaptureIds.length > 1 && (
+            <label>
+              Capture source
+              <select
+                aria-label={`Capture source for ${finding.id}`}
+                value={selectedCaptureId}
+                onChange={(event) => {
+                  setSelectedCaptureId(event.target.value);
+                  setEvidenceArtifact(null);
+                }}
+              >
+                {captures
+                  .filter((capture) => findingCaptureIds.includes(capture.id))
+                  .map((capture) => (
+                    <option key={capture.id} value={capture.id}>
+                      {capture.display_name || capture.capture_name} · {capture.vantage_type}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           <div className="button-row">
             <button
               disabled={busy || unavailable}
@@ -276,10 +408,10 @@ function Finding({
                 Create evidence capture without opening Wireshark
               </button>
             )}
-          {finding.wireshark.display_filter && (
+          {activeFilter && (
             <>
               <p className="eyebrow">Wireshark display filter</p>
-              <pre>{finding.wireshark.display_filter}</pre>
+              <pre>{activeFilter}</pre>
               <button className="quiet" onClick={copy}>
                 Copy Wireshark Display Filter
               </button>
@@ -303,10 +435,12 @@ function Finding({
 export function ReportView({
   report,
   originalId,
+  captures,
   onEvidence,
 }: {
   report: Report;
   originalId: string;
+  captures: Capture[];
   onEvidence: (ids: string[]) => void;
 }) {
   const { conclusion, capture_quality: quality, time_attribution: time } = report;
@@ -383,6 +517,7 @@ export function ReportView({
     ...layer,
     findings: report.findings.filter((finding) => layer.categories.includes(finding.category)),
   }));
+  const hasTcpCorrelation = (report.cross_vantage?.correlations?.length ?? 0) > 0;
   const reportEvidenceIds = new Set(conclusion.evidence_ids);
   const strongestFinding = report.findings.find((finding) =>
     finding.evidence_ids.some((id) => reportEvidenceIds.has(id)),
@@ -498,6 +633,8 @@ export function ReportView({
                         finding={finding}
                         caseId={report.case_id}
                         originalId={originalId}
+                        captures={captures}
+                        correlations={report.cross_vantage?.correlations ?? []}
                         bridgeAvailable={bridgeAvailable}
                         onBridgeState={setBridgeAvailable}
                         onEvidence={onEvidence}
@@ -530,6 +667,15 @@ export function ReportView({
           <p>{nextStep}</p>
         </article>
       )}
+      {hasTcpCorrelation &&
+        !report.findings.some((finding) =>
+          ['tcp.server_response_delay', 'tcp.return_path_delay'].includes(finding.category),
+        ) && (
+          <p className="muted correlation-note">
+            TCP packets were correlated across capture points, but timing or vantage evidence did
+            not support a path localization finding.
+          </p>
+        )}
       <details className="technical-detail report-technical">
         <summary>Technical report details</summary>
         <section className="quality" aria-labelledby="quality-heading">
@@ -619,6 +765,8 @@ export function ReportView({
                   finding={finding}
                   caseId={report.case_id}
                   originalId={originalId}
+                  captures={captures}
+                  correlations={report.cross_vantage?.correlations ?? []}
                   bridgeAvailable={bridgeAvailable}
                   onBridgeState={setBridgeAvailable}
                   onEvidence={onEvidence}

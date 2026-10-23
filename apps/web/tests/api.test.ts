@@ -304,7 +304,9 @@ describe('multi-capture API contract', () => {
       .fn()
       .mockResolvedValueOnce(response(capture))
       .mockResolvedValueOnce(response({ ...capture, bytes: 17 }))
-      .mockResolvedValueOnce(response({ ...capture, vantage_type: 'server' }))
+      .mockResolvedValueOnce(
+        response({ ...capture, display_name: 'Server side', vantage_type: 'server' }),
+      )
       .mockResolvedValueOnce(
         response({
           deleted: true,
@@ -317,7 +319,10 @@ describe('multi-capture API contract', () => {
     const created = await api.createCapture(supported.case.id, 'server.pcap');
     const file = new File(['packet bytes'], 'server.pcap');
     await api.uploadCaptureData(supported.case.id, created.id, file);
-    await api.updateCapture(supported.case.id, created.id, { vantage_type: 'server' });
+    await api.updateCapture(supported.case.id, created.id, {
+      display_name: 'Server side',
+      vantage_type: 'server',
+    });
     await api.removeCapture(supported.case.id, created.id);
     expect(fetch.mock.calls.map((call) => call[0])).toEqual([
       `/api/cases/${supported.case.id}/captures`,
@@ -328,7 +333,7 @@ describe('multi-capture API contract', () => {
     expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'PUT', body: file });
     expect(fetch.mock.calls[2][1]).toMatchObject({
       method: 'PATCH',
-      body: JSON.stringify({ vantage_type: 'server' }),
+      body: JSON.stringify({ display_name: 'Server side', vantage_type: 'server' }),
     });
     expect(fetch.mock.calls[3][1].method).toBe('DELETE');
   });
