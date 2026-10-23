@@ -1926,6 +1926,100 @@ def test_followup_rejects_unknown_and_cross_case_evidence_ids(tmp_path, monkeypa
             assert_followup_error(client, case_id, 502, "followup_response_invalid")
 
 
+def install_supported_multi_capture_report(service, case_id):
+    report = service.report(case_id)
+    evidence_id = service.evidence_records(case_id)[0]["id"]
+    report["conclusion"] = {
+        "type": "supported_finding",
+        "statement": (
+            "Both client and server captures observed the SYN promptly; the server's SYN-ACK "
+            "followed about 3.2 seconds later. This supports a server/listener-side delay and "
+            "makes the client-to-server path less likely."
+        ),
+        "confidence": "high",
+        "fault_domains": ["server_application", "network_path"],
+        "evidence_ids": [evidence_id],
+    }
+    report["findings"] = []
+    report["time_attribution"] = {
+        "total_ms": 3210.0,
+        "segments": [
+            {
+                "name": "tcp_establishment",
+                "duration_ms": 3210.0,
+                "measurement_class": "derived",
+                "evidence_ids": [evidence_id],
+            }
+        ],
+        "limitations": ["Server/listener timing does not identify application processing."],
+    }
+    report["remaining_hypotheses"] = []
+    report["limitations"] = [
+        "Timing is based on exact matched packet observations and usable clock alignment; "
+        "capture placement and unsampled network devices remain limitations."
+    ]
+    service.save_report(case_id, report)
+    return report, evidence_id
+
+
+def test_followup_replaces_validly_cited_multi_capture_attribution_overclaim(tmp_path, monkeypatch):
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    _, evidence_id = install_supported_multi_capture_report(service, case_id)
+
+    class Provider:
+        def propose(self, _request):
+            return ProviderResult(
+                content=json.dumps(
+                    {
+                        "answer": (
+                            "The delay was not due to network path loss and was caused by "
+                            "server processing."
+                        ),
+                        "evidence_ids": [evidence_id],
+                    }
+                )
+            )
+
+    monkeypatch.setattr(loop, "make_provider", lambda _policy: Provider())
+    with client:
+        response = client.post(
+            f"/api/cases/{case_id}/followups",
+            json={"question": "Where was the connection delay introduced?"},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "not due to network path loss" not in body["answer"]
+    assert "server processing" not in body["answer"]
+    assert "less likely" in body["answer"]
+    assert "does not rule out" in body["answer"]
+    assert "do not identify which server component" in body["answer"]
+    assert evidence_id not in body["answer"]
+    assert body["evidence_ids"] == [evidence_id]
+
+
+def test_followup_preserves_safe_multi_capture_provider_answer(tmp_path, monkeypatch):
+    client, service, case_id, _ = followup_client(tmp_path, monkeypatch)
+    _, evidence_id = install_supported_multi_capture_report(service, case_id)
+    answer = "The client-to-server path is less likely based on the matched captures."
+
+    class Provider:
+        def propose(self, _request):
+            return ProviderResult(
+                content=json.dumps({"answer": answer, "evidence_ids": [evidence_id]})
+            )
+
+    monkeypatch.setattr(loop, "make_provider", lambda _policy: Provider())
+    with client:
+        response = client.post(
+            f"/api/cases/{case_id}/followups",
+            json={"question": "Where was the connection delay introduced?"},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"answer": answer, "evidence_ids": [evidence_id]}
+
+
 def test_followup_context_uses_conclusion_without_internal_fault_domain_labels(
     tmp_path, monkeypatch
 ):

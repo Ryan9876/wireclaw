@@ -18,7 +18,13 @@ from wireclaw_api.reasoning import loop
 from wireclaw_api.reasoning.capabilities import validate_request
 from wireclaw_api.reasoning.context import SYSTEM_INSTRUCTION, build_context
 from wireclaw_api.reasoning.contracts import ACTION_ADAPTER
-from wireclaw_api.reasoning.followup import SYSTEM_INSTRUCTION as FOLLOWUP_SYSTEM_INSTRUCTION
+from wireclaw_api.reasoning.followup import (
+    SYSTEM_INSTRUCTION as FOLLOWUP_SYSTEM_INSTRUCTION,
+)
+from wireclaw_api.reasoning.followup import (
+    _attribution_contract,
+    _unsafe_attribution,
+)
 
 
 def test_provider_configuration_is_startup_only_and_cloud_requires_https():
@@ -1166,3 +1172,70 @@ def test_local_provider_uses_same_openai_compatible_contract_over_http(monkeypat
     assert result.content.startswith('{"action":"finalize"')
     assert seen[0].url == "http://127.0.0.1:1234/v1/chat/completions"
     assert "authorization" not in seen[0].headers
+
+
+def test_attribution_contract_preserves_less_likely_and_listener_timing_limits():
+    report = {
+        "conclusion": {
+            "statement": (
+                "This supports a server/listener-side delay and makes the client-to-server "
+                "path less likely."
+            )
+        },
+        "findings": [],
+        "remaining_hypotheses": [],
+        "time_attribution": {
+            "segments": [{"name": "tcp_establishment", "duration_ms": 3210}],
+            "limitations": ["Server/listener timing does not identify application processing."],
+        },
+        "limitations": [],
+    }
+    contract = _attribution_contract(report, [])
+
+    assert contract["path_less_likely"]
+    assert contract["listener_timing"]
+    assert not contract["application_established"]
+    assert not _unsafe_attribution(
+        "The client-to-server path is less likely based on the matched captures.", contract
+    )
+    assert not _unsafe_attribution(
+        "The delay is on the server/listener side, but the captures do not show whether "
+        "application processing caused it.",
+        contract,
+    )
+    assert _unsafe_attribution(
+        "The network path is ruled out and server processing caused the delay.", contract
+    )
+    assert _unsafe_attribution(
+        "The delay was not due to network path loss and was caused by server processing.",
+        contract,
+    )
+
+
+def test_attribution_contract_does_not_upgrade_retransmission_to_physical_loss():
+    report = {
+        "conclusion": {"statement": "The capture observed TCP retransmission indicators."},
+        "findings": [],
+        "remaining_hypotheses": [],
+        "limitations": [],
+    }
+    contract = _attribution_contract(
+        report,
+        [
+            {
+                "id": "case-local-evidence",
+                "category": "analyze_tcp_health",
+                "value": {"retransmission_union_count": 2},
+            }
+        ],
+    )
+
+    assert contract["retransmission_observed"]
+    assert _unsafe_attribution(
+        "The retransmission indicators confirm physical packet loss on the network path.",
+        contract,
+    )
+    assert not _unsafe_attribution(
+        "Retransmission indicators were observed, but they do not prove physical packet loss.",
+        contract,
+    )

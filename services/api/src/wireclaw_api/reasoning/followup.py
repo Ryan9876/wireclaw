@@ -1,6 +1,7 @@
 """Stateless explanations of completed normalized evidence, without tools or persistence."""
 
 import json
+import re
 
 from pydantic import ValidationError
 
@@ -65,6 +66,146 @@ def _report_evidence_ids(value) -> set[str]:
         for item in value:
             evidence_ids.update(_report_evidence_ids(item))
     return evidence_ids
+
+
+_PATH_EXCLUSION = re.compile(
+    r"\b(?:not due to|not caused by|ruled out|cannot be|was not|wasn't|no)\b"
+    r".{0,90}\b(?:network|path|loss|client-to-server)\b",
+    re.IGNORECASE,
+)
+_APPLICATION_CAUSE = re.compile(
+    r"\b(?:caused by|due to|because of|result(?:ed|s) from|was|is|were|are)\b"
+    r".{0,70}\b(?:server[- ]side processing|server processing|application processing|"
+    r"server application|slow application)\b|"
+    r"\b(?:server[- ]side processing|server processing|application processing|"
+    r"server application)\b.{0,70}\b(?:caused|cause|delay|responsible)\b",
+    re.IGNORECASE,
+)
+_APPLICATION_SLOW = re.compile(
+    r"\b(?:application|server application)\b.{0,30}\b(?:was|is|seems|appears)\s+slow\b",
+    re.IGNORECASE,
+)
+_PHYSICAL_LOSS_CLAIM = re.compile(
+    r"\b(?:proves?|confirms?|shows?|demonstrates?|caused by|due to|indicates?)\b"
+    r".{0,70}\b(?:physical|packet|network|path) loss\b|"
+    r"\b(?:physical|packet|network|path) loss\b.{0,70}\b"
+    r"(?:proven|confirmed|caused|established)\b",
+    re.IGNORECASE,
+)
+_QUALIFIED_NEGATIVE = re.compile(
+    r"\b(?:does not|do not|did not|cannot|can't|doesn't|is not|are not)\b"
+    r"[^.!?]{0,120}\b(?:show|establish|prove|confirm|identify|rule out)\b"
+    r"[^.!?]{0,120}",
+    re.IGNORECASE,
+)
+
+
+def _attribution_contract(report: dict, evidence: list[dict]) -> dict:
+    """Derive narrow attribution limits from deterministic report wording and evidence."""
+    conclusion = report.get("conclusion")
+    conclusion = conclusion if isinstance(conclusion, dict) else {}
+    affirmative_statements = [conclusion.get("statement", "")]
+    statements = list(affirmative_statements)
+    for finding in report.get("findings", []):
+        if isinstance(finding, dict):
+            if isinstance(finding.get("statement"), str):
+                affirmative_statements.append(finding["statement"])
+            statements.extend(
+                value
+                for value in (finding.get("statement"), *finding.get("limitations", []))
+                if isinstance(value, str)
+            )
+    for hypothesis in report.get("remaining_hypotheses", []):
+        if isinstance(hypothesis, dict) and isinstance(hypothesis.get("statement"), str):
+            statements.append(hypothesis["statement"])
+    time_attribution = report.get("time_attribution")
+    if isinstance(time_attribution, dict):
+        statements.extend(
+            value for value in time_attribution.get("limitations", []) if isinstance(value, str)
+        )
+    statements.extend(value for value in report.get("limitations", []) if isinstance(value, str))
+    deterministic_text = " ".join(statements).lower()
+    affirmative_text = " ".join(affirmative_statements).lower()
+    path_less_likely = bool(
+        re.search(r"(?:client.to.server|network) path.{0,35}less likely", deterministic_text)
+        or re.search(r"less likely.{0,35}(?:client.to.server|network) path", deterministic_text)
+    )
+    listener_timing = bool(
+        re.search(r"server[/ -]listener[- ]side (?:timing|delay)", deterministic_text)
+        or re.search(r"server.side response timing", deterministic_text)
+    )
+    application_established = bool(
+        re.search(
+            r"(?:application processing|server application).{0,50}"
+            r"(?:caused|responsible|established)",
+            affirmative_text,
+        )
+    )
+    retransmission_observed = any(
+        isinstance(item, dict) and "retrans" in json.dumps(item, sort_keys=True).lower()
+        for item in evidence
+    )
+    return {
+        "active": path_less_likely or listener_timing or retransmission_observed,
+        "path_less_likely": path_less_likely,
+        "listener_timing": listener_timing,
+        "application_established": application_established,
+        "retransmission_observed": retransmission_observed,
+    }
+
+
+def _unsafe_attribution(answer: str, contract: dict) -> bool:
+    claim_text = _QUALIFIED_NEGATIVE.sub(" ", answer)
+    if contract["path_less_likely"]:
+        # Explicitly preserving the possibility is not a categorical exclusion.
+        without_safe_negation = re.sub(r"\bnot ruled out\b", "", claim_text, flags=re.IGNORECASE)
+        if _PATH_EXCLUSION.search(without_safe_negation):
+            return True
+    if (
+        contract["listener_timing"]
+        and not contract["application_established"]
+        and (_APPLICATION_CAUSE.search(claim_text) or _APPLICATION_SLOW.search(claim_text))
+    ):
+        return True
+    return bool(contract["retransmission_observed"] and _PHYSICAL_LOSS_CLAIM.search(claim_text))
+
+
+def _grounded_fallback(report: dict, allowed_ids: set[str], contract: dict) -> FollowupResponse:
+    conclusion = report.get("conclusion")
+    conclusion = conclusion if isinstance(conclusion, dict) else {}
+    statement = conclusion.get("statement")
+    if not isinstance(statement, str) or not statement.strip():
+        statement = "The available evidence cannot answer this question."
+    answer = _safe_text(statement[:1500]).strip()
+    for evidence_id in sorted(allowed_ids, key=len, reverse=True):
+        answer = answer.replace(evidence_id, "")
+    if contract["path_less_likely"]:
+        answer += (
+            (" This makes the client-to-server path less likely, but does not rule it out.")
+            if "less likely" not in answer.lower()
+            else " It does not rule out the client-to-server path."
+        )
+    if contract["listener_timing"] and not contract["application_established"]:
+        answer += " The captures do not identify which server component was responsible."
+    limitations = report.get("limitations", [])
+    limitation = next(
+        (
+            value.strip()
+            for value in limitations
+            if isinstance(value, str) and value.strip() and len(value) <= 400
+        ),
+        None,
+    )
+    if limitation and limitation.lower() not in answer.lower():
+        answer += f" {limitation}"
+    citations = [
+        evidence_id
+        for evidence_id in conclusion.get("evidence_ids", [])
+        if isinstance(evidence_id, str) and evidence_id in allowed_ids
+    ]
+    if not citations:
+        answer = "The available evidence cannot answer this question."
+    return FollowupResponse(answer=answer[:4000], evidence_ids=citations[:200])
 
 
 def answer_followup(service, case_id: str, question: str) -> FollowupResponse:
@@ -185,6 +326,9 @@ def answer_followup(service, case_id: str, question: str) -> FollowupResponse:
             and "the available evidence cannot answer" not in response.answer.lower()
         ):
             raise ValueError
+        contract = _attribution_contract(report, context["evidence"])
+        if contract["active"] and _unsafe_attribution(response.answer, contract):
+            return _grounded_fallback(report, allowed_ids, contract)
         return response
     except (ValidationError, ValueError):
         raise ApiError("followup_response_invalid", 502) from None
