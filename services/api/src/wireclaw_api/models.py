@@ -325,6 +325,7 @@ class CaseResponse(StrictModel):
     original_id: str | None
     quality: str | None
     last_error: str | None
+    captures: list[CaptureResponse]
     history: list[HistoryResponse]
     runs: list[RunResponse]
     artifacts: list[ArtifactResponse]

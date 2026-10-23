@@ -262,3 +262,14 @@ class Database:
         if row is None:
             raise ApiError("case_not_found", 404)
         return dict(row)
+
+    @staticmethod
+    def capture(conn, case_id, capture_id):
+        Database.case(conn, case_id)
+        logical_id(capture_id)
+        row = conn.execute(
+            "SELECT * FROM captures WHERE case_id=? AND id=?", (case_id, capture_id)
+        ).fetchone()
+        if row is None:
+            raise ApiError("capture_not_found", 404)
+        return dict(row)

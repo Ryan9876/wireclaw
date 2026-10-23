@@ -399,7 +399,24 @@
       "embedded_availability": "not_applicable",
       "model": null,
       "failure_code": null
-    }
+    },
+    "captures": [
+      {
+        "id": "2ab8de1052c79bb3e2fb8a474a23fcc9",
+        "case_id": "cccccccccccccccccccccccccccccccc",
+        "capture_name": "Capture cccccccc",
+        "display_name": null,
+        "original_artifact_id": "33d7355a5113426785273a0a64d6bae7",
+        "sha256": "425e9727da52bbb6b145e382a9a767977502bb2b310b059fa223004327128d77",
+        "bytes": 94,
+        "vantage_type": "unknown",
+        "vantage_subtype": null,
+        "status": "analyzed",
+        "last_error": null,
+        "created": "2026-10-09T12:59:02.077413+00:00",
+        "updated": "2026-10-09T12:59:02.926865+00:00"
+      }
+    ]
   },
   "report": {
     "analyzer_versions": {

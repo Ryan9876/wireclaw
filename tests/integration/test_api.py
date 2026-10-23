@@ -692,12 +692,20 @@ def test_case_metadata_migration_backfills_existing_cases(environment, version):
         after = client.get(f"/api/cases/{case_id}").json()
         assert after["name"] == f"Capture {case_id[:8]}"
         assert {
-            key: after[key] for key in before if key not in ("capture_name", "display_name", "name")
+            key: after[key]
+            for key in before
+            if key not in ("capture_name", "display_name", "name", "captures")
         } == {
             key: value
             for key, value in before.items()
-            if key not in ("capture_name", "display_name", "name")
+            if key not in ("capture_name", "display_name", "name", "captures")
         }
+        # Rebuilding a v1/v2 database intentionally drops capture identities;
+        # v4 migration recreates one row while preserving source provenance.
+        assert len(after["captures"]) == 1
+        assert after["captures"][0]["original_artifact_id"] == before["original_id"]
+        assert after["captures"][0]["sha256"] == before["capture_sha"]
+        assert after["captures"][0]["bytes"] == len(captures["clean_tcp"])
         assert client.get(f"/api/cases/{case_id}/report").json() == report
         assert client.get("/api/cases").json()[0]["capture_bytes"] == len(captures["clean_tcp"])
         with client.app.state.service.db.connect() as conn:
@@ -834,3 +842,375 @@ def test_followup_request_validation_and_size_errors_are_code_only(tmp_path, cap
         assert response.status_code == 413
         assert response.json() == {"error": {"code": "request_size_limit"}}
         assert "QUESTION_PRIVATE_SENTINEL" not in caplog.text
+
+
+def add_capture(client, case_id, name="trace.pcap", **metadata):
+    response = client.post(
+        f"/api/cases/{case_id}/captures", json={"capture_name": name, **metadata}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def put_capture(client, case_id, capture_id, data, **kwargs):
+    return client.put(
+        f"/api/cases/{case_id}/captures/{capture_id}/data",
+        content=data,
+        headers={"content-type": "application/octet-stream"},
+        **kwargs,
+    )
+
+
+def test_plural_capture_lifecycle_preserves_sources_and_metadata(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        assert client.get(f"/api/cases/{case_id}").json()["captures"] == []
+        first = add_capture(client, case_id, "../client.pcap", vantage_type="client")
+        second = add_capture(client, case_id, "server.pcap", vantage_type="server")
+        assert first["capture_name"] == "client.pcap"
+        assert first["status"] == "waiting"
+        assert first["case_id"] == case_id
+        assert first["original_artifact_id"] is None
+        sources = {}
+        for capture in (first, second):
+            result = put_capture(client, case_id, capture["id"], fixtures["clean_tcp"])
+            assert result.status_code == 200, result.text
+            uploaded = result.json()
+            assert uploaded["id"] == capture["id"]
+            assert uploaded["sha256"] == hashlib.sha256(fixtures["clean_tcp"]).hexdigest()
+            assert uploaded["bytes"] == len(fixtures["clean_tcp"])
+            sources[capture["id"]] = client.app.state.service.artifact(
+                case_id, uploaded["original_artifact_id"]
+            )[1]
+        before = client.get(f"/api/cases/{case_id}").json()
+        assert len(before["captures"]) == 2
+        assert before["original_id"] == before["captures"][0]["original_artifact_id"]
+        response = client.patch(
+            f"/api/cases/{case_id}/captures/{second['id']}",
+            json={
+                "display_name": " Edge ",
+                "vantage_type": "network",
+                "vantage_subtype": "Firewall",
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["display_name"] == "Edge"
+        assert response.json()["vantage_subtype"] == "Firewall"
+        assert client.get(f"/api/cases/{case_id}").json()["runs"] == before["runs"]
+        response = client.patch(
+            f"/api/cases/{case_id}/captures/{second['id']}", json={"vantage_type": "server"}
+        )
+        assert response.status_code == 200
+        assert response.json()["vantage_subtype"] is None
+        assert client.delete(f"/api/cases/{case_id}/captures/{second['id']}").status_code == 200
+        assert sources[first["id"]].read_bytes() == fixtures["clean_tcp"]
+        assert not sources[second["id"]].exists()
+        assert put_capture(client, case_id, first["id"], fixtures["healthy"]).status_code == 409
+    with client_for(root) as client:
+        remaining = client.get(f"/api/cases/{case_id}").json()["captures"]
+        assert [item["id"] for item in remaining] == [first["id"]]
+        assert client.delete(f"/api/cases/{case_id}/captures/{first['id']}").status_code == 200
+        empty = client.get(f"/api/cases/{case_id}").json()
+        assert empty["captures"] == []
+        assert empty["original_id"] is None
+        replacement = add_capture(client, case_id)
+        assert (
+            put_capture(client, case_id, replacement["id"], fixtures["healthy"]).status_code == 200
+        )
+
+
+@pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
+def test_plural_capture_ownership_and_unknown_ids(environment, method):
+    root, _ = environment
+    with client_for(root) as client:
+        owner, other = case(client), case(client)
+        capture = add_capture(client, owner)
+        for case_id, capture_id, code in (
+            ("a" * 32, capture["id"], "case_not_found"),
+            (other, capture["id"], "capture_not_found"),
+            (owner, "b" * 32, "capture_not_found"),
+        ):
+            if method == "post":
+                if code != "case_not_found":
+                    continue
+                response = client.post(f"/api/cases/{case_id}/captures", json={"capture_name": "x"})
+            elif method == "put":
+                response = put_capture(client, case_id, capture_id, b"private")
+            else:
+                response = client.request(
+                    method.upper(),
+                    f"/api/cases/{case_id}/captures/{capture_id}",
+                    **({"json": {"display_name": "x"}} if method == "patch" else {}),
+                )
+            assert response.status_code == 404, response.text
+            assert response.json() == {"error": {"code": code}}
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"vantage_type": "router"},
+        {"vantage_type": "client", "vantage_subtype": "Firewall"},
+        {"vantage_type": "network", "vantage_subtype": "arbitrary"},
+        {"capture_name": "\u0000private"},
+    ],
+)
+def test_plural_capture_invalid_metadata_is_safe(environment, metadata):
+    root, _ = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        response = client.post(
+            f"/api/cases/{case_id}/captures", json={"capture_name": "x", **metadata}
+        )
+        assert response.status_code == 422
+        assert response.json() == {"error": {"code": "invalid_request"}}
+        assert client.get(f"/api/cases/{case_id}").json()["captures"] == []
+
+
+def test_plural_capture_limit_has_no_partial_rows_or_files(environment):
+    root, _ = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        for index in range(4):
+            add_capture(client, case_id, f"{index}.pcap")
+        before = client.get(f"/api/cases/{case_id}").json()
+        paths = sorted(str(path) for path in (root / "cases" / case_id).rglob("*"))
+        response = client.post(
+            f"/api/cases/{case_id}/captures", json={"capture_name": "fifth.pcap"}
+        )
+        assert response.status_code == 409
+        assert response.json() == {"error": {"code": "capture_count_limit"}}
+        assert client.get(f"/api/cases/{case_id}").json() == before
+        assert sorted(str(path) for path in (root / "cases" / case_id).rglob("*")) == paths
+
+
+def test_plural_capture_failed_upload_isolated_and_retryable(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        first, second = add_capture(client, case_id), add_capture(client, case_id)
+        assert put_capture(client, case_id, first["id"], fixtures["healthy"]).status_code == 200
+        before = client.get(f"/api/cases/{case_id}").json()
+        response = put_capture(client, case_id, second["id"], fixtures["malformed"])
+        assert response.status_code == 422
+        after = client.get(f"/api/cases/{case_id}").json()
+        assert after["captures"][0] == before["captures"][0]
+        assert after["state"] == before["state"]
+        assert after["captures"][1]["status"] == "needs_attention"
+        assert after["captures"][1]["last_error"] == response.json()["error"]["code"]
+        assert len(after["artifacts"]) == 1
+        assert put_capture(client, case_id, second["id"], fixtures["healthy"]).status_code == 200
+
+
+def test_plural_capture_stream_limits_and_content_type(environment):
+    root, _ = environment
+    with client_for(root, Policy(analyzer=Limits(max_capture_bytes=16))) as client:
+        case_id = case(client)
+        capture = add_capture(client, case_id)
+        path = f"/api/cases/{case_id}/captures/{capture['id']}/data"
+        response = client.put(path, content=b"private", headers={"content-type": "text/plain"})
+        assert response.status_code == 415
+        assert response.json() == {"error": {"code": "capture_content_type_required"}}
+        assert put_capture(client, case_id, capture["id"], b"x" * 17).status_code == 413
+        response = put_capture(client, case_id, capture["id"], iter([b"x" * 8, b"y" * 9]))
+        assert response.status_code == 413
+        assert response.json() == {"error": {"code": "capture_size_limit"}}
+        record = client.get(f"/api/cases/{case_id}").json()
+        assert not record["artifacts"]
+        assert record["captures"][0]["status"] == "needs_attention"
+        assert not list((root / "cases" / case_id).rglob("incoming"))
+
+
+def test_plural_capture_upload_exceeds_json_limit_without_buffering(environment):
+    root, fixtures = environment
+    with client_for(root, Policy(max_json_bytes=256)) as client:
+        case_id = case(client)
+        capture = add_capture(client, case_id)
+        assert len(fixtures["clean_tcp"]) > 256
+        assert put_capture(client, case_id, capture["id"], fixtures["clean_tcp"]).status_code == 200
+
+
+def test_plural_capture_patch_validates_stored_vantage(environment):
+    root, _ = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        capture = add_capture(client, case_id, vantage_type="client")
+        before = client.get(f"/api/cases/{case_id}").json()
+        response = client.patch(
+            f"/api/cases/{case_id}/captures/{capture['id']}", json={"vantage_subtype": "Firewall"}
+        )
+        assert response.status_code == 422
+        assert response.json() == {"error": {"code": "invalid_request"}}
+        assert client.get(f"/api/cases/{case_id}").json() == before
+
+
+def test_plural_capture_remove_primary_cleans_legacy_report_and_evidence(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id, record = prepared(client, fixtures)
+        primary = record["captures"][0]
+        assert record["evidence_count"] > 0
+        removed_source = client.app.state.service.artifact(case_id, record["original_id"])[1]
+        response = client.delete(f"/api/cases/{case_id}/captures/{primary['id']}")
+        assert response.status_code == 200, response.text
+        empty = client.get(f"/api/cases/{case_id}").json()
+        assert empty["captures"] == []
+        assert empty["artifacts"] == []
+        assert empty["evidence_count"] == 0
+        assert not removed_source.exists()
+        assert client.get(f"/api/cases/{case_id}/report").json() == {
+            "error": {"code": "report_not_ready"}
+        }
+        replacement = add_capture(client, case_id)
+        assert (
+            put_capture(client, case_id, replacement["id"], fixtures["healthy"]).status_code == 200
+        )
+        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+
+
+def test_plural_capture_secondary_interruption_recovers_without_corrupting_primary(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        primary, secondary = add_capture(client, case_id), add_capture(client, case_id)
+        assert put_capture(client, case_id, primary["id"], fixtures["healthy"]).status_code == 200
+        before = client.get(f"/api/cases/{case_id}").json()
+        _, path = client.app.state.service.begin_capture_ingest(case_id, secondary["id"])
+        path.write_bytes(b"partial")
+    with client_for(root) as client:
+        after = client.get(f"/api/cases/{case_id}").json()
+        assert after["state"] == before["state"]
+        assert after["captures"][0] == before["captures"][0]
+        assert after["captures"][1]["status"] == "needs_attention"
+        assert after["captures"][1]["last_error"] == "service_interrupted"
+        assert not path.parent.exists()
+        assert put_capture(client, case_id, secondary["id"], fixtures["healthy"]).status_code == 200
+
+
+def test_plural_capture_delete_cleanup_failure_is_journaled_and_retried(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        first, second = add_capture(client, case_id), add_capture(client, case_id)
+        for capture in (first, second):
+            assert (
+                put_capture(client, case_id, capture["id"], fixtures["healthy"]).status_code == 200
+            )
+        service = client.app.state.service
+        with patch.object(service, "remove_tree", side_effect=OSError("PRIVATE_STORAGE_ERROR")):
+            response = client.delete(f"/api/cases/{case_id}/captures/{second['id']}")
+        assert response.status_code == 200, response.text
+        assert response.json()["cleanup_pending"] is True
+        assert response.json()["original_deleted"] is False
+        assert "PRIVATE_STORAGE_ERROR" not in response.text
+        with service.db.connect() as conn:
+            assert conn.execute("SELECT count(*) FROM deletions").fetchone()[0] == 1
+        assert len(client.get(f"/api/cases/{case_id}").json()["captures"]) == 1
+        blocked = client.post(f"/api/cases/{case_id}/captures", json={"capture_name": "extra.pcap"})
+        assert blocked.status_code == 503
+        assert blocked.json() == {"error": {"code": "cleanup_pending"}}
+        assert len(client.get(f"/api/cases/{case_id}").json()["captures"]) == 1
+    with client_for(root) as client:
+        with client.app.state.service.db.connect() as conn:
+            assert conn.execute("SELECT count(*) FROM deletions").fetchone()[0] == 0
+        assert not list((root / "trash").iterdir())
+        primary = client.get(f"/api/cases/{case_id}").json()["captures"][0]
+        assert (
+            client.app.state.service.artifact(case_id, primary["original_artifact_id"])[
+                1
+            ].read_bytes()
+            == fixtures["healthy"]
+        )
+
+
+def test_plural_capture_stream_timeout_cleans_partial_upload(environment):
+    import asyncio
+
+    from starlette.requests import Request
+
+    root, _ = environment
+    with client_for(root, Policy(upload_timeout_seconds=0.01)) as client:
+        case_id = case(client)
+        capture = add_capture(client, case_id)
+
+        async def stalled_stream(_request):
+            yield b"partial"
+            await asyncio.sleep(1)
+
+        with patch.object(Request, "stream", stalled_stream):
+            response = put_capture(client, case_id, capture["id"], b"ignored")
+        assert response.status_code == 422
+        assert response.json() == {"error": {"code": "upload_timeout"}}
+        record = client.get(f"/api/cases/{case_id}").json()
+        assert record["captures"][0]["last_error"] == "upload_timeout"
+        assert record["artifacts"] == []
+        assert not list((root / "cases" / case_id).rglob("incoming"))
+
+
+@pytest.mark.parametrize("first_uploaded", [False, True])
+def test_plural_capture_removal_promotes_next_source_for_explicit_investigation(
+    environment, first_uploaded
+):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        first, second = add_capture(client, case_id), add_capture(client, case_id)
+        if first_uploaded:
+            assert (
+                put_capture(client, case_id, first["id"], fixtures["clean_tcp"]).status_code == 200
+            )
+            assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+        assert put_capture(client, case_id, second["id"], fixtures["healthy"]).status_code == 200
+        assert client.delete(f"/api/cases/{case_id}/captures/{first['id']}").status_code == 200
+        promoted = client.get(f"/api/cases/{case_id}").json()
+        assert promoted["state"] == "BASELINE_ANALYSIS"
+        assert promoted["original_id"] == promoted["captures"][0]["original_artifact_id"]
+        assert promoted["captures"][0]["id"] == second["id"]
+        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+
+
+def test_plural_capture_delete_database_failure_restores_source(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id, record = prepared(client, fixtures)
+        capture_id = record["captures"][0]["id"]
+        service = client.app.state.service
+        original = service.artifact(case_id, record["original_id"])[1]
+        report = client.get(f"/api/cases/{case_id}/report").json()
+        with patch.object(
+            service, "sync_primary_capture", side_effect=sqlite3.OperationalError("PRIVATE")
+        ):
+            response = client.delete(f"/api/cases/{case_id}/captures/{capture_id}")
+        assert response.status_code == 503
+        assert response.json() == {"error": {"code": "persistence_failure"}}
+        assert original.read_bytes() == fixtures["clean_tcp"]
+        assert client.get(f"/api/cases/{case_id}").json() == record
+        assert client.get(f"/api/cases/{case_id}/report").json() == report
+        assert not list((root / "trash").iterdir())
+
+
+def test_plural_capture_restart_restores_removal_interrupted_before_database_commit(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id, record = prepared(client, fixtures)
+        service = client.app.state.service
+        capture_id = record["captures"][0]["id"]
+        original = service.artifact(case_id, record["original_id"])[1]
+        report = client.get(f"/api/cases/{case_id}/report").json()
+        with service.db.connect() as conn:
+            report_row = conn.execute(
+                "SELECT id,relative_path FROM artifacts WHERE case_id=? AND kind='report'",
+                (case_id,),
+            ).fetchone()
+        report_path = service.files.path(report_row["relative_path"])
+        # Reproduce a process exit after renames and before SQLite commit.
+        trash = root / "trash" / capture_id
+        trash.mkdir(parents=True)
+        service.capture_analyzer_root(case_id, capture_id).rename(trash / "analyzer")
+        report_path.rename(trash / report_row["id"])
+    with client_for(root) as client:
+        assert client.get(f"/api/cases/{case_id}").json() == record
+        assert original.read_bytes() == fixtures["clean_tcp"]
+        assert client.get(f"/api/cases/{case_id}/report").json() == report
+        assert not trash.exists()

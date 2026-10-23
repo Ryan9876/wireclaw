@@ -2075,3 +2075,62 @@ def test_followup_openapi_documents_code_only_error_matrix(tmp_path):
     assert "HTTPValidationError" not in json.dumps(responses)
     shared_schema = responses["default"]["content"]["application/json"]["schema"]
     Draft202012Validator(shared_schema).validate({"error": {"code": "service_busy"}})
+
+
+def test_legacy_upload_creates_explicit_primary_and_completes(tmp_path):
+    from generate import generate
+
+    captures = generate(tmp_path / "fixtures")
+    with TestClient(create_app(tmp_path / "data"), base_url="http://127.0.0.1:8765") as client:
+        case_id = client.post(
+            "/api/cases", json={"symptom": "slow", "capture_name": "legacy.pcap"}
+        ).json()["id"]
+        response = client.post(
+            f"/api/cases/{case_id}/capture",
+            content=captures["healthy"],
+            headers={"content-type": "application/octet-stream"},
+        )
+        assert response.status_code == 200, response.text
+        record = response.json()
+        assert len(record["captures"]) == 1
+        primary = record["captures"][0]
+        assert primary["capture_name"] == "legacy.pcap"
+        assert primary["original_artifact_id"] == record["original_id"]
+        assert primary["sha256"] == record["capture_sha"]
+        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+
+
+def test_legacy_upload_uses_single_waiting_explicit_capture_and_rejects_ambiguity(tmp_path):
+    from generate import generate
+
+    captures = generate(tmp_path / "fixtures")
+    with TestClient(create_app(tmp_path / "data"), base_url="http://127.0.0.1:8765") as client:
+        case_id = client.post("/api/cases", json={"symptom": "slow"}).json()["id"]
+        created = client.post(
+            f"/api/cases/{case_id}/captures", json={"capture_name": "explicit.pcap"}
+        )
+        assert created.status_code == 201, created.text
+        primary = created.json()
+        response = client.post(
+            f"/api/cases/{case_id}/capture",
+            content=captures["healthy"],
+            headers={"content-type": "application/octet-stream"},
+        )
+        assert response.status_code == 200, response.text
+        assert [item["id"] for item in response.json()["captures"]] == [primary["id"]]
+        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+        other = client.post("/api/cases", json={"symptom": "ambiguous"}).json()["id"]
+        for name in ("one.pcap", "two.pcap"):
+            assert (
+                client.post(f"/api/cases/{other}/captures", json={"capture_name": name}).status_code
+                == 201
+            )
+        before = client.get(f"/api/cases/{other}").json()
+        response = client.post(
+            f"/api/cases/{other}/capture",
+            content=captures["healthy"],
+            headers={"content-type": "application/octet-stream"},
+        )
+        assert response.status_code == 409
+        assert response.json() == {"error": {"code": "capture_selection_required"}}
+        assert client.get(f"/api/cases/{other}").json() == before

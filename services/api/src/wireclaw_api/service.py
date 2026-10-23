@@ -17,7 +17,7 @@ from uuid import uuid4
 from jsonschema import Draft202012Validator
 from wireclaw_analyzer import Analyzer, Capability, DiagnosticRequest
 
-from .models import BASELINE, TRANSITIONS, State
+from .models import BASELINE, TRANSITIONS, CreateCapture, State, UpdateCapture
 from .storage import ApiError, Database, Files, OwnerLock, encode, logical_id
 
 LOGGER = logging.getLogger("wireclaw.api")
@@ -64,9 +64,40 @@ class Service:
         finally:
             self.lock.release()
 
-    def analyzer(self, case_id):
+    def capture_analyzer_root(self, case_id, capture_id):
+        with self.db.connect() as conn:
+            capture = self.db.capture(conn, case_id, capture_id)
+            if capture["original_artifact_id"]:
+                row = conn.execute(
+                    "SELECT relative_path FROM artifacts WHERE case_id=? AND id=?",
+                    (case_id, capture["original_artifact_id"]),
+                ).fetchone()
+                if row:
+                    return self.files.path(row["relative_path"], exists=False).parents[3]
+            primary = conn.execute(
+                "SELECT id FROM captures WHERE case_id=? ORDER BY created,rowid LIMIT 1", (case_id,)
+            ).fetchone()["id"]
+        directory = self.files.case(case_id)
+        if capture_id != primary:
+            directory = directory / "captures" / capture_id
+        return self.files.store.confined(directory / "analyzer", exists=False)
+
+    def analyzer(self, case_id, capture_id=None):
+        if capture_id is None:
+            with self.db.connect() as conn:
+                self.db.case(conn, case_id)
+                row = conn.execute(
+                    "SELECT id FROM captures WHERE case_id=? ORDER BY created,rowid LIMIT 1",
+                    (case_id,),
+                ).fetchone()
+            capture_id = row["id"] if row else None
+        root = (
+            self.capture_analyzer_root(case_id, capture_id)
+            if capture_id
+            else self.files.case(case_id) / "analyzer"
+        )
         return Analyzer(
-            self.files.store.confined(self.files.case(case_id) / "analyzer", exists=False),
+            self.files.store.confined(root, exists=False),
             limits=self.policy.analyzer,
             diagnostic_limits=self.policy.diagnostics,
         )
@@ -124,6 +155,12 @@ class Service:
         with self.db.connect() as conn:
             case = self.db.case(conn, case_id)
             case["name"] = case["display_name"] or case["capture_name"] or f"Capture {case_id[:8]}"
+            case["captures"] = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM captures WHERE case_id=? ORDER BY created,rowid", (case_id,)
+                )
+            ]
             case["history"] = [
                 dict(r)
                 for r in conn.execute(
@@ -263,54 +300,360 @@ class Service:
         )
         return artifact_id
 
+    def create_capture(self, case_id, capture_name, vantage_type="unknown", vantage_subtype=None):
+        # Validate direct service callers under the same strict metadata contract.
+        from pydantic import ValidationError
+
+        try:
+            metadata = CreateCapture.model_validate(
+                {
+                    "capture_name": capture_name,
+                    "vantage_type": vantage_type,
+                    "vantage_subtype": vantage_subtype,
+                }
+            )
+        except ValidationError:
+            raise ApiError("invalid_request", 422) from None
+        capture_id = identifier()
+        timestamp = now()
+        with self.db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self.db.case(conn, case_id)
+            if conn.execute("SELECT count(*) FROM deletions").fetchone()[0]:
+                raise ApiError("cleanup_pending", 503)
+            if (
+                conn.execute(
+                    "SELECT count(*) FROM captures WHERE case_id=?", (case_id,)
+                ).fetchone()[0]
+                >= 4
+            ):
+                raise ApiError("capture_count_limit")
+            conn.execute(
+                "INSERT INTO captures(id,case_id,capture_name,vantage_type,vantage_subtype,created,updated) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (
+                    capture_id,
+                    case_id,
+                    metadata.capture_name,
+                    metadata.vantage_type,
+                    metadata.vantage_subtype,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            self.sync_primary_capture(conn, case_id)
+        return self.get_capture(case_id, capture_id)
+
+    def get_capture(self, case_id, capture_id):
+        with self.db.connect() as conn:
+            return self.db.capture(conn, case_id, capture_id)
+
+    @staticmethod
+    def sync_primary_capture(conn, case_id):
+        primary = conn.execute(
+            "SELECT * FROM captures WHERE case_id=? ORDER BY created,rowid LIMIT 1", (case_id,)
+        ).fetchone()
+        conn.execute(
+            "UPDATE cases SET capture_name=?,capture_sha=?,original_id=?,updated=? WHERE id=?",
+            (
+                primary["capture_name"] if primary else None,
+                primary["sha256"] if primary else None,
+                primary["original_artifact_id"] if primary else None,
+                now(),
+                case_id,
+            ),
+        )
+
+    def update_capture(self, case_id, capture_id, **changes):
+        from pydantic import ValidationError
+
+        with self.db.connect() as conn:
+            capture = self.db.capture(conn, case_id, capture_id)
+            try:
+                changes = UpdateCapture.model_validate(changes).model_dump(exclude_unset=True)
+                merged = {**capture, **changes}
+                if "vantage_type" in changes and changes["vantage_type"] != "network":
+                    merged["vantage_subtype"] = None
+                CreateCapture.model_validate(
+                    {
+                        key: merged[key]
+                        for key in ("capture_name", "vantage_type", "vantage_subtype")
+                    }
+                )
+                if merged["vantage_type"] is None:
+                    raise ValueError
+            except (ValidationError, ValueError):
+                raise ApiError("invalid_request", 422) from None
+            conn.execute(
+                "UPDATE captures SET display_name=?,vantage_type=?,vantage_subtype=?,updated=? "
+                "WHERE case_id=? AND id=?",
+                (
+                    merged["display_name"],
+                    merged["vantage_type"],
+                    merged["vantage_subtype"],
+                    now(),
+                    case_id,
+                    capture_id,
+                ),
+            )
+            conn.execute("UPDATE cases SET updated=? WHERE id=?", (now(), case_id))
+        return self.get_capture(case_id, capture_id)
+
     def begin_ingest(self, case_id):
         case = self.get(case_id)
+        captures = case["captures"]
+        if len(captures) > 1:
+            raise ApiError("capture_selection_required")
         if case["original_id"] or case["state"] not in (State.NEW, State.FAILED):
             raise ApiError("capture_already_registered")
+        if not captures:
+            # Prepare before creating metadata, preserving the legacy resting
+            # checkpoint if the filesystem cannot accept an upload.
+            started = time.monotonic()
+            directory = self.files.case(case_id) / "analyzer"
+            try:
+                self.files.store.confined(directory / "incoming", exists=False).mkdir(
+                    parents=True, exist_ok=True
+                )
+            except OSError:
+                self.remove_tree(directory)
+                self.log(case_id, "ingest", started, "failed", "storage_failure")
+                raise ApiError("storage_failure", 503) from None
+            capture = self.create_capture(case_id, case["capture_name"] or f"Capture {case_id[:8]}")
+        else:
+            capture = captures[0]
+        return self.begin_capture_ingest(case_id, capture["id"])
+
+    def begin_capture_ingest(self, case_id, capture_id):
+        capture = self.get_capture(case_id, capture_id)
+        if capture["original_artifact_id"]:
+            raise ApiError("capture_already_registered")
+        path = self.capture_analyzer_root(case_id, capture_id) / "incoming"
         run_id = None
         started = time.monotonic()
         try:
-            # Setup can fail before accepting bytes. Keep the resting checkpoint
-            # until its confined staging directory is ready.
-            path = self.files.case(case_id) / "analyzer" / "incoming"
             self.files.store.confined(path, exists=False).mkdir(parents=True, exist_ok=True)
-            run_id, _ = self.start(case_id, "ingest", {})
-            self.transition(case_id, State.INGESTING)
+            run_id, _ = self.start(case_id, "ingest", {"capture_id": capture_id})
+            with self.db.connect() as conn:
+                conn.execute("UPDATE runs SET capture_id=? WHERE id=?", (capture_id, run_id))
+                conn.execute(
+                    "UPDATE captures SET status='preparing',last_error=NULL,updated=? WHERE id=?",
+                    (now(), capture_id),
+                )
+            case = Service.get(self, case_id)
+            if case["captures"][0]["id"] == capture_id and case["state"] in (
+                State.NEW,
+                State.FAILED,
+            ):
+                self.transition(case_id, State.INGESTING)
         except Exception as error:
             code = "storage_failure" if isinstance(error, OSError) else "capture_intake_failed"
             if run_id is not None:
-                self.fail(case_id, run_id, code, fatal=True)
-            self.cleanup_ingest(case_id)
+                self.fail_capture_ingest(case_id, capture_id, run_id, code)
+            self.cleanup_capture_ingest(case_id, capture_id)
             if isinstance(error, OSError):
                 self.log(case_id, "ingest", started, "failed", code)
                 raise ApiError(code, 503) from None
             raise
         return run_id, path / identifier()
 
+    def ingest_capture_id(self, case_id, run_id):
+        with self.db.connect() as conn:
+            row = conn.execute(
+                "SELECT capture_id FROM runs WHERE id=? AND case_id=?", (run_id, case_id)
+            ).fetchone()
+            if row is None or row["capture_id"] is None:
+                raise ApiError("run_not_found", 404)
+            return row["capture_id"]
+
     def ingest(self, case_id, run_id, path):
-        self.transition(case_id, State.VALIDATING_CAPTURE)
-        analyzer = self.analyzer(case_id)
+        capture_id = self.ingest_capture_id(case_id, run_id)
+        self.ingest_capture(case_id, capture_id, run_id, path)
+        return self.get(case_id)
+
+    def ingest_capture(self, case_id, capture_id, run_id, path):
+        self.get_capture(case_id, capture_id)
+        case = Service.get(self, case_id)
+        primary = case["captures"][0]["id"] == capture_id
+        if primary and case["state"] == State.INGESTING:
+            self.transition(case_id, State.VALIDATING_CAPTURE)
+        analyzer = self.analyzer(case_id, capture_id)
         capture_sha = analyzer.ingest_capture(path.relative_to(analyzer.store.root))
         original = analyzer.store.verify(capture_sha)
         with self.db.connect() as conn:
             artifact_id = self.register(conn, case_id, original, "original", capture_sha)
+            conn.execute("UPDATE artifacts SET capture_id=? WHERE id=?", (capture_id, artifact_id))
             conn.execute(
-                "UPDATE cases SET capture_sha=?,original_id=?,updated=? WHERE id=?",
-                (capture_sha, artifact_id, now(), case_id),
+                "UPDATE captures SET sha256=?,original_artifact_id=?,bytes=?,status='analyzing',"
+                "last_error=NULL,updated=? WHERE id=? AND case_id=?",
+                (capture_sha, artifact_id, original.stat().st_size, now(), capture_id, case_id),
             )
+            self.sync_primary_capture(conn, case_id)
             conn.execute(
-                "UPDATE runs SET status='complete',versions=? WHERE id=?",
-                (encode(analyzer.versions), run_id),
+                "UPDATE runs SET status='complete',versions=? WHERE id=? AND case_id=? AND capture_id=?",
+                (encode(analyzer.versions), run_id, case_id, capture_id),
             )
-        self.transition(case_id, State.BASELINE_ANALYSIS)
-        return self.get(case_id)
+        if primary and Service.get(self, case_id)["state"] == State.VALIDATING_CAPTURE:
+            self.transition(case_id, State.BASELINE_ANALYSIS)
+        return self.get_capture(case_id, capture_id)
+
+    def fail_capture_ingest(self, case_id, capture_id, run_id, code):
+        case = Service.get(self, case_id)
+        primary = case["captures"][0]["id"] == capture_id
+        self.fail(case_id, run_id, code, fatal=primary)
+        with self.db.connect() as conn:
+            self.db.capture(conn, case_id, capture_id)
+            conn.execute(
+                "UPDATE captures SET status='needs_attention',last_error=?,updated=? WHERE id=?",
+                (code, now(), capture_id),
+            )
+
+    def cleanup_capture_ingest(self, case_id, capture_id):
+        capture = self.get_capture(case_id, capture_id)
+        if not capture["original_artifact_id"]:
+            self.remove_tree(self.capture_analyzer_root(case_id, capture_id))
 
     def cleanup_ingest(self, case_id):
-        # Only an unregistered intake tree is owned by this failed upload.
-        case = self.get(case_id)
-        if not case["original_id"]:
-            directory = self.files.case(case_id) / "analyzer"
-            self.remove_tree(directory)
+        for capture in self.get(case_id)["captures"]:
+            if not capture["original_artifact_id"]:
+                self.cleanup_capture_ingest(case_id, capture["id"])
+
+    def remove_capture(self, case_id, capture_id):
+        capture = self.get_capture(case_id, capture_id)
+        root = self.capture_analyzer_root(case_id, capture_id)
+        self.files.checked_tree(root)
+        trash = self.files.path(Path("trash") / capture_id)
+        self.files.checked_tree(trash)
+        if trash.exists():
+            raise ApiError("cleanup_pending", 503)
+        moved = []
+        try:
+            with self.db.connect() as conn:
+                primary = (
+                    conn.execute(
+                        "SELECT id FROM captures WHERE case_id=? ORDER BY created,rowid LIMIT 1",
+                        (case_id,),
+                    ).fetchone()["id"]
+                    == capture_id
+                )
+                if primary:
+                    # Legacy analysis still operates on the primary capture until
+                    # per-capture scheduling is introduced. Attribute only its
+                    # existing deterministic artifacts/runs before removing them.
+                    conn.execute(
+                        "UPDATE artifacts SET capture_id=? WHERE case_id=? AND capture_id IS NULL "
+                        "AND parent_sha=? AND kind IN ('normalized','report','evidence_capture',"
+                        "'evidence_provenance')",
+                        (capture_id, case_id, capture["sha256"]),
+                    )
+                    conn.execute(
+                        "UPDATE runs SET capture_id=? WHERE case_id=? AND capture_id IS NULL "
+                        "AND (capability IN ('baseline','diagnostics','get_capture_metadata',"
+                        "'assess_capture_quality','list_protocols','list_endpoints','list_conversations') "
+                        "OR capability LIKE 'analyze_%')",
+                        (capture_id, case_id),
+                    )
+                    conn.execute(
+                        "UPDATE evidence SET capture_id=? WHERE case_id=? AND run_id IN "
+                        "(SELECT id FROM runs WHERE case_id=? AND capture_id=?)",
+                        (capture_id, case_id, case_id, capture_id),
+                    )
+                    conn.execute("DELETE FROM reasoning_steps WHERE case_id=?", (case_id,))
+                    conn.execute(
+                        "UPDATE cases SET quality=NULL,last_error=NULL WHERE id=?", (case_id,)
+                    )
+                # Only capture-owned artifacts are eligible for removal.
+                artifacts = [
+                    dict(row)
+                    for row in conn.execute(
+                        "SELECT id,relative_path FROM artifacts WHERE case_id=? AND capture_id=?",
+                        (case_id, capture_id),
+                    )
+                ]
+                paths = [(self.files.path(row["relative_path"]), row["id"]) for row in artifacts]
+                trash.mkdir(parents=True, exist_ok=False)
+                if root.exists():
+                    root.rename(trash / "analyzer")
+                    moved.append((root, trash / "analyzer"))
+                for path, artifact_id in paths:
+                    if path.is_relative_to(root) or not path.exists():
+                        continue
+                    destination = trash / artifact_id
+                    path.rename(destination)
+                    moved.append((path, destination))
+                conn.execute(
+                    "DELETE FROM evidence WHERE case_id=? AND capture_id=?", (case_id, capture_id)
+                )
+                conn.execute(
+                    "DELETE FROM runs WHERE case_id=? AND capture_id=?", (case_id, capture_id)
+                )
+                conn.execute(
+                    "DELETE FROM artifacts WHERE case_id=? AND capture_id=?", (case_id, capture_id)
+                )
+                conn.execute("DELETE FROM captures WHERE case_id=? AND id=?", (case_id, capture_id))
+                self.sync_primary_capture(conn, case_id)
+                if primary:
+                    promoted = self.db.case(conn, case_id)
+                    resting_state = (
+                        State.BASELINE_ANALYSIS if promoted["original_id"] else State.NEW
+                    )
+                    if promoted["state"] != resting_state:
+                        conn.execute(
+                            "UPDATE cases SET state=?,quality=NULL,last_error=NULL WHERE id=?",
+                            (resting_state, case_id),
+                        )
+                        seq = conn.execute(
+                            "SELECT max(seq)+1 FROM history WHERE case_id=?", (case_id,)
+                        ).fetchone()[0]
+                        conn.execute(
+                            "INSERT INTO history VALUES(?,?,?,?)",
+                            (case_id, seq, resting_state, now()),
+                        )
+                conn.execute(
+                    "INSERT INTO deletions VALUES(?,?)",
+                    (capture_id, trash.relative_to(self.files.root).as_posix()),
+                )
+        except BaseException:
+            for original, destination in reversed(moved):
+                destination.rename(original)
+            if trash.exists():
+                trash.rmdir()
+            raise
+        pending = not self.cleanup_deleted(capture_id, trash)
+        return {
+            "deleted": True,
+            "original_deleted": not pending,
+            "registered_artifacts_deleted": not pending,
+            "cleanup_pending": pending,
+        }
+
+    def restore_capture_removal(self, case_id, capture_id):
+        # A pre-commit interruption leaves the capture row and registry intact.
+        # Restore only those registered paths from this capture's fixed trash ID.
+        trash = self.files.path(Path("trash") / capture_id)
+        if not trash.exists():
+            return
+        self.files.checked_tree(trash)
+        root = self.capture_analyzer_root(case_id, capture_id)
+        if (trash / "analyzer").exists() and not root.exists():
+            root.parent.mkdir(parents=True, exist_ok=True)
+            (trash / "analyzer").rename(root)
+        with self.db.connect() as conn:
+            artifacts = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT id,relative_path FROM artifacts WHERE case_id=?", (case_id,)
+                )
+            ]
+        for artifact in artifacts:
+            source = trash / artifact["id"]
+            if source.exists():
+                target = self.files.path(artifact["relative_path"])
+                if target.exists():
+                    raise ApiError("cleanup_pending", 503)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source.rename(target)
+        trash.rmdir()
 
     def snapshot(self, case_id, run_id):
         with self.db.connect() as conn:
@@ -591,10 +934,14 @@ class Service:
             if trash.exists() and not directory.exists():
                 self.files.checked_tree(trash)
                 trash.rename(directory)
+            for capture in Service.get(self, case_id)["captures"]:
+                self.restore_capture_removal(case_id, capture["id"])
             with self.db.connect() as conn:
                 running = conn.execute(
-                    "SELECT 1 FROM runs WHERE case_id=? AND status='running' LIMIT 1",
-                    (case_id,),
+                    "SELECT 1 FROM runs WHERE case_id=? AND status='running' "
+                    "AND (capability!='ingest' OR capture_id IS NULL OR capture_id=("
+                    "SELECT id FROM captures WHERE case_id=? ORDER BY created,rowid LIMIT 1)) LIMIT 1",
+                    (case_id, case_id),
                 ).fetchone()
             # BASELINE_ANALYSIS also rests between intake and investigation (or
             # between completed stages). Only an admitted running run proves
@@ -624,6 +971,15 @@ class Service:
                 for path in normalized.iterdir():
                     if path.relative_to(self.files.root).as_posix() not in known:
                         path.unlink()
+            for capture in Service.get(self, case_id)["captures"]:
+                if capture["status"] == "preparing":
+                    with self.db.connect() as conn:
+                        conn.execute(
+                            "UPDATE captures SET status='needs_attention',"
+                            "last_error='service_interrupted',updated=? WHERE id=?",
+                            (now(), capture["id"]),
+                        )
+                    self.cleanup_capture_ingest(case_id, capture["id"])
             incoming = directory / "analyzer" / "incoming"
             if incoming.exists():
                 self.remove_tree(incoming)

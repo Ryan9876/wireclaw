@@ -70,6 +70,58 @@ export interface paths {
         patch: operations["rename_case_api_cases__case_id__patch"];
         trace?: never;
     };
+    "/api/cases/{case_id}/captures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Capture */
+        post: operations["create_capture_api_cases__case_id__captures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/captures/{capture_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Capture */
+        delete: operations["remove_capture_api_cases__case_id__captures__capture_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Capture */
+        patch: operations["update_capture_api_cases__case_id__captures__capture_id__patch"];
+        trace?: never;
+    };
+    "/api/cases/{case_id}/captures/{capture_id}/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Capture Data */
+        put: operations["capture_data_api_cases__case_id__captures__capture_id__data_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cases/{case_id}/capture": {
         parameters: {
             query?: never;
@@ -339,6 +391,47 @@ export interface components {
             /** Tcp Stream */
             tcp_stream?: number | null;
         };
+        /**
+         * CaptureNetworkSubtype
+         * @enum {string}
+         */
+        CaptureNetworkSubtype: "Firewall" | "Router" | "Switch" | "Load balancer" | "Proxy" | "Wireless" | "Other network device";
+        /** CaptureResponse */
+        CaptureResponse: {
+            /** Id */
+            id: string;
+            /** Case Id */
+            case_id: string;
+            /** Capture Name */
+            capture_name: string;
+            /** Display Name */
+            display_name: string | null;
+            /** Original Artifact Id */
+            original_artifact_id: string | null;
+            /** Sha256 */
+            sha256: string | null;
+            /** Bytes */
+            bytes: number | null;
+            vantage_type: components["schemas"]["CaptureVantage"];
+            vantage_subtype: components["schemas"]["CaptureNetworkSubtype"] | null;
+            status: components["schemas"]["CaptureStatus"];
+            /** Last Error */
+            last_error: string | null;
+            /** Created */
+            created: string;
+            /** Updated */
+            updated: string;
+        };
+        /**
+         * CaptureStatus
+         * @enum {string}
+         */
+        CaptureStatus: "waiting" | "preparing" | "analyzing" | "analyzed" | "correlating" | "needs_attention";
+        /**
+         * CaptureVantage
+         * @enum {string}
+         */
+        CaptureVantage: "unknown" | "client" | "network" | "server" | "other";
         /** CaseResponse */
         CaseResponse: {
             /** Id */
@@ -365,6 +458,8 @@ export interface components {
             quality: string | null;
             /** Last Error */
             last_error: string | null;
+            /** Captures */
+            captures: components["schemas"]["CaptureResponse"][];
             /** History */
             history: components["schemas"]["HistoryResponse"][];
             /** Runs */
@@ -378,6 +473,14 @@ export interface components {
             /** Provider Mode */
             provider_mode: string;
             ai_status: components["schemas"]["AIStatusResponse"];
+        };
+        /** CreateCapture */
+        CreateCapture: {
+            /** Capture Name */
+            capture_name: string;
+            /** @default unknown */
+            vantage_type: components["schemas"]["CaptureVantage"];
+            vantage_subtype?: components["schemas"]["CaptureNetworkSubtype"] | null;
         };
         /** CreateCase */
         CreateCase: {
@@ -527,6 +630,13 @@ export interface components {
             evidence_ids: string[];
             /** Created */
             created: string;
+        };
+        /** UpdateCapture */
+        UpdateCapture: {
+            /** Display Name */
+            display_name?: string | null;
+            vantage_type?: components["schemas"]["CaptureVantage"] | null;
+            vantage_subtype?: components["schemas"]["CaptureNetworkSubtype"] | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -964,6 +1074,213 @@ export interface operations {
                         error: {
                             /** @enum {string} */
                             code: "persistence_failure";
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    create_capture_api_cases__case_id__captures_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCapture"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureResponse"];
+                };
+            };
+            /** @description Code-only error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    remove_capture_api_cases__case_id__captures__capture_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionResponse"];
+                };
+            };
+            /** @description Code-only error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    update_capture_api_cases__case_id__captures__capture_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCapture"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureResponse"];
+                };
+            };
+            /** @description Code-only error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
+                };
+            };
+            /** @description Code-only error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    capture_data_api_cases__case_id__captures__capture_id__data_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                capture_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureResponse"];
+                };
+            };
+            /** @description Code-only error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
                         };
                     };
                 };

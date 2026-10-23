@@ -20,7 +20,9 @@ from .models import (
     BridgeGrantResponse,
     CapabilitiesResponse,
     CapabilityRequest,
+    CaptureResponse,
     CaseResponse,
+    CreateCapture,
     CreateCase,
     DeletionResponse,
     EvidenceCaptureRequest,
@@ -30,6 +32,7 @@ from .models import (
     HealthResponse,
     RecentCaseResponse,
     RenameCase,
+    UpdateCapture,
 )
 from .reasoning.followup import answer_followup
 from .storage import ApiError
@@ -106,7 +109,19 @@ class Boundary:
             return await JSONResponse({"error": {"code": "origin_rejected"}}, 403)(
                 scope, receive, send
             )
-        upload = scope["method"] == "POST" and scope["path"].endswith("/capture")
+        parts = scope["path"].strip("/").split("/")
+        upload = (
+            scope["method"] == "POST"
+            and len(parts) == 4
+            and parts[:2] == ["api", "cases"]
+            and parts[3] == "capture"
+        ) or (
+            scope["method"] == "PUT"
+            and len(parts) == 6
+            and parts[:2] == ["api", "cases"]
+            and parts[3] == "captures"
+            and parts[5] == "data"
+        )
         limit = self.policy.analyzer.max_capture_bytes if upload else self.policy.max_json_bytes
         length = headers.get(b"content-length")
         if length is not None:
@@ -265,6 +280,52 @@ def create_app(data_root: Path, policy: Policy | None = None):
             return service().rename(case_id, body.display_name)
 
     @app.post(
+        "/api/cases/{case_id}/captures",
+        status_code=201,
+        response_model=CaptureResponse,
+        responses={"default": code_only_error_response(), 422: code_only_error_response()},
+    )
+    def create_capture(case_id: str, body: CreateCapture):
+        with service().admission():
+            return service().create_capture(case_id, **body.model_dump())
+
+    @app.patch(
+        "/api/cases/{case_id}/captures/{capture_id}",
+        response_model=CaptureResponse,
+        responses={"default": code_only_error_response(), 422: code_only_error_response()},
+    )
+    def update_capture(case_id: str, capture_id: str, body: UpdateCapture):
+        with service().admission():
+            return service().update_capture(
+                case_id, capture_id, **body.model_dump(exclude_unset=True)
+            )
+
+    @app.delete(
+        "/api/cases/{case_id}/captures/{capture_id}",
+        response_model=DeletionResponse,
+        responses={"default": code_only_error_response(), 422: code_only_error_response()},
+    )
+    def remove_capture(case_id: str, capture_id: str):
+        with service().admission():
+            return service().remove_capture(case_id, capture_id)
+
+    @app.put(
+        "/api/cases/{case_id}/captures/{capture_id}/data",
+        response_model=CaptureResponse,
+        responses={"default": code_only_error_response(), 422: code_only_error_response()},
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+                },
+            }
+        },
+    )
+    async def capture_data(case_id: str, capture_id: str, request: Request):
+        return await upload_capture(case_id, request, capture_id)
+
+    @app.post(
         "/api/cases/{case_id}/capture",
         response_model=CaseResponse,
         openapi_extra={
@@ -277,6 +338,10 @@ def create_app(data_root: Path, policy: Policy | None = None):
         },
     )
     async def capture(case_id: str, request: Request):
+        return await upload_capture(case_id, request)
+
+    async def upload_capture(case_id, request, capture_id=None):
+        legacy = capture_id is None
         if request.headers.get("content-type", "").split(";")[0] not in (
             "application/octet-stream",
             "application/vnd.tcpdump.pcap",
@@ -284,7 +349,13 @@ def create_app(data_root: Path, policy: Policy | None = None):
             raise ApiError("capture_content_type_required", 415)
         svc = service()
         with svc.admission():
-            run_id, path = await run_in_threadpool(svc.begin_ingest, case_id)
+            if legacy:
+                run_id, path = await run_in_threadpool(svc.begin_ingest, case_id)
+                capture_id = await run_in_threadpool(svc.ingest_capture_id, case_id, run_id)
+            else:
+                run_id, path = await run_in_threadpool(
+                    svc.begin_capture_ingest, case_id, capture_id
+                )
             try:
                 total = 0
                 with path.open("xb") as stream:
@@ -294,7 +365,11 @@ def create_app(data_root: Path, policy: Policy | None = None):
                             if total > policy.analyzer.max_capture_bytes:
                                 raise ApiError("capture_size_limit", 413)
                             stream.write(chunk)
-                return await run_in_threadpool(svc.ingest, case_id, run_id, path)
+                if legacy:
+                    return await run_in_threadpool(svc.ingest, case_id, run_id, path)
+                return await run_in_threadpool(
+                    svc.ingest_capture, case_id, capture_id, run_id, path
+                )
             except BaseException as error:
                 code = (
                     error.code
@@ -305,8 +380,11 @@ def create_app(data_root: Path, policy: Policy | None = None):
                         else "capture_intake_failed"
                     )
                 )
-                svc.fail(case_id, run_id, code, fatal=True)
-                await run_in_threadpool(svc.cleanup_ingest, case_id)
+                await run_in_threadpool(svc.fail_capture_ingest, case_id, capture_id, run_id, code)
+                if legacy:
+                    await run_in_threadpool(svc.cleanup_ingest, case_id)
+                else:
+                    await run_in_threadpool(svc.cleanup_capture_ingest, case_id, capture_id)
                 raise ApiError(code, 413 if code == "capture_size_limit" else 422) from None
             finally:
                 path.unlink(missing_ok=True)
