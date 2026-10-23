@@ -148,6 +148,7 @@ Task 7: complete after commit (production browser 21 passed; integration 145 pas
 
 ### Correlation provenance follow-up
 
+- Fix commit: `a001ebb` (`fix: bind correlation evidence to matched frames`).
 - The final re-review found that a packet match inherited the first eight evidence IDs per capture, which could cite unrelated evidence in larger cases.
 - RED: a new unit regression put the actual SYN evidence after twelve unrelated records; it failed because correlation provenance did not include the matched-frame records.
 - Ruling: correlation evidence IDs must come from existing evidence records whose `capture_id` matches the source and whose `frame_refs` contain the exact matched frame. Report assembly rejects cross-capture provenance or frame references that do not support the matched descriptor — cost if wrong: some otherwise exact packet correlations may remain unlocalized when analyzer evidence does not cite that frame.
