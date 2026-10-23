@@ -65,6 +65,7 @@ const networkSubtypes = [
   'Other network device',
 ] as const;
 const validFindingId = (id: string) => /^[A-Za-z0-9_.-]{1,128}$/.test(id);
+const validEvidenceId = (id: string) => /^[A-Za-z0-9_.:-]{1,256}$/.test(id);
 const validSHA256 = (value: string) => /^[a-f0-9]{64}$/.test(value);
 const providerModes = [
   'none',
@@ -474,10 +475,7 @@ export const api = {
       body: JSON.stringify({ question }),
       signal,
     });
-    if (
-      !validFollowup(data) ||
-      !data.evidence_ids.every((id) => /^[A-Za-z0-9_.-]{1,256}$/.test(id))
-    )
+    if (!validFollowup(data) || !data.evidence_ids.every(validEvidenceId))
       throw new ApiError('contract_mismatch');
     return data;
   },
@@ -487,7 +485,7 @@ export const api = {
     return data;
   },
   async evidence(id: string, evidenceId: string, signal?: AbortSignal): Promise<Evidence> {
-    if (!/^[A-Za-z0-9_.-]{1,256}$/.test(evidenceId)) throw new ApiError('invalid_evidence_id');
+    if (!validEvidenceId(evidenceId)) throw new ApiError('invalid_evidence_id');
     const data = await request(`${casePath(id)}/evidence/${encodeURIComponent(evidenceId)}`, {
       signal,
     });

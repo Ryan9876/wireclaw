@@ -192,7 +192,13 @@ def _grounded_fallback(report: dict, allowed_ids: set[str], contract: dict) -> F
         (
             value.strip()
             for value in limitations
-            if isinstance(value, str) and value.strip() and len(value) <= 400
+            if (
+                isinstance(value, str)
+                and value.strip()
+                and len(value) <= 400
+                and " " in value.strip()
+                and "_" not in value
+            )
         ),
         None,
     )

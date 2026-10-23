@@ -23,6 +23,7 @@ from wireclaw_api.reasoning.followup import (
 )
 from wireclaw_api.reasoning.followup import (
     _attribution_contract,
+    _grounded_fallback,
     _unsafe_attribution,
 )
 
@@ -1239,3 +1240,24 @@ def test_attribution_contract_does_not_upgrade_retransmission_to_physical_loss()
         "Retransmission indicators were observed, but they do not prove physical packet loss.",
         contract,
     )
+
+
+def test_grounded_fallback_omits_machine_only_report_limitation_codes():
+    evidence_id = f"ev_{'a' * 64}_analyze_tcp_establishment_stream0:{'b' * 32}"
+    report = {
+        "conclusion": {
+            "statement": "The matched captures support server/listener-side timing.",
+            "evidence_ids": [evidence_id],
+        },
+        "limitations": ["capture_drops"],
+    }
+    contract = {
+        "path_less_likely": False,
+        "listener_timing": True,
+        "application_established": False,
+    }
+
+    fallback = _grounded_fallback(report, {evidence_id}, contract)
+
+    assert "capture_drops" not in fallback.answer
+    assert fallback.evidence_ids == [evidence_id]

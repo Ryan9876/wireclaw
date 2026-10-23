@@ -211,6 +211,22 @@ describe('stateless follow-up client', () => {
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ question: 'Why?' }) }),
     );
   });
+  it('accepts case-local evidence IDs scoped to a secondary capture', async () => {
+    const evidenceId = `ev_${'a'.repeat(64)}_analyze_tcp_health_stream0:${'b'.repeat(32)}`;
+    const answer = {
+      answer: 'The matched captures support this timing.',
+      evidence_ids: [evidenceId],
+    };
+    const fetch = vi.fn().mockResolvedValue(response(answer));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(api.followup(supported.case.id, 'Where was the delay?')).resolves.toEqual(answer);
+
+    const evidence = structuredClone(supported.evidence[0]);
+    evidence.id = evidenceId;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(evidence)));
+    await expect(api.evidence(supported.case.id, evidenceId)).resolves.toEqual(evidence);
+  });
   it.each(['', ' '.repeat(5), 'x'.repeat(2001)])(
     'rejects invalid question before network access',
     async (question) => {
