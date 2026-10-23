@@ -44,6 +44,26 @@ def _sanitize(value):
     return value
 
 
+def _report_evidence_ids(value) -> set[str]:
+    evidence_ids = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "evidence_ids" and isinstance(item, list):
+                evidence_ids.update(value for value in item if isinstance(value, str))
+            elif key == "capture_evidence_ids" and isinstance(item, dict):
+                for capture_ids in item.values():
+                    if isinstance(capture_ids, list):
+                        evidence_ids.update(
+                            value for value in capture_ids if isinstance(value, str)
+                        )
+            else:
+                evidence_ids.update(_report_evidence_ids(item))
+    elif isinstance(value, list):
+        for item in value:
+            evidence_ids.update(_report_evidence_ids(item))
+    return evidence_ids
+
+
 def answer_followup(service, case_id: str, question: str) -> FollowupResponse:
     case = service.get(case_id)
     if case["state"] != State.COMPLETE:
@@ -96,11 +116,14 @@ def answer_followup(service, case_id: str, question: str) -> FollowupResponse:
             {key: item[key] for key in fields if key in item}
             for item in report.get(collection, [])[: policy.max_reasoning_evidence_items]
         ]
+    cited_evidence_ids = _report_evidence_ids(report)
     context = {
         "case_id": case_id,
         "symptom": projection["symptom"],
         "report": _sanitize(normalized_report),
-        "evidence": _sanitize(projection["evidence"]),
+        "evidence": _sanitize(
+            [item for item in projection["evidence"] if item["id"] in cited_evidence_ids]
+        ),
         "question": question,
     }
     context_json = json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False)

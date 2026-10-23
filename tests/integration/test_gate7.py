@@ -1774,6 +1774,61 @@ def test_followup_uses_only_normalized_active_case_context(tmp_path, monkeypatch
             assert sentinel not in requests[0].context_json
 
 
+def test_followup_context_contains_report_cited_evidence_only(tmp_path, monkeypatch):
+    client, service, case_id, requests = followup_client(tmp_path, monkeypatch)
+    with client:
+        existing = service.evidence_records(case_id)[0]
+        with service.db.connect() as conn:
+            row = conn.execute(
+                "SELECT run_id,capture_id FROM evidence WHERE case_id=? AND id=?",
+                (case_id, existing["id"]),
+            ).fetchone()
+            uncited_ids = []
+            for index in range(12):
+                record = dict(existing)
+                record["id"] = f"ev_uncited_followup_{index}"
+                record["summary"] = "unrelated qualification evidence " + ("x" * 1200)
+                uncited_ids.append(record["id"])
+                conn.execute(
+                    "INSERT INTO evidence(case_id,id,record,run_id,capture_id) VALUES(?,?,?,?,?)",
+                    (
+                        case_id,
+                        record["id"],
+                        json.dumps(record),
+                        row["run_id"],
+                        row["capture_id"],
+                    ),
+                )
+
+        report = service.report(case_id)
+        report_citations = set()
+
+        def collect_citations(value):
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if key == "evidence_ids" and isinstance(item, list):
+                        report_citations.update(item)
+                    elif key == "capture_evidence_ids" and isinstance(item, dict):
+                        for ids in item.values():
+                            if isinstance(ids, list):
+                                report_citations.update(ids)
+                    else:
+                        collect_citations(item)
+            elif isinstance(value, list):
+                for item in value:
+                    collect_citations(item)
+
+        collect_citations(report)
+        assert report_citations
+        response = client.post(
+            f"/api/cases/{case_id}/followups", json={"question": "What is concluded?"}
+        )
+        assert response.status_code == 200, response.text
+        supplied_ids = {item["id"] for item in json.loads(requests[0].context_json)["evidence"]}
+        assert report_citations <= supplied_ids
+        assert not (set(uncited_ids) & supplied_ids)
+
+
 def test_followup_request_excludes_previous_turns(tmp_path, monkeypatch):
     client, _, case_id, requests = followup_client(tmp_path, monkeypatch)
     with client:
