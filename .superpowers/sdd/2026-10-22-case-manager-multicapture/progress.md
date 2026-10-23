@@ -133,6 +133,7 @@ Task 7: complete after commit (production browser 21 passed; integration 145 pas
 
 ### Task 8 whole-branch review fix pass
 
+- Fix-pass commit: `afb9797` (`fix: address multi-capture qualification review`).
 - Review range: `443b6279a4b82d1531fcce939337faad6f3e3966` through `5b7fe6945107b44fab63528f904b1ab0cb449f44`. The first whole-branch review identified eight Important findings and two Minor findings; see the retained review diff under `.superpowers/sdd/2026-10-22-case-manager-multicapture/`.
 - Fixed false cross-flow localization by grouping SYN/SYN-ACK observations by a canonical initiating tuple and sequence epoch and validating packet identity across sources. Added regression for packets from different TCP flows.
 - Fixed secondary capture coverage by running baseline and diagnostics for each uploaded source. Evidence serialization now includes capture ownership consistently in first and cached capability responses; capture-local stream IDs remain scoped in candidate ranking.
