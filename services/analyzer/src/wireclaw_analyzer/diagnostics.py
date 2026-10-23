@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 from enum import Enum
 from itertools import pairwise
 from statistics import median
+from typing import TypedDict
 
 from . import normalize
 from .diagnostic_fields import EXTRA_FIELDS
@@ -33,6 +34,25 @@ class Capability(Enum):
 
 
 HTTP_TIMING = "analyze_http_timing"
+
+
+class TcpCorrelationObservation(TypedDict):
+    capture_id: str
+    frame: int
+    time: Decimal
+    src: str
+    dst: str
+    src_port: int
+    dst_port: int
+    tcp_stream: int
+    syn: bool
+    ack: bool
+    rst: bool
+    fin: bool
+    seq_raw: int | None
+    ack_raw: int | None
+    payload_len: int | None
+    timing_regression: bool
 
 
 @dataclass(frozen=True)
@@ -302,6 +322,53 @@ def packets(text: str, maximum: int, limits: DiagnosticLimits, capture_id=None) 
             if any(frame > len(base_rows) for frame in row["fields"][field]):
                 raise AnalyzerError("invalid_diagnostic_output")
     return base_rows
+
+
+def tcp_correlation_observations(
+    rows: list[dict], capture_id: str
+) -> list[TcpCorrelationObservation]:
+    """Project validated diagnostic rows to a small internal TCP-only contract."""
+    if not isinstance(capture_id, str) or not 1 <= len(capture_id) <= 64:
+        raise AnalyzerError("invalid_capture_id")
+    observations = []
+    for row in rows:
+        if (
+            row.get("transport") != "tcp"
+            or row.get("unsupported_diagnostic_layer")
+            or row.get("malformed")
+            or any(
+                row.get(key) is None
+                for key in ("frame", "src", "dst", "src_port", "dst_port", "stream")
+            )
+        ):
+            continue
+        fields = row.get("fields", {})
+        sequence = fields.get("tcp.seq_raw", [])
+        acknowledgment = fields.get("tcp.ack_raw", [])
+        payload = fields.get("tcp.len", [])
+        if any(len(values) > 1 for values in (sequence, acknowledgment, payload)):
+            continue
+        observations.append(
+            {
+                "capture_id": capture_id,
+                "frame": row["frame"],
+                "time": row["time"],
+                "src": row["src"],
+                "dst": row["dst"],
+                "src_port": row["src_port"],
+                "dst_port": row["dst_port"],
+                "tcp_stream": row["stream"],
+                "syn": bool(row.get("syn")),
+                "ack": bool(row.get("ack")),
+                "rst": flag(row, "tcp.flags.reset"),
+                "fin": flag(row, "tcp.flags.fin"),
+                "seq_raw": sequence[0] if sequence else None,
+                "ack_raw": acknowledgment[0] if acknowledgment else None,
+                "payload_len": payload[0] if payload else None,
+                "timing_regression": bool(row.get("timing_regression")),
+            }
+        )
+    return observations
 
 
 def first(row, field):

@@ -109,6 +109,76 @@ def test_structural_parser_bounds_and_occurrences():
     assert not d.Index(nested).tcp
 
 
+def test_tcp_correlation_projection_preserves_validated_handshake_observations():
+    rows = parse(
+        line(
+            **{
+                "tcp.flags.syn": "1",
+                "tcp.flags.ack": "0",
+                "tcp.seq_raw": "4294967290",
+                "tcp.ack_raw": "0",
+                "tcp.len": "0",
+            }
+        ),
+        line(
+            2,
+            ".01",
+            **{
+                "tcp.flags.syn": "1",
+                "tcp.flags.ack": "1",
+                "tcp.seq_raw": "17",
+                "tcp.ack_raw": "4294967291",
+            },
+        ),
+    )
+    observations = d.tcp_correlation_observations(rows, "capture-a")
+    assert observations[0] == {
+        "capture_id": "capture-a",
+        "frame": 1,
+        "time": Decimal("0"),
+        "src": "192.0.2.1",
+        "dst": "192.0.2.2",
+        "src_port": 50000,
+        "dst_port": 443,
+        "tcp_stream": 0,
+        "syn": True,
+        "ack": False,
+        "rst": False,
+        "fin": False,
+        "seq_raw": 4294967290,
+        "ack_raw": 0,
+        "payload_len": 0,
+        "timing_regression": False,
+    }
+
+
+def test_tcp_correlation_projection_withholds_quoted_and_nested_packets():
+    quoted = line(
+        **{
+            "frame.protocols": "eth:ip:icmp:ip:tcp",
+            "tcp.stream": "0",
+            "tcp.srcport": "50000",
+            "tcp.dstport": "443",
+            "tcp.seq_raw": "100",
+            "ip.src": "192.0.2.1,192.0.2.2",
+        }
+    )
+    nested = line(
+        2,
+        ".01",
+        **{
+            "frame.protocols": "eth:ip:gre:ip:tcp",
+            "tcp.stream": "0",
+            "tcp.srcport": "50000",
+            "tcp.dstport": "443",
+            "tcp.seq_raw": "100",
+            "ip.src": "192.0.2.1,192.0.2.2",
+        },
+    )
+    rows = parse(quoted, nested)
+    assert d.tcp_correlation_observations(rows, "capture-a") == []
+
+
 def test_http_timing_requires_correlated_http_semantics_and_measures_request_wait():
     request = {
         "frame": 4,

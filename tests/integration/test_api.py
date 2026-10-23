@@ -978,6 +978,66 @@ def test_each_capture_analysis_persists_runs_artifacts_and_evidence_with_its_cap
             )
 
 
+def test_tcp_correlation_uses_observations_extracted_from_independent_captures(environment):
+    from wireclaw_api.correlation import correlate_tcp
+
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        client_capture = add_capture(client, case_id, "client.pcap", vantage_type="client")
+        server_capture = add_capture(client, case_id, "server.pcap", vantage_type="server")
+        unrelated = add_capture(client, case_id, "other.pcap", vantage_type="unknown")
+        capture_rows = []
+        for capture, fixture_name in (
+            (client_capture, "clean_tcp"),
+            (server_capture, "clean_tcp"),
+            (unrelated, "mixed_protocols"),
+        ):
+            uploaded = put_capture(client, case_id, capture["id"], fixtures[fixture_name]).json()
+            service = client.app.state.service
+            service.execute_capture_analysis(case_id, capture["id"])
+            analyzer = service.analyzer(case_id, capture["id"])
+            observations = analyzer.tcp_correlation_observations(uploaded["sha256"], capture["id"])
+            if fixture_name == "clean_tcp":
+                assert observations
+                first = observations[0]
+                assert first["capture_id"] == capture["id"]
+                assert first["frame"] == 1
+                assert (first["src"], first["dst"], first["src_port"], first["dst_port"]) == (
+                    "192.0.2.1",
+                    "192.0.2.2",
+                    50000,
+                    443,
+                )
+                assert first["syn"] is True
+                assert first["ack"] is False
+                assert first["seq_raw"] is not None
+                assert first["ack_raw"] is not None
+                assert first["payload_len"] == 0
+                assert first["time"] is not None
+                assert any(row["syn"] and row["ack"] for row in observations)
+            capture_rows.append(
+                {
+                    **capture,
+                    "original_artifact_id": uploaded["original_artifact_id"],
+                    "observations": observations,
+                }
+            )
+        correlated = correlate_tcp(capture_rows, [])
+        json.dumps(correlated, allow_nan=False)
+        assert correlated
+        assert all(
+            set(row["capture_ids"]) == {client_capture["id"], server_capture["id"]}
+            for row in correlated
+        )
+        assert all(row["matching_strength"] == "exact_packet_signature" for row in correlated)
+        assert all(row["matched_frames"] for row in correlated)
+        assert all(len(row["source_artifact_ids"]) == 2 for row in correlated)
+        assert all(all(row["source_artifact_ids"]) for row in correlated)
+        assert all(row["clock_alignment"]["matched_count"] >= 3 for row in correlated)
+        assert all(row["clock_alignment"]["usable"] for row in correlated)
+
+
 @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
 def test_plural_capture_ownership_and_unknown_ids(environment, method):
     root, _ = environment

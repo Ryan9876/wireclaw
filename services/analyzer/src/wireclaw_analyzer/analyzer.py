@@ -154,6 +154,19 @@ class Analyzer:
             diagnostics.DiagnosticRequest(capture_id, diagnostics.HTTP_TIMING, tcp_stream),
         )
 
+    def tcp_correlation_observations(
+        self, capture_sha256: str, capture_id: str | None = None
+    ) -> list[dict]:
+        """Return bounded internal packet observations via the validated parser."""
+        path = self.store.verify(capture_sha256)
+        rows = diagnostics.packets(
+            self.runner.run(Operation.DIAGNOSTICS, path),
+            self.store.limits.max_packets,
+            self.diagnostic_limits,
+            capture_sha256,
+        )
+        return diagnostics.tcp_correlation_observations(rows, capture_id or capture_sha256)
+
     def _diagnose(self, capture_id, request=None, *, include_http_timing=False):
         baseline = self._baseline(capture_id)
         path = self.store.verify(capture_id)
