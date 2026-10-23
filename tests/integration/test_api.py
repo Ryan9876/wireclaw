@@ -1425,14 +1425,14 @@ def test_capture_review_primary_becomes_analyzed_when_legacy_investigation_compl
         assert upload(client, case_id, fixtures["clean_tcp"]).status_code == 200
         secondary = add_capture(client, case_id)
         assert put_capture(client, case_id, secondary["id"], fixtures["healthy"]).status_code == 200
-        before = client.get(f"/api/cases/{case_id}").json()
         response = client.post(f"/api/cases/{case_id}/investigate")
         assert response.status_code == 200, response.text
         completed = response.json()
         assert completed["state"] == "COMPLETE"
         assert completed["captures"][0]["status"] == "analyzed"
-        assert completed["captures"][1] == before["captures"][1]
+        assert completed["captures"][1]["status"] == "analyzed"
         assert sorted(run["capability"] for run in completed["runs"]) == [
+            "baseline",
             "baseline",
             "diagnostics",
             "ingest",

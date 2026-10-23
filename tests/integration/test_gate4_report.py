@@ -237,3 +237,49 @@ def test_vantage_relabel_recomputes_cross_vantage_report_without_reextracting_pa
         assert (
             client.get(f"/api/cases/{case_id}/report").json()["cross_vantage"]["correlations"] == []
         )
+
+
+def test_investigate_analyzes_new_secondary_capture_and_rebuilds_localized_report(tmp_path):
+    delayed_handshake = timed_pcap(handshake(step=3_200_000))
+    with _client(tmp_path / "data") as client:
+        created = client.post("/api/cases", json={"symptom": "slow connection"})
+        case_id = created.json()["id"]
+        first = client.post(
+            f"/api/cases/{case_id}/capture",
+            content=delayed_handshake,
+            headers={"content-type": "application/octet-stream"},
+        )
+        assert first.status_code == 200, first.text
+        first_capture = first.json()["captures"][0]
+        assert (
+            client.patch(
+                f"/api/cases/{case_id}/captures/{first_capture['id']}",
+                json={"vantage_type": "client"},
+            ).status_code
+            == 200
+        )
+        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+
+        second = client.post(
+            f"/api/cases/{case_id}/captures",
+            json={"capture_name": "server.pcap", "vantage_type": "server"},
+        ).json()
+        uploaded = client.put(
+            f"/api/cases/{case_id}/captures/{second['id']}/data",
+            content=delayed_handshake,
+            headers={"content-type": "application/octet-stream"},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        assert uploaded.json()["status"] == "analyzing"
+        primary_run_ids = {run["id"] for run in client.get(f"/api/cases/{case_id}").json()["runs"]}
+
+        completed = client.post(f"/api/cases/{case_id}/investigate")
+        assert completed.status_code == 200, completed.text
+        captures = completed.json()["captures"]
+        assert [capture["status"] for capture in captures] == ["analyzed", "analyzed"]
+        runs_after = completed.json()["runs"]
+        assert primary_run_ids.issubset({run["id"] for run in runs_after})
+        assert len(runs_after) == len(primary_run_ids) + 1
+        report = client.get(f"/api/cases/{case_id}/report").json()
+        assert report["cross_vantage"]["support"] == "stronger"
+        assert any(item["category"] == "tcp.server_response_delay" for item in report["findings"])

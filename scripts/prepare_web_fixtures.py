@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests/fixtures"))
 from generate import generate as baseline  # noqa: E402
 from generate_gate2 import generate as diagnostics  # noqa: E402
+from generate_gate2 import handshake, timed_pcap  # noqa: E402
 
 
 def main():
@@ -23,12 +24,15 @@ def main():
     fixtures = ROOT / "apps/web/tests/fixtures"
     fixtures.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="wireclaw-web-fixtures-") as temporary:
-        directory = Path(temporary)
+        directory = Path(temporary).resolve()
         gate1 = baseline(directory / "baseline")
         gate2 = diagnostics(directory / "diagnostics")
+        delayed_handshake = timed_pcap(handshake(step=3_200_000))
         for name, content in {**gate1, **gate2}.items():
             (captures / f"{name}.pcap").write_bytes(content)
         (captures / "malformed.pcap").write_bytes(b"this is not a packet capture")
+        (captures / "client_vantage.pcap").write_bytes(delayed_handshake)
+        (captures / "server_vantage.pcap").write_bytes(delayed_handshake)
         scenarios = {
             "supported": ("a" * 32, "application is slow", gate2["high_rtt"]),
             "insufficient": ("b" * 32, "application is slow", gate2["clean_tcp"]),

@@ -12,7 +12,9 @@ from .investigation import build_investigation_result
 from .providers.openai_compatible import embedded_runtime_available
 from .reasoning import persistence
 from .reasoning.loop import NEXT_EVIDENCE, run_loop
-from .storage import encode
+from .service import Service as Gate3Service
+from .service import now
+from .storage import ApiError, encode
 
 
 class Service(Gate6Service):
@@ -166,7 +168,50 @@ class Service(Gate6Service):
         previous_session = getattr(self, "_reasoning_session_id", None)
         self._reasoning_session_id = persistence.new_session_id()
         try:
-            return Gate4Service.investigate(self, case_id)
+            from .models import State
+
+            before = self.get(case_id)
+            primary_id = before["captures"][0]["id"] if before["captures"] else None
+            pending = [
+                capture
+                for capture in before["captures"]
+                if capture["id"] != primary_id
+                and capture["original_artifact_id"]
+                and capture["status"] != "analyzed"
+            ]
+            already_complete = before["state"] == State.COMPLETE
+            if pending and already_complete:
+                # A newly added source needs analysis; preserve the completed primary run.
+                pass
+            elif pending:
+                # Run primary analysis without assembling an intermediate report.
+                Gate3Service.investigate(self, case_id)
+            else:
+                # Keep the established Gate 4 path for single capture and ordinary reruns.
+                return Gate4Service.investigate(self, case_id)
+
+            for capture in pending:
+                try:
+                    self.execute_capture_analysis(case_id, capture["id"])
+                except ApiError as error:
+                    with self.db.connect() as conn:
+                        conn.execute(
+                            "UPDATE captures SET status='needs_attention',last_error=?,updated=? "
+                            "WHERE case_id=? AND id=?",
+                            (error.code, now(), case_id, capture["id"]),
+                        )
+                else:
+                    with self.db.connect() as conn:
+                        conn.execute(
+                            "UPDATE captures SET status='analyzed',last_error=NULL,updated=? "
+                            "WHERE case_id=? AND id=?",
+                            (now(), case_id, capture["id"]),
+                        )
+
+            if already_complete:
+                self.transition(case_id, State.BASELINE_ANALYSIS)
+                self.transition(case_id, State.INVESTIGATING)
+            return self._assemble_report(case_id)
         finally:
             self._reasoning_session_id = previous_session
 

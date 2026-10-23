@@ -101,3 +101,20 @@ Task 5: complete (commit `b0b63d8 feat: localize issues with cross-vantage evide
 - Added persistent lower-left Case Manager with 1–4 capture rows, size/status, Unknown/Client/Network/Server/Other vantage, network subtype, add/drop, max-4 UI boundary, remove confirmation, and in-session collapse. Mounted it outside the report feed. Composer attachments now upload into the active case. Metadata changes call only PATCH and refresh; they never upload the file.
 - Task 6 verification: `cd apps/web && npm test` — 129 passed (then a focused 5-test CaseManager rerun after adding the four-capture limit check). `npm run format:check`, `npm run lint`, and `npm run typecheck` all passed.
 - Limitation: adding a capture uses the existing investigate endpoint after intake to run deterministic analysis and refresh the report; the API remains authoritative for concurrent max-capture admission.
+
+Task 6: complete (commit `371491e feat: add persistent multi-capture case manager`; 130 frontend unit tests passed at final Task 7 verification; web lint/format/typecheck passed).
+
+## Task 7 execution
+
+- RED: production-browser workflow initially exposed stale generated report validation, incorrect mobile report reachability, report recompute timing, and secondary capture admission races; a new API integration regression showed secondary captures stayed `analyzing` after investigation.
+- Implemented Gate 7 analysis of pending uploaded secondary sources. Initial multi-capture investigations analyze primary and pending secondary sources before one report; adding a source to a completed case preserves primary runs and analyzes only the new source. Failed secondary analysis is marked `needs_attention` with safe error code.
+- Updated generated report contract for the existing `cross_vantage` report result. E2E fixtures use physically resolved temporary roots to satisfy root confinement on macOS. Mobile workflow collapses Case Manager before report interactions.
+- Ruling: Initial multi-capture investigations analyze primary and every uploaded secondary before one report; after COMPLETE, added sources are analyzed while completed primary runs are reused. This avoids unnecessary extraction and preserves the existing single-capture Gate 4 flow; a failed secondary remains `needs_attention` and primary evidence can still report.
+- Ruling: At 390px, users can collapse the Case Manager bottom sheet to reach report content; the browser workflow exercises this layout behavior.
+- Ruling: E2E fixture prep resolves the temporary data root physically because macOS `/var` symlinks are rejected by the strict root confinement check; this is limited to test fixture location.
+- GREEN: production browser suite — `21 passed`; frontend unit — `130 passed`; `npm run lint`, `npm run format:check`, `npm run typecheck` passed.
+- GREEN: `PATH=/Applications/Wireshark.app/Contents/MacOS:$PATH .venv/bin/pytest -q tests/integration/test_gate4_report.py tests/integration/test_gate7.py tests/integration/test_api.py` — 145 passed, 1 existing Starlette deprecation warning.
+- Ruff check, Ruff format check, and `git diff --check` passed.
+- Limitation: synthetic client/server fixture captures carry the same deterministic handshake and do not model independent clock skew, NAT, or middlebox ambiguity; those remain unqualified by this workflow.
+
+Task 7: complete after commit (production browser 21 passed; integration 145 passed; frontend 130 passed; lint/format/typecheck/Ruff/diff checks passed).

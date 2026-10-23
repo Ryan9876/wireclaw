@@ -14,6 +14,70 @@ export type Report = {
   conclusion: Conclusion;
   time_attribution?: TimeAttribution | null;
   findings: Finding[];
+  cross_vantage?: {
+    /**
+     * @maxItems 500
+     */
+    correlations: {
+      [k: string]: unknown;
+    }[];
+    observed_capture_count: number;
+    support: 'unchanged' | 'stronger';
+    /**
+     * @maxItems 16
+     */
+    limitations:
+      | []
+      | [string]
+      | [string, string]
+      | [string, string, string]
+      | [string, string, string, string]
+      | [string, string, string, string, string]
+      | [string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string, string, string]
+      | [string, string, string, string, string, string, string, string, string, string, string, string, string, string]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string
+        ]
+      | [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string
+        ];
+  };
   /**
    * @maxItems 8
    */

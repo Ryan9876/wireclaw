@@ -437,6 +437,98 @@ for (const width of [1440, 390]) {
 }
 
 // These regressions exercise the compiled UI and real case/report/evidence API.
+
+test('multi-capture manager correlates, relabels, removes, and enforces four captures', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const id = await analyze(page, 'client_vantage');
+  await expect(
+    page.getByRole('heading', { name: "Here's what I found", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('Vantage for client_vantage.pcap').selectOption('client');
+  await expect(page.getByRole('button', { name: 'Add capture' })).toBeEnabled();
+  await page
+    .getByLabel('Choose captures to add')
+    .setInputFiles(resolve(captures, 'server_vantage.pcap'));
+  await expect(page.getByText('2/4 captures')).toBeVisible();
+  await expect(page.getByText('Analyzed').first()).toBeVisible();
+  await page.getByLabel('Vantage for server_vantage.pcap').selectOption('server');
+  const hasServerDelay = async () => {
+    const response = await request.get(`/api/cases/${id}/report`);
+    if (!response.ok()) return false;
+    const report = await response.json();
+    return (
+      report.findings?.some(
+        (finding: { category: string }) => finding.category === 'tcp.server_response_delay',
+      ) ?? false
+    );
+  };
+  await expect.poll(hasServerDelay).toBe(true);
+  const beforeRelabel = await (await request.get(`/api/cases/${id}/report`)).json();
+  expect(beforeRelabel.cross_vantage.support).toBe('stronger');
+  let uploadCount = 0;
+  page.on('request', (event) => {
+    if (event.method() === 'PUT' && new URL(event.url()).pathname.endsWith('/data')) uploadCount++;
+  });
+  await page.getByLabel('Vantage for server_vantage.pcap').selectOption('other');
+  await expect.poll(hasServerDelay).toBe(false);
+  expect(uploadCount).toBe(0);
+  await expect
+    .poll(async () => {
+      const response = await request.get(`/api/cases/${id}/report`);
+      if (!response.ok()) return null;
+      return (await response.json()).cross_vantage?.support ?? null;
+    })
+    .toBe('unchanged');
+  await page.getByLabel('Vantage for server_vantage.pcap').selectOption('server');
+  await expect.poll(hasServerDelay).toBe(true);
+  const serverRow = page.getByRole('listitem').filter({ hasText: 'server_vantage.pcap' });
+  await serverRow.getByRole('button', { name: 'Remove server_vantage.pcap' }).click();
+  const removeDialog = page.getByRole('alertdialog', { name: 'Remove capture?' });
+  await removeDialog.getByRole('button', { name: 'Remove capture' }).click();
+  await expect(page.getByText('1/4 captures')).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get(`/api/cases/${id}/report`)).json()).cross_vantage.support,
+    )
+    .toBe('unchanged');
+  expect((await (await request.get(`/api/cases/${id}`)).json()).state).toBe('COMPLETE');
+
+  await page
+    .getByLabel('Choose captures to add')
+    .setInputFiles([
+      resolve(captures, 'server_vantage.pcap'),
+      resolve(captures, 'server_vantage.pcap'),
+      resolve(captures, 'server_vantage.pcap'),
+    ]);
+  await expect(page.getByText('4/4 captures')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Add capture' })).toBeDisabled();
+  await expect
+    .poll(async () => {
+      const current = await (await request.get(`/api/cases/${id}`)).json();
+      return (
+        current.state === 'COMPLETE' &&
+        current.captures.every((capture: { status: string }) => capture.status === 'analyzed')
+      );
+    })
+    .toBe(true);
+  const rejected = await request.post(`/api/cases/${id}/captures`, {
+    data: { capture_name: 'fifth.pcap', vantage_type: 'unknown' },
+  });
+  expect(rejected.status()).toBe(409);
+  expect(await rejected.json()).toEqual({ error: { code: 'capture_count_limit' } });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('complementary', { name: 'Case Manager' })).toBeVisible();
+  await noOverflow(page);
+  await axe(page);
+  await page.screenshot({ path: resolve(visuals, 'multi-capture-mobile.png'), fullPage: true });
+  await request.delete(`/api/cases/${id}`);
+});
+
 test('production header logo loads from the fixed same-origin asset route', async ({
   page,
   request,
@@ -775,6 +867,7 @@ for (const width of [1440, 390]) {
     ).toBeVisible();
     const report = await (await request.get(`/api/cases/${id}/report`)).json();
     if (width === 390) {
+      await page.getByRole('button', { name: 'Collapse Case Manager' }).click();
       await page.getByText('Technical report details', { exact: true }).click();
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
       const reportDetails = await page.locator('.report-technical').boundingBox();
