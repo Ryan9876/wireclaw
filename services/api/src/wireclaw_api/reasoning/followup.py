@@ -29,7 +29,10 @@ SYSTEM_INSTRUCTION = (
     "evidence_ids (an array of supplied evidence IDs). Cite evidence for every substantive answer. "
     "If the available evidence cannot answer, explicitly say 'The available evidence cannot answer "
     "this question.' and explain what additional evidence is needed; only then may evidence_ids be "
-    "empty. Do not return markdown fences, analysis, or think text. This explanation is "
+    "empty. The deterministic report is authoritative; do not strengthen its certainty or "
+    "specific attribution. Less likely does not mean ruled out, and server-side timing does not by "
+    "itself identify application processing. Retransmission indicators do not prove physical packet "
+    "loss. Do not return markdown fences, analysis, or think text. This explanation is "
     "non-authoritative."
 )
 

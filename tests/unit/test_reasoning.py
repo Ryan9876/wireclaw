@@ -71,6 +71,14 @@ def test_followup_instruction_requires_concise_plain_language():
         assert required in instruction
 
 
+def test_followup_instruction_preserves_deterministic_attribution_strength():
+    instruction = FOLLOWUP_SYSTEM_INSTRUCTION.lower()
+    assert "the deterministic report is authoritative" in instruction
+    assert "do not strengthen its certainty" in instruction
+    assert "less likely does not mean ruled out" in instruction
+    assert "retransmission indicators do not prove physical packet loss" in instruction
+
+
 def test_provider_timeout_from_environment_defaults_to_60_and_reads_120(monkeypatch):
     for key in (
         "WIRECLAW_PUBLIC_PORT",
