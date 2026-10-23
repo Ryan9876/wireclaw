@@ -95,7 +95,12 @@ def answer_followup(service, case_id: str, question: str) -> FollowupResponse:
     }
     for key in ("conclusion", "time_attribution", "limitations", "recommended_next_evidence"):
         if key in report:
-            normalized_report[key] = report[key]
+            if key == "conclusion" and isinstance(report[key], dict):
+                normalized_report[key] = {
+                    field: value for field, value in report[key].items() if field != "fault_domains"
+                }
+            else:
+                normalized_report[key] = report[key]
     for collection, fields in (
         (
             "findings",
@@ -106,14 +111,13 @@ def answer_followup(service, case_id: str, question: str) -> FollowupResponse:
                 "statement",
                 "confidence",
                 "epistemic_class",
-                "fault_domains",
                 "evidence_ids",
                 "limitations",
                 "alternate_explanations",
                 "recommended_validation",
             ),
         ),
-        ("remaining_hypotheses", ("statement", "fault_domains", "evidence_ids", "next_evidence")),
+        ("remaining_hypotheses", ("statement", "evidence_ids", "next_evidence")),
     ):
         normalized_report[collection] = [
             {key: item[key] for key in fields if key in item}

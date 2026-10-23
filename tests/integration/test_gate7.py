@@ -1926,9 +1926,14 @@ def test_followup_rejects_unknown_and_cross_case_evidence_ids(tmp_path, monkeypa
             assert_followup_error(client, case_id, 502, "followup_response_invalid")
 
 
-def test_followup_context_contains_completed_conclusion_and_uncertainty(tmp_path, monkeypatch):
+def test_followup_context_uses_conclusion_without_internal_fault_domain_labels(
+    tmp_path, monkeypatch
+):
     client, service, case_id, requests = followup_client(tmp_path, monkeypatch)
     with client:
+        report = service.report(case_id)
+        report["conclusion"]["fault_domains"] = ["server_application"]
+        service.save_report(case_id, report)
         assert (
             client.post(
                 f"/api/cases/{case_id}/followups", json={"question": "What is concluded?"}
@@ -1937,7 +1942,10 @@ def test_followup_context_contains_completed_conclusion_and_uncertainty(tmp_path
         )
         report = service.report(case_id)
         projected = json.loads(requests[0].context_json)["report"]
-        assert projected["conclusion"] == report["conclusion"]
+        assert projected["conclusion"]["statement"] == report["conclusion"]["statement"]
+        assert projected["conclusion"]["evidence_ids"] == report["conclusion"]["evidence_ids"]
+        assert "fault_domains" not in projected["conclusion"]
+        assert all("fault_domains" not in item for item in projected["findings"])
         assert (
             projected["remaining_hypotheses"][0]["statement"]
             == report["remaining_hypotheses"][0]["statement"]
