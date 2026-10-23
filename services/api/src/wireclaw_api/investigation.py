@@ -1431,13 +1431,57 @@ def build_investigation_result(
     evidence_map = {
         item["id"]: item for item in evidence if isinstance(item.get("id"), str) and item.get("id")
     }
-    valid_correlations = [
-        item
-        for item in (correlations or [])[:500]
-        if isinstance(item, dict)
-        and isinstance(item.get("evidence_ids"), list)
-        and set(item["evidence_ids"]).issubset(evidence_map)
-    ]
+    valid_correlations = []
+    for item in (correlations or [])[:500]:
+        if not isinstance(item, dict):
+            continue
+        capture_ids = item.get("capture_ids")
+        capture_evidence_ids = item.get("capture_evidence_ids")
+        evidence_ids = item.get("evidence_ids")
+        if (
+            not isinstance(capture_ids, list)
+            or len(capture_ids) != 2
+            or not all(isinstance(capture_id, str) for capture_id in capture_ids)
+            or not isinstance(capture_evidence_ids, dict)
+            or not isinstance(evidence_ids, list)
+            or not all(isinstance(evidence_id, str) for evidence_id in evidence_ids)
+        ):
+            continue
+        cited_ids = set()
+        provenance_valid = True
+        matched_frames = item.get("matched_frames")
+        if not isinstance(matched_frames, list) or not matched_frames:
+            continue
+        for capture_id in capture_ids:
+            source_ids = capture_evidence_ids.get(capture_id)
+            if not isinstance(source_ids, list) or not source_ids:
+                provenance_valid = False
+                break
+            for evidence_id in source_ids:
+                record = evidence_map.get(evidence_id) if isinstance(evidence_id, str) else None
+                if not record or record.get("capture_id") != capture_id:
+                    provenance_valid = False
+                    break
+                cited_ids.add(evidence_id)
+            if not provenance_valid:
+                break
+            for descriptor in matched_frames:
+                packet = descriptor.get(capture_id) if isinstance(descriptor, dict) else None
+                frame = packet.get("frame") if isinstance(packet, dict) else None
+                if (
+                    type(frame) is not int
+                    or frame <= 0
+                    or not any(
+                        frame in evidence_map[evidence_id].get("frame_refs", [])
+                        for evidence_id in source_ids
+                    )
+                ):
+                    provenance_valid = False
+                    break
+            if not provenance_valid:
+                break
+        if provenance_valid and cited_ids == set(evidence_ids):
+            valid_correlations.append(item)
     localized = localize_tcp_correlations(valid_correlations)
     stream_index = _by_stream(evidence)
     families = _families(symptom)

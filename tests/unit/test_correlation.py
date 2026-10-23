@@ -36,6 +36,47 @@ def test_correlate_tcp_matches_exact_bidirectional_flow_observations():
     assert result[0]["vantages"] == ["client", "server"]
 
 
+def test_correlation_provenance_uses_evidence_linked_to_each_matched_frame():
+    client = {
+        "id": "client-id",
+        "vantage_type": "client",
+        "observations": [packet(99, 10.0, "192.0.2.1", "192.0.2.2", 50000, 443, "S", 100)],
+    }
+    server = {
+        "id": "server-id",
+        "vantage_type": "server",
+        "observations": [packet(199, 10.2, "192.0.2.1", "192.0.2.2", 50000, 443, "S", 100)],
+    }
+    evidence = [
+        *(
+            {
+                "id": f"client-unrelated-{index:02d}",
+                "capture_id": "client-id",
+                "frame_refs": [index + 1],
+            }
+            for index in range(12)
+        ),
+        {"id": "client-syn", "capture_id": "client-id", "frame_refs": [99]},
+        *(
+            {
+                "id": f"server-unrelated-{index:02d}",
+                "capture_id": "server-id",
+                "frame_refs": [index + 101],
+            }
+            for index in range(12)
+        ),
+        {"id": "server-syn", "capture_id": "server-id", "frame_refs": [199]},
+    ]
+
+    result = correlate_tcp([client, server], evidence)
+
+    assert result[0]["capture_evidence_ids"] == {
+        "client-id": ["client-syn"],
+        "server-id": ["server-syn"],
+    }
+    assert result[0]["evidence_ids"] == ["client-syn", "server-syn"]
+
+
 def test_correlate_tcp_does_not_match_same_ports_with_different_sequence():
     captures = [
         {

@@ -136,7 +136,15 @@ def test_real_packet_identity_alignment_allows_a_delayed_return_path_handshake()
                 "observations": server_packets,
             },
         ],
-        [],
+        [
+            {
+                "id": f"{source}-frame-{packet_row['frame']}",
+                "capture_id": source,
+                "frame_refs": [packet_row["frame"]],
+            }
+            for source, packet_rows in (("client", client_packets), ("server", server_packets))
+            for packet_row in packet_rows
+        ],
     )
     assert correlations
     assert all(item["clock_alignment"]["usable"] for item in correlations)
@@ -195,6 +203,7 @@ def test_deterministic_report_exposes_correlation_provenance_and_localized_findi
     evidence = [
         {
             "id": evidence_id,
+            "capture_id": "client" if evidence_id.endswith("client") else "server",
             "category": "analyze_tcp_establishment",
             "epistemic_class": "derived",
             "source": {
@@ -204,7 +213,15 @@ def test_deterministic_report_exposes_correlation_provenance_and_localized_findi
             },
             "scope": {"tcp_stream": 0},
             "value": {"state": "established"},
-            "frame_refs": [1, 3],
+            "frame_refs": [
+                8
+                if evidence_id == "ev-syn_ack-client"
+                else 10
+                if evidence_id == "ev-syn_ack-server"
+                else 1
+                if evidence_id.endswith("client")
+                else 3
+            ],
             "limitations": [],
         }
         for evidence_id in (
@@ -230,10 +247,100 @@ def test_deterministic_report_exposes_correlation_provenance_and_localized_findi
     assert result["cross_vantage"]["support"] == "stronger"
 
 
+def test_correlations_with_evidence_owned_by_the_wrong_capture_are_rejected():
+    correlations = [matched("syn", 0.0, 0.01), matched("syn_ack", 3.22, 3.21)]
+    evidence = [
+        {
+            "id": evidence_id,
+            "capture_id": "client" if evidence_id.endswith("client") else "server",
+            "category": "analyze_tcp_establishment",
+            "epistemic_class": "derived",
+            "frame_refs": [
+                8
+                if evidence_id == "ev-syn_ack-client"
+                else 10
+                if evidence_id == "ev-syn_ack-server"
+                else 1
+                if evidence_id.endswith("client")
+                else 3
+            ],
+        }
+        for correlation in correlations
+        for evidence_id in correlation["evidence_ids"]
+    ]
+    next(item for item in evidence if item["id"] == "ev-syn_ack-server")["capture_id"] = "client"
+
+    result = build_investigation_result(
+        case_id="case-1",
+        symptom="slow connection",
+        evidence=evidence,
+        correlations=correlations,
+        capture_count=2,
+    )
+
+    assert not any(
+        descriptor.get("server", {}).get("ack") is True
+        for correlation in result["cross_vantage"]["correlations"]
+        for descriptor in correlation.get("matched_frames", [])
+    )
+    assert not any(
+        finding["category"] in {"tcp.server_response_delay", "tcp.return_path_delay"}
+        for finding in result["findings"]
+    )
+
+
+def test_correlations_without_evidence_for_the_matched_frame_are_rejected():
+    correlations = [matched("syn", 0.0, 0.01), matched("syn_ack", 3.22, 3.21)]
+    evidence = [
+        {
+            "id": evidence_id,
+            "capture_id": "client" if evidence_id.endswith("client") else "server",
+            "category": "analyze_tcp_establishment",
+            "epistemic_class": "derived",
+            "frame_refs": [
+                8
+                if evidence_id == "ev-syn_ack-client"
+                else 10
+                if evidence_id == "ev-syn_ack-server"
+                else 1
+                if evidence_id.endswith("client")
+                else 3
+            ],
+        }
+        for correlation in correlations
+        for evidence_id in correlation["evidence_ids"]
+    ]
+    next(item for item in evidence if item["id"] == "ev-syn_ack-server")["frame_refs"] = [99]
+
+    result = build_investigation_result(
+        case_id="case-1",
+        symptom="slow connection",
+        evidence=evidence,
+        correlations=correlations,
+        capture_count=2,
+    )
+
+    assert not any(
+        descriptor.get("server", {}).get("ack") is True
+        for correlation in result["cross_vantage"]["correlations"]
+        for descriptor in correlation.get("matched_frames", [])
+    )
+    assert not any(
+        finding["category"] in {"tcp.server_response_delay", "tcp.return_path_delay"}
+        for finding in result["findings"]
+    )
+
+
 def test_correlated_packets_without_usable_localization_are_not_reported_as_unmatched():
     correlations = [matched("syn", 0.0, 0.01)]
-    correlations[0]["evidence_ids"] = ["ev-one"]
-    evidence = [{"id": "ev-one", "category": "analyze_tcp_establishment"}]
+    evidence = [
+        {
+            "id": evidence_id,
+            "capture_id": "client" if evidence_id.endswith("client") else "server",
+            "frame_refs": [1 if evidence_id.endswith("client") else 3],
+        }
+        for evidence_id in correlations[0]["evidence_ids"]
+    ]
     result = build_investigation_result(
         case_id="case-1",
         symptom="slow connection",

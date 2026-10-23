@@ -288,6 +288,20 @@ def test_investigate_analyzes_new_secondary_capture_and_rebuilds_localized_repor
         assert len(runs_after) == len(primary_run_ids) + 2
         report = client.get(f"/api/cases/{case_id}/report").json()
         assert report["cross_vantage"]["support"] == "stronger"
+        correlations = report["cross_vantage"]["correlations"]
+        assert correlations
+        for correlation in correlations:
+            for capture_id in correlation["capture_ids"]:
+                frame_descriptor = correlation["matched_frames"][0][capture_id]
+                provenance_ids = correlation["capture_evidence_ids"][capture_id]
+                assert provenance_ids
+                assert any(
+                    frame_descriptor["frame"]
+                    in client.app.state.service.evidence(case_id, evidence_id=evidence_id)[
+                        "frame_refs"
+                    ]
+                    for evidence_id in provenance_ids
+                )
         finding = next(
             item for item in report["findings"] if item["category"] == "tcp.server_response_delay"
         )

@@ -145,3 +145,12 @@ Task 7: complete after commit (production browser 21 passed; integration 145 pas
 - Focused backend regression group (`test_localization`, `test_correlation`, `test_investigation`, API, Gate 4, Gate 7) had 178 passes before the wording-only regression was corrected; the corrected test passed separately. The pinned core suite subsequently passed all 600 unit/integration tests.
 - Confirmed limitations: exact-head GitHub CI remains unavailable because the configured `gh` token is invalid; candidate-bound hands-on qualification remains unavailable because embedded-AI release assets are not staged. No candidate has been packaged or frozen.
 - Final whole-branch re-review of the corrected commit range remains required before declaring the implementation review-ready. Task 8 remains incomplete until external qualification gates are satisfied.
+
+### Correlation provenance follow-up
+
+- The final re-review found that a packet match inherited the first eight evidence IDs per capture, which could cite unrelated evidence in larger cases.
+- RED: a new unit regression put the actual SYN evidence after twelve unrelated records; it failed because correlation provenance did not include the matched-frame records.
+- Ruling: correlation evidence IDs must come from existing evidence records whose `capture_id` matches the source and whose `frame_refs` contain the exact matched frame. Report assembly rejects cross-capture provenance or frame references that do not support the matched descriptor — cost if wrong: some otherwise exact packet correlations may remain unlocalized when analyzer evidence does not cite that frame.
+- Implemented a bounded frame-to-evidence index, frame-specific `capture_evidence_ids`, and report validation of source ownership plus frame-reference coverage. The synthetic client/server integration now proves each emitted correlation citation covers its corresponding matched frame.
+- GREEN: correlation/localization unit and actual multi-capture integration checks — 19 passed before the added wrong-frame negative case; both new provenance regressions then passed. Pinned Docker `core-test` after the correction — 603 passed, one existing Starlette deprecation warning. Ruff check/format and `git diff --check` passed.
+- One final whole-branch re-review after this provenance correction is pending. Exact-head CI and candidate-bound hands-on qualification remain blocked by the previously recorded external prerequisites; no package candidate was made or frozen.

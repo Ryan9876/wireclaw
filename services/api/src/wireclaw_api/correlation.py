@@ -53,7 +53,18 @@ def _signature(packet):
 
 def correlate_tcp(captures: list[dict], evidence: list[dict]) -> list[dict]:
     """Return exact packet-signature matches; timing never establishes identity."""
-    del evidence  # Packet observations are supplied on capture rows by the analyzer adapter.
+    evidence_by_capture_frame = defaultdict(set)
+    for item in evidence:
+        capture_id = item.get("capture_id")
+        evidence_id = item.get("id")
+        frame_refs = item.get("frame_refs")
+        if not isinstance(capture_id, str) or not isinstance(evidence_id, str):
+            continue
+        if not isinstance(frame_refs, list):
+            continue
+        for frame in frame_refs:
+            if type(frame) is int and frame > 0:
+                evidence_by_capture_frame[(capture_id, frame)].add(evidence_id)
     indexed = []
     for capture in captures:
         by_signature = defaultdict(list)
@@ -103,15 +114,22 @@ def correlate_tcp(captures: list[dict], evidence: list[dict]) -> list[dict]:
             ]
         )
         for _, left, right in matches:
+            matched_by_capture = {
+                capture_ids[0]: sorted(
+                    evidence_by_capture_frame[(capture_ids[0], left[2].get("frame"))]
+                )[:8],
+                capture_ids[1]: sorted(
+                    evidence_by_capture_frame[(capture_ids[1], right[2].get("frame"))]
+                )[:8],
+            }
             correlations.append(
                 {
                     "capture_ids": list(capture_ids),
                     "evidence_ids": sorted(
                         {
                             evidence_id
-                            for capture in (first_capture, second_capture)
-                            for evidence_id in capture.get("evidence_ids", [])[:8]
-                            if isinstance(evidence_id, str) and evidence_id
+                            for values in matched_by_capture.values()
+                            for evidence_id in values
                         }
                     ),
                     "source_artifact_ids": [
@@ -125,10 +143,7 @@ def correlate_tcp(captures: list[dict], evidence: list[dict]) -> list[dict]:
                             str(second_capture.get("vantage_type", "unknown")),
                         }
                     ),
-                    "capture_evidence_ids": {
-                        capture_ids[0]: list(first_capture.get("evidence_ids", [])[:8]),
-                        capture_ids[1]: list(second_capture.get("evidence_ids", [])[:8]),
-                    },
+                    "capture_evidence_ids": matched_by_capture,
                     "capture_vantages": {
                         capture_ids[0]: first_capture.get("vantage_type", "unknown"),
                         capture_ids[1]: second_capture.get("vantage_type", "unknown"),

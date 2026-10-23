@@ -62,12 +62,21 @@ class Service(Gate6Service):
             return []
         with self.db.connect() as conn:
             evidence_rows = conn.execute(
-                "SELECT id,capture_id FROM evidence WHERE case_id=? AND capture_id IS NOT NULL",
-                (case_id,),
+                "SELECT id,capture_id,record FROM evidence WHERE case_id=? "
+                "AND capture_id IS NOT NULL ORDER BY capture_id,id LIMIT ?",
+                (case_id, self.policy.max_evidence_items),
             ).fetchall()
-        evidence_by_capture = {}
+        evidence = []
         for row in evidence_rows:
-            evidence_by_capture.setdefault(row["capture_id"], []).append(row["id"])
+            try:
+                item = json.loads(row["record"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(item, dict):
+                continue
+            item.setdefault("id", row["id"])
+            item.setdefault("capture_id", row["capture_id"])
+            evidence.append(item)
         captures = []
         for capture in case["captures"]:
             if not capture["original_artifact_id"] or not capture["sha256"]:
@@ -126,11 +135,10 @@ class Service(Gate6Service):
             captures.append(
                 {
                     **capture,
-                    "evidence_ids": sorted(evidence_by_capture.get(capture["id"], []))[:8],
                     "observations": observations,
                 }
             )
-        return correlate_tcp(captures, [])
+        return correlate_tcp(captures, evidence)
 
     def update_capture(self, case_id, capture_id, **changes):
         before = self.get_capture(case_id, capture_id)
