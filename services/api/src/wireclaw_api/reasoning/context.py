@@ -193,6 +193,7 @@ def build_context(
         "findings": [
             {
                 "category": item["category"],
+                "statement": _safe_text(str(item.get("statement", ""))[:1024]),
                 "evidence_ids": item["evidence_ids"],
                 "fault_domains": item.get("fault_domains", []),
             }

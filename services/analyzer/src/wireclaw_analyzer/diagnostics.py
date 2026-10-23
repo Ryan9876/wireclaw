@@ -39,7 +39,7 @@ HTTP_TIMING = "analyze_http_timing"
 class TcpCorrelationObservation(TypedDict):
     capture_id: str
     frame: int
-    time: Decimal
+    time: float
     src: str
     dst: str
     src_port: int
@@ -352,7 +352,7 @@ def tcp_correlation_observations(
             {
                 "capture_id": capture_id,
                 "frame": row["frame"],
-                "time": row["time"],
+                "time": float(row["time"]),
                 "src": row["src"],
                 "dst": row["dst"],
                 "src_port": row["src_port"],

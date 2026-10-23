@@ -283,6 +283,32 @@ def test_context_is_canonical_allowlisted_and_removes_path_credentials():
     assert "Do not emit analysis or <think> text" in SYSTEM_INSTRUCTION
 
 
+def test_provider_context_can_explain_report_localization_without_packet_observation_dump():
+    context, _ = build_context(
+        case={"symptom": "slow", "captures": []},
+        evidence=[],
+        report={
+            "capture_quality": {},
+            "findings": [
+                {
+                    "category": "tcp.server_response_delay",
+                    "statement": "The server response followed 3.2 seconds after the SYN.",
+                    "evidence_ids": ["ev_client", "ev_server"],
+                    "fault_domains": ["server_application"],
+                    "affected_scope": {"matched_frames": [{"server": {"frame": 9, "time": 3.2}}]},
+                }
+            ],
+            "remaining_hypotheses": [],
+        },
+        capabilities=[],
+        max_items=20,
+        limits={"max_steps": 8},
+    )
+    assert "3.2 seconds after the SYN" in context
+    assert '"matched_frames"' not in context
+    assert '"frame":9' not in context
+
+
 def test_capture_credentials_are_removed_from_actual_provider_request_and_audit(monkeypatch):
     captured = []
     OriginalClient = httpx.AsyncClient

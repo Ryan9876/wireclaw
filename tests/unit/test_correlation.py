@@ -64,15 +64,15 @@ def test_reused_tuple_with_new_syn_sequence_keeps_connection_epochs_separate():
         [],
     )
     assert len(result) == 2
-    assert [row["matched_frames"][0] for row in result] == [
+    assert [
         {
-            "client": {"frame": 1, "time": 1.0},
-            "server": {"frame": 9, "time": 1.0},
-        },
-        {
-            "client": {"frame": 5, "time": 5.0},
-            "server": {"frame": 13, "time": 5.0},
-        },
+            key: {"frame": value["frame"], "time": value["time"]}
+            for key, value in row["matched_frames"][0].items()
+        }
+        for row in result
+    ] == [
+        {"client": {"frame": 1, "time": 1.0}, "server": {"frame": 9, "time": 1.0}},
+        {"client": {"frame": 5, "time": 5.0}, "server": {"frame": 13, "time": 5.0}},
     ]
 
 

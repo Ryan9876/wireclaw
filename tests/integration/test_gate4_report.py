@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from generate_gate2 import generate
+from generate_gate2 import generate, handshake, timed_pcap
 from jsonschema import Draft202012Validator
 from wireclaw_analyzer import Analyzer, AnalyzerError
 from wireclaw_api import create_app
@@ -168,3 +168,72 @@ def test_successful_post_complete_capability_rebuilds_report_from_current_eviden
         current_rtt = client.get(f"/api/cases/{case_id}/evidence").json()["evidence"]
         current_rtt = next(item for item in current_rtt if item["category"] == "analyze_rtt")
         assert current_rtt["value"]["median_seconds"] == 0.01
+
+
+def test_vantage_relabel_recomputes_cross_vantage_report_without_reextracting_packets(tmp_path):
+    generate(tmp_path / "fixtures")
+    delayed_handshake = timed_pcap(handshake(step=3_200_000))
+    with _client(tmp_path / "data") as client:
+        created = client.post("/api/cases", json={"symptom": "slow connection"})
+        case_id = created.json()["id"]
+        capture_rows = []
+        for name, vantage in (("client.pcap", "client"), ("server.pcap", "unknown")):
+            capture = client.post(
+                f"/api/cases/{case_id}/captures",
+                json={"capture_name": name, "vantage_type": vantage},
+            ).json()
+            uploaded = client.put(
+                f"/api/cases/{case_id}/captures/{capture['id']}/data",
+                content=delayed_handshake,
+                headers={"content-type": "application/octet-stream"},
+            )
+            assert uploaded.status_code == 200, uploaded.text
+            client.app.state.service.execute_capture_analysis(case_id, capture["id"])
+            capture_rows.append(capture)
+        completed = client.post(f"/api/cases/{case_id}/investigate")
+        assert completed.status_code == 200, completed.text
+        before = client.get(f"/api/cases/{case_id}/report").json()
+        second_id = capture_rows[1]["id"]
+        assert before["cross_vantage"]["correlations"]
+        assert not any(
+            finding["category"] == "tcp.server_response_delay" for finding in before["findings"]
+        )
+        assert (
+            before["cross_vantage"]["correlations"][0]["capture_vantages"][second_id] == "unknown"
+        )
+        run_count = len(client.get(f"/api/cases/{case_id}").json()["runs"])
+
+        with patch.object(
+            Analyzer,
+            "tcp_correlation_observations",
+            side_effect=AssertionError("packet_reextraction"),
+        ):
+            updated = client.patch(
+                f"/api/cases/{case_id}/captures/{second_id}",
+                json={"vantage_type": "server"},
+            )
+        assert updated.status_code == 200, updated.text
+        after = client.get(f"/api/cases/{case_id}/report").json()
+        assert after["cross_vantage"]["correlations"][0]["capture_vantages"][second_id] == "server"
+        localized = next(
+            finding
+            for finding in after["findings"]
+            if finding["category"] == "tcp.server_response_delay"
+        )
+        assert localized["confidence"] == "high"
+        assert "3.2 seconds" in localized["statement"]
+        assert len(client.get(f"/api/cases/{case_id}").json()["runs"]) == run_count
+
+        with patch.object(
+            Analyzer,
+            "tcp_correlation_observations",
+            side_effect=AssertionError("packet_reextraction"),
+        ):
+            removed = client.delete(f"/api/cases/{case_id}/captures/{second_id}")
+        assert removed.status_code == 200, removed.text
+        remaining = client.get(f"/api/cases/{case_id}").json()
+        assert remaining["id"] == case_id
+        assert [capture["id"] for capture in remaining["captures"]] == [capture_rows[0]["id"]]
+        assert (
+            client.get(f"/api/cases/{case_id}/report").json()["cross_vantage"]["correlations"] == []
+        )

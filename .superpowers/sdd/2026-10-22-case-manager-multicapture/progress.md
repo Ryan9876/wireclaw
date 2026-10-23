@@ -72,3 +72,22 @@ Ruling: Task 4 correlation will consume a bounded internal TCP packet-observatio
 - Summary-only correlation was rejected. The internal observation contract is the only Task 3→4 bridge; normal evidence remains summary evidence.
 - GREEN: `tests/unit/test_diagnostics.py tests/unit/test_correlation.py` — 97 passed. API + Gate 7: 140 passed, 1 existing warning. Real multi-capture observation/correlation integration: 1 passed. Gate 2: 71 passed, 3 known local TShark 4.6.9 golden mismatches (`reordered_tcp`, `pmtud_signals`, `test_loss_reordering_expert_classes_and_sequence_union`); these match failures already demonstrated against the pristine Task 2 base in the prior verification record. Ruff check/format and `git diff --check` passed.
 - Limitation: correlation is deterministic packet matching/alignment only; it does not perform localization, merge captures, or persist packet-observation rows. Task 5 owns localization and recomputation.
+
+Task 4: complete (commit `b9b08ac`; analyzer/API/Gate 7 tests and integration results recorded below).
+- Task 4 commit: `b9b08ac feat: correlate tcp across capture vantage points`.
+- Observation-contract ruling: bounded internal packet observations come from validated diagnostic rows; summary-only correlation was rejected. See the ruling above for the full interface correction.
+- Verification: 97 diagnostic/correlation unit tests passed; 140 API/Gate 7 tests passed; actual two-capture extraction/correlation integration passed. Gate 2: 71 passed, 3 local TShark 4.6.9 golden mismatches matched the failures reproduced at the pristine Task 2 base. Ruff, format, and diff checks passed at Task 4 completion.
+
+## Task 5 execution
+
+Ruling: localization requires exact matched TCP handshake observations, usable multi-sample clock alignment, capture-specific evidence provenance, and explicit client/server vantage labels. Unknown placement remains correlated but cannot produce a fault-domain finding — cost if wrong: conservative reports may defer a useful localization until the user labels the capture.
+
+Ruling: Task 5 recomputes a completed report after metadata relabel or source removal without packet re-extraction. If primary removal already reset the case to `BASELINE_ANALYSIS`, reuse that state and advance once to report assembly; the report is immediately recomputed, so the former Task 2 test now expects `COMPLETE` for removal from an already completed case — cost if wrong: clients expecting an intermediate baseline state will instead see the current recomputed report.
+
+- RED: unit localization tests failed before localizer/report interface existed; report integration first proved unknown vantage does not localize and then failed to recompute after relabel; removal regression exposed a duplicate `COMPLETE→BASELINE_ANALYSIS` transition.
+- Implemented exact SYN/SYN-ACK cross-vantage timing findings, return-path delay, evidence/capture/frame provenance, limitations, and support indicator (`stronger` only when deterministic localization exists; otherwise `unchanged`). Added schema contract and bounded finding statements in provider context without packet descriptor dumps.
+- Bounded validated packet observation projections are cached as per-capture internal artifacts to support relabel/removal recompute without parser re-execution. They are not normal evidence records or provider/API finding context. Capture-owned cleanup removes them with their source.
+- RED/GREEN lifecycle regression proves relabel uses cached observations, recalculates the report, removal drops correlation while preserving the case, and completed-primary removal no longer errors.
+- GREEN: `PATH=/Applications/Wireshark.app/Contents/MacOS:$PATH .venv/bin/pytest -q tests/unit/test_localization.py tests/unit/test_reasoning.py tests/integration/test_gate4_report.py tests/integration/test_gate7.py tests/integration/test_api.py` — 202 passed, 1 existing Starlette deprecation warning (91.61s).
+- Ruff check passed; Ruff format check passed (12 changed Python files); `git diff --check` passed.
+- Limitation: no physical packet loss or specific middlebox localization is inferred; this task localizes only the supported SYN/SYN-ACK timing patterns. Unknown vantage and unusable alignment remain unlocalized.

@@ -10,6 +10,24 @@ def _endpoint(ip, port):
     return str(ip), int(port)
 
 
+def _packet_descriptor(packet):
+    return {
+        "frame": packet.get("frame"),
+        "time": float(packet["time"]),
+        "src": packet.get("src"),
+        "dst": packet.get("dst"),
+        "src_port": packet.get("src_port"),
+        "dst_port": packet.get("dst_port"),
+        "syn": bool(packet.get("syn")),
+        "ack": bool(packet.get("ack")),
+        "rst": bool(packet.get("rst")),
+        "fin": bool(packet.get("fin")),
+        "seq_raw": packet.get("seq_raw"),
+        "ack_raw": packet.get("ack_raw"),
+        "payload_len": packet.get("payload_len"),
+    }
+
+
 def _signature(packet):
     source = _endpoint(packet["src"], packet["src_port"])
     destination = _endpoint(packet["dst"], packet["dst_port"])
@@ -88,7 +106,14 @@ def correlate_tcp(captures: list[dict], evidence: list[dict]) -> list[dict]:
             correlations.append(
                 {
                     "capture_ids": list(capture_ids),
-                    "evidence_ids": [],
+                    "evidence_ids": sorted(
+                        {
+                            evidence_id
+                            for capture in (first_capture, second_capture)
+                            for evidence_id in capture.get("evidence_ids", [])[:8]
+                            if isinstance(evidence_id, str) and evidence_id
+                        }
+                    ),
                     "source_artifact_ids": [
                         first_capture.get("original_artifact_id"),
                         second_capture.get("original_artifact_id"),
@@ -100,15 +125,21 @@ def correlate_tcp(captures: list[dict], evidence: list[dict]) -> list[dict]:
                             str(second_capture.get("vantage_type", "unknown")),
                         }
                     ),
+                    "capture_evidence_ids": {
+                        capture_ids[0]: list(first_capture.get("evidence_ids", [])[:8]),
+                        capture_ids[1]: list(second_capture.get("evidence_ids", [])[:8]),
+                    },
+                    "capture_vantages": {
+                        capture_ids[0]: first_capture.get("vantage_type", "unknown"),
+                        capture_ids[1]: second_capture.get("vantage_type", "unknown"),
+                    },
                     "matched_frames": [
                         {
                             capture_ids[0]: {
-                                "frame": left[2].get("frame"),
-                                "time": float(left[2]["time"]),
+                                **_packet_descriptor(left[2]),
                             },
                             capture_ids[1]: {
-                                "frame": right[2].get("frame"),
-                                "time": float(right[2]["time"]),
+                                **_packet_descriptor(right[2]),
                             },
                         }
                     ],

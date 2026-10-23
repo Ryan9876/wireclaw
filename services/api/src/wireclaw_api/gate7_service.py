@@ -1,12 +1,18 @@
 """Gate 7 provider loop layered over the accepted Gate 6 case/report service."""
 
+import json
+import os
+from pathlib import Path
+
 from .config import EMBEDDED_MODEL_ID, effective_ai_status
+from .correlation import correlate_tcp
 from .gate4_service import Service as Gate4Service
 from .gate6_service import Service as Gate6Service
 from .investigation import build_investigation_result
 from .providers.openai_compatible import embedded_runtime_available
 from .reasoning import persistence
 from .reasoning.loop import NEXT_EVIDENCE, run_loop
+from .storage import encode
 
 
 class Service(Gate6Service):
@@ -45,6 +51,117 @@ class Service(Gate6Service):
         # This dispatch reaches the existing typed analyzer boundary only.
         return Gate6Service.capability(self, case_id, request)
 
+    def correlation_records(self, case_id):
+        cached = getattr(self, "_correlation_records_snapshot", None)
+        if cached is not None:
+            return cached
+        case = self.get(case_id)
+        if len(case["captures"]) < 2:
+            return []
+        with self.db.connect() as conn:
+            evidence_rows = conn.execute(
+                "SELECT id,capture_id FROM evidence WHERE case_id=? AND capture_id IS NOT NULL",
+                (case_id,),
+            ).fetchall()
+        evidence_by_capture = {}
+        for row in evidence_rows:
+            evidence_by_capture.setdefault(row["capture_id"], []).append(row["id"])
+        captures = []
+        for capture in case["captures"]:
+            if not capture["original_artifact_id"] or not capture["sha256"]:
+                continue
+            try:
+                with self.db.connect() as conn:
+                    cached_observation = conn.execute(
+                        "SELECT id FROM artifacts WHERE case_id=? AND capture_id=? "
+                        "AND kind='correlation_observations'",
+                        (case_id, capture["id"]),
+                    ).fetchone()
+                if cached_observation:
+                    _, path = self.artifact(case_id, cached_observation["id"])
+                    observations = json.loads(path.read_text(encoding="utf-8"))
+                else:
+                    analyzer = self.analyzer(case_id, capture["id"])
+                    observations = analyzer.tcp_correlation_observations(
+                        capture["sha256"], capture["id"]
+                    )
+                    serialized = encode(observations).encode()
+                    if len(serialized) > self.policy.max_evidence_bytes:
+                        continue
+                    path = self.files.path(
+                        Path("cases")
+                        / case_id
+                        / "normalized"
+                        / f"correlation-{capture['id']}.json",
+                        exists=False,
+                    )
+                    path.parent.mkdir(exist_ok=True)
+                    try:
+                        with path.open("xb") as stream:
+                            stream.write(serialized)
+                            stream.flush()
+                            os.fsync(stream.fileno())
+                        with self.db.connect() as conn:
+                            artifact_id = self.register(
+                                conn,
+                                case_id,
+                                path,
+                                "correlation_observations",
+                                capture["sha256"],
+                            )
+                            conn.execute(
+                                "UPDATE artifacts SET capture_id=? WHERE id=?",
+                                (capture["id"], artifact_id),
+                            )
+                    except BaseException:
+                        path.unlink(missing_ok=True)
+                        raise
+                if not isinstance(observations, list):
+                    continue
+            except Exception:
+                # Cross-capture work is optional; ordinary per-capture evidence remains usable.
+                continue
+            captures.append(
+                {
+                    **capture,
+                    "evidence_ids": sorted(evidence_by_capture.get(capture["id"], []))[:8],
+                    "observations": observations,
+                }
+            )
+        return correlate_tcp(captures, [])
+
+    def update_capture(self, case_id, capture_id, **changes):
+        before = self.get_capture(case_id, capture_id)
+        result = super().update_capture(case_id, capture_id, **changes)
+        changed = any(
+            before.get(field) != result.get(field)
+            for field in ("vantage_type", "vantage_subtype")
+            if field in changes
+        )
+        if changed and self.get(case_id)["state"] == "COMPLETE":
+            from .models import State
+
+            self.transition(case_id, State.BASELINE_ANALYSIS)
+            self.transition(case_id, State.INVESTIGATING)
+            self._assemble_report(case_id)
+            return self.get_capture(case_id, capture_id)
+        return result
+
+    def remove_capture(self, case_id, capture_id):
+        was_complete = self.get(case_id)["state"] == "COMPLETE"
+        result = super().remove_capture(case_id, capture_id)
+        if was_complete and self.get(case_id)["captures"]:
+            from .models import State
+
+            current_state = self.get(case_id)["state"]
+            if current_state == State.COMPLETE:
+                self.transition(case_id, State.BASELINE_ANALYSIS)
+                current_state = State.BASELINE_ANALYSIS
+            if current_state == State.BASELINE_ANALYSIS:
+                self.transition(case_id, State.INVESTIGATING)
+                self._assemble_report(case_id)
+        return result
+
     def investigate(self, case_id):
         previous_session = getattr(self, "_reasoning_session_id", None)
         self._reasoning_session_id = persistence.new_session_id()
@@ -68,12 +185,15 @@ class Service(Gate6Service):
         session_id = getattr(self, "_reasoning_session_id", None) or persistence.new_session_id()
         case = self.get(case_id)
         evidence = self.evidence_records(case_id)
+        correlations = self.correlation_records(case_id)
         deterministic = build_investigation_result(
             case_id=case_id,
             symptom=case["symptom"],
             evidence=evidence,
             analyzer_versions=self.analyzer_versions(case_id),
             max_display_filter_chars=self.policy.max_display_filter_chars,
+            correlations=correlations,
+            capture_count=len(case["captures"]),
         )
         try:
             reasoning, ranking, next_codes = run_loop(self, case_id, deterministic, session_id)
@@ -96,7 +216,11 @@ class Service(Gate6Service):
             # A provider failure after launcher readiness means the owned runtime is
             # no longer healthy for subsequent cases in this Wireclaw process.
             self._embedded_runtime_failure_code = "runtime-unhealthy"
-        super()._assemble_report(case_id)
+        self._correlation_records_snapshot = correlations
+        try:
+            super()._assemble_report(case_id)
+        finally:
+            del self._correlation_records_snapshot
         report = self.report(case_id)
         if reasoning["mode"] == "model_fallback":
             report["limitations"] = list(

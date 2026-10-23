@@ -30,6 +30,21 @@
       "type": "array",
       "items": {"$ref": "#/$defs/finding"}
     },
+    "cross_vantage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correlations", "observed_capture_count", "support", "limitations"],
+      "properties": {
+        "correlations": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {"type": "object", "additionalProperties": true}
+        },
+        "observed_capture_count": {"type": "integer", "minimum": 0, "maximum": 4},
+        "support": {"enum": ["unchanged", "stronger"]},
+        "limitations": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 512}}
+      }
+    },
     "remaining_hypotheses": {
       "type": "array",
       "maxItems": 8,

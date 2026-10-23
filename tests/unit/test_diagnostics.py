@@ -135,7 +135,7 @@ def test_tcp_correlation_projection_preserves_validated_handshake_observations()
     assert observations[0] == {
         "capture_id": "capture-a",
         "frame": 1,
-        "time": Decimal("0"),
+        "time": 0.0,
         "src": "192.0.2.1",
         "dst": "192.0.2.2",
         "src_port": 50000,

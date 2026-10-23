@@ -51,6 +51,9 @@ class Service(Gate3Service):
                 )
             ]
 
+    def correlation_records(self, case_id):
+        return []
+
     def analyzer_versions(self, case_id):
         versions = {}
         with self.db.connect() as conn:
@@ -173,6 +176,8 @@ class Service(Gate3Service):
                 evidence=self.evidence_records(case_id),
                 analyzer_versions=self.analyzer_versions(case_id),
                 max_display_filter_chars=self.policy.max_display_filter_chars,
+                correlations=self.correlation_records(case_id),
+                capture_count=len(case["captures"]),
             )
             self.save_report(case_id, result)
             self.transition(case_id, State.COMPLETE)

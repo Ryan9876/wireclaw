@@ -1280,12 +1280,17 @@ def test_plural_capture_removal_promotes_next_source_for_explicit_investigation(
             )
             assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
         assert put_capture(client, case_id, second["id"], fixtures["healthy"]).status_code == 200
-        assert client.delete(f"/api/cases/{case_id}/captures/{first['id']}").status_code == 200
+        deleted = client.delete(f"/api/cases/{case_id}/captures/{first['id']}")
+        assert deleted.status_code == 200, {
+            "response": deleted.json(),
+            "case": client.get(f"/api/cases/{case_id}").json(),
+        }
         promoted = client.get(f"/api/cases/{case_id}").json()
-        assert promoted["state"] == "BASELINE_ANALYSIS"
+        assert promoted["state"] == ("COMPLETE" if first_uploaded else "BASELINE_ANALYSIS")
         assert promoted["original_id"] == promoted["captures"][0]["original_artifact_id"]
         assert promoted["captures"][0]["id"] == second["id"]
-        assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+        if not first_uploaded:
+            assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
 
 
 def test_plural_capture_delete_database_failure_restores_source(environment):

@@ -23,6 +23,145 @@ MIN_PRIMARY_CONFIDENCE = "medium"
 DEFAULT_MAX_DISPLAY_FILTER_CHARS = 2_048
 
 
+def localize_tcp_correlations(correlations: list[dict]) -> list[dict]:
+    """Derive bounded TCP timing findings only from exact, clock-usable matches."""
+    by_pair = defaultdict(dict)
+    pair_meta = {}
+    pair_matches = defaultdict(list)
+    for correlation in correlations:
+        if correlation.get("matching_strength") != "exact_packet_signature":
+            continue
+        if len(correlation.get("capture_ids", [])) != 2:
+            continue
+        alignment = correlation.get("clock_alignment", {})
+        if not alignment.get("usable") or alignment.get("matched_count", 0) < 3:
+            continue
+        frames = correlation.get("matched_frames", [])
+        if len(frames) != 1:
+            continue
+        pair = tuple(correlation["capture_ids"])
+        capture_evidence = correlation.get("capture_evidence_ids", {})
+        if not all(capture_evidence.get(capture_id) for capture_id in pair):
+            continue
+        pair_matches[pair].append(correlation)
+        descriptors = frames[0]
+        for capture_id in pair:
+            packet = descriptors.get(capture_id)
+            if not isinstance(packet, dict):
+                break
+            is_syn = packet.get("syn") is True and packet.get("ack") is False
+            is_syn_ack = packet.get("syn") is True and packet.get("ack") is True
+            if is_syn:
+                by_pair[pair].setdefault("syn", {})[capture_id] = packet
+            elif is_syn_ack:
+                by_pair[pair].setdefault("syn_ack", {})[capture_id] = packet
+            pair_meta[pair] = correlation
+
+    findings = []
+    for pair, events in by_pair.items():
+        syn = events.get("syn", {})
+        syn_ack = events.get("syn_ack", {})
+        if set(syn) != set(pair) or set(syn_ack) != set(pair):
+            continue
+        vantages = pair_meta[pair].get("capture_vantages", {})
+        client_id = next((item for item in pair if vantages.get(item) == "client"), None)
+        server_id = next((item for item in pair if vantages.get(item) == "server"), None)
+        if client_id is None or server_id is None:
+            continue
+        try:
+            client_syn = float(syn[client_id]["time"])
+            server_syn = float(syn[server_id]["time"])
+            client_syn_ack = float(syn_ack[client_id]["time"])
+            server_syn_ack = float(syn_ack[server_id]["time"])
+            alignment = pair_meta[pair]["clock_alignment"]
+            offset = float(alignment["offset_seconds"])
+            if pair[1] != server_id:
+                offset = -offset
+            server_syn_client_clock = server_syn - offset
+            server_syn_ack_client_clock = server_syn_ack - offset
+            client_delay = client_syn_ack - client_syn
+            server_delay = server_syn_ack - server_syn
+            forward_gap = server_syn_client_clock - client_syn
+            return_gap = client_syn_ack - server_syn_ack_client_clock
+            timing_tolerance = max(0.100, float(alignment.get("uncertainty_seconds") or 0) * 2)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (
+            client_delay < 0
+            or server_delay < 0
+            or forward_gap < -timing_tolerance
+            or return_gap < -timing_tolerance
+        ):
+            continue
+        evidence_ids = sorted(
+            {
+                evidence_id
+                for correlation in correlations
+                if tuple(correlation.get("capture_ids", [])) == pair
+                for evidence_id in correlation.get("evidence_ids", [])
+                if isinstance(evidence_id, str) and evidence_id
+            }
+        )
+        if len(evidence_ids) < 4:
+            continue
+        if (
+            server_delay >= STAGE_DELAY_SECONDS
+            and abs(server_delay - client_delay) <= timing_tolerance
+            and forward_gap <= timing_tolerance
+            and return_gap <= timing_tolerance
+        ):
+            findings.append(
+                {
+                    "category": "tcp.server_response_delay",
+                    "title": "Server response delay observed across capture points",
+                    "statement": (
+                        f"Both client and server captures observed the SYN promptly; the server's SYN-ACK followed about {server_delay:.1f} seconds later. "
+                        "This supports a server/listener-side delay and makes the client-to-server path less likely."
+                    ),
+                    "confidence": "high",
+                    "fault_domains": ["server_application"],
+                    "evidence_ids": evidence_ids,
+                    "capture_ids": list(pair),
+                    "matched_frames": [
+                        frame
+                        for correlation in pair_matches[pair]
+                        for frame in correlation.get("matched_frames", [])
+                    ],
+                    "limitations": [
+                        "Timing is based on exact matched packet observations and usable clock alignment; capture placement and unsampled network devices remain limitations."
+                    ],
+                }
+            )
+        elif (
+            server_delay < STAGE_DELAY_SECONDS
+            and forward_gap <= timing_tolerance
+            and return_gap >= STAGE_DELAY_SECONDS
+        ):
+            findings.append(
+                {
+                    "category": "tcp.return_path_delay",
+                    "title": "Return-path delay observed across capture points",
+                    "statement": (
+                        f"The server capture observed its SYN-ACK after about {server_delay:.1f} seconds, while the client capture observed it after about {client_delay:.1f} seconds. "
+                        "This supports delay on the return path between the capture points."
+                    ),
+                    "confidence": "medium",
+                    "fault_domains": ["network_path"],
+                    "evidence_ids": evidence_ids,
+                    "capture_ids": list(pair),
+                    "matched_frames": [
+                        frame
+                        for correlation in pair_matches[pair]
+                        for frame in correlation.get("matched_frames", [])
+                    ],
+                    "limitations": [
+                        "The captures bound the delay to the return path between their observation points but do not identify a specific device."
+                    ],
+                }
+            )
+    return findings
+
+
 @dataclass(frozen=True)
 class Candidate:
     transport: str
@@ -1215,6 +1354,8 @@ def build_investigation_result(
     evidence: list[dict[str, Any]],
     analyzer_versions: dict[str, str] | None = None,
     max_display_filter_chars: int = DEFAULT_MAX_DISPLAY_FILTER_CHARS,
+    correlations: list[dict] | None = None,
+    capture_count: int = 0,
 ) -> dict[str, Any]:
     """Assemble a deterministic, schema-shaped investigation result.
 
@@ -1222,6 +1363,17 @@ def build_investigation_result(
     """
 
     grouped = _by_category(evidence)
+    evidence_map = {
+        item["id"]: item for item in evidence if isinstance(item.get("id"), str) and item.get("id")
+    }
+    valid_correlations = [
+        item
+        for item in (correlations or [])[:500]
+        if isinstance(item, dict)
+        and isinstance(item.get("evidence_ids"), list)
+        and set(item["evidence_ids"]).issubset(evidence_map)
+    ]
+    localized = localize_tcp_correlations(valid_correlations)
     stream_index = _by_stream(evidence)
     families = _families(symptom)
     quality, quality_limitations, quality_ids = _quality(evidence)
@@ -1237,6 +1389,27 @@ def build_investigation_result(
     findings.extend(_capture_findings(grouped, quality, quality_limitations, quality_ids))
     findings.extend(_dns_findings(grouped, quality, families, max_display_filter_chars))
     findings.extend(_stream_findings(candidates, stream_index, quality, families))
+    for item in localized:
+        findings.append(
+            RuleFinding(
+                96 if item["confidence"] == "high" else 88,
+                item["title"],
+                item["category"],
+                item["confidence"],
+                item["statement"],
+                tuple(item["fault_domains"]),
+                tuple(item["evidence_ids"]),
+                {"capture_ids": item["capture_ids"], "matched_frames": item["matched_frames"]},
+                (
+                    "Capture placement and unobserved dependencies can leave alternate explanations.",
+                ),
+                tuple(item["limitations"]),
+                (
+                    "Validate the same TCP handshake at the listed capture points and compare endpoint logs.",
+                ),
+                "tcp",
+            )
+        )
     findings.sort(
         key=lambda finding: (
             -finding.priority,
@@ -1252,9 +1425,6 @@ def build_investigation_result(
         )
     findings = findings[:MAX_FINDINGS]
 
-    evidence_map = {
-        item["id"]: item for item in evidence if isinstance(item.get("id"), str) and item.get("id")
-    }
     rendered = [
         _finding_dict(number, finding, evidence_map, max_display_filter_chars)
         for number, finding in enumerate(findings, start=1)
@@ -1306,6 +1476,24 @@ def build_investigation_result(
         "conclusion": conclusion,
         "time_attribution": _time_attribution(candidates, stream_index, grouped),
         "findings": rendered,
+        "cross_vantage": {
+            "correlations": valid_correlations,
+            "support": "stronger" if localized else "unchanged",
+            "observed_capture_count": len(
+                {
+                    capture_id
+                    for item in valid_correlations
+                    for capture_id in item.get("capture_ids", [])
+                }
+            ),
+            "limitations": (
+                [
+                    "No exact packet-level cross-capture match was established; per-capture findings remain separate."
+                ]
+                if capture_count > 1 and not localized
+                else []
+            ),
+        },
         "remaining_hypotheses": remaining_hypotheses,
         "limitations": limitations,
         "recommended_next_evidence": recommendations,
