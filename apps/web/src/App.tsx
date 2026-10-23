@@ -9,6 +9,7 @@ import {
   type AIStatus,
 } from './api';
 import { Conversation } from './Conversation';
+import { CaseManager } from './CaseManager';
 import { Dialog } from './Dialog';
 import { EvidenceDrawer } from './EvidenceDrawer';
 import { fileSize, Intake } from './Intake';
@@ -107,6 +108,15 @@ export function App() {
           />
         </div>
       </header>
+      {record && (
+        <CaseManager
+          record={record}
+          busy={locked}
+          onAdd={(files) => void investigation.addCaptures(files)}
+          onUpdate={(captureId, changes) => void investigation.updateCapture(captureId, changes)}
+          onRemove={(captureId) => void investigation.removeCapture(captureId)}
+        />
+      )}
       <main id="main" tabIndex={-1}>
         <h1 className="sr-only">Capture investigation</h1>
         {id && (
@@ -250,10 +260,7 @@ export function App() {
                 caseId={record.id}
                 verified={!busy && !!report}
                 enabled={!!currentAIStatus && currentAIStatus.effective_provider_mode !== 'none'}
-                onAttach={(files) => {
-                  setPendingFiles(files);
-                  investigation.newCase();
-                }}
+                onAttach={(files) => void investigation.addCaptures(files)}
                 onEvidence={(ids) => {
                   if (ids.length) setEvidenceView({ report, ids });
                 }}

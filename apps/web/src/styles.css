@@ -1319,3 +1319,111 @@ main {
     font-size: 10px;
   }
 }
+
+.case-manager {
+  position: fixed;
+  z-index: 20;
+  left: 20px;
+  bottom: 20px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(72vh, 720px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 40px #142d3f26;
+}
+.case-manager-header,
+.case-manager-capture-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.case-manager-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.case-manager-header h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.case-manager-header p,
+.case-manager-capture-heading span,
+.capture-status {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.case-manager-captures {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px;
+}
+.case-manager-capture {
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.case-manager-capture label {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.case-manager-capture select {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 8px;
+  color: var(--ink);
+  background: white;
+}
+.case-manager-capture > button {
+  margin-top: 8px;
+}
+.case-manager-drop {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 13px 14px 14px;
+  padding: 12px;
+  border: 1px dashed #9aaeba;
+  border-radius: 9px;
+  background: #f7fafb;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.case-manager-drop:disabled {
+  opacity: 0.55;
+}
+.case-manager-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #10202b66;
+}
+.case-manager-scrim section {
+  width: min(400px, 100%);
+  padding: 20px;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 18px 60px #0003;
+}
+.case-manager-scrim h3 {
+  margin-top: 0;
+}
+.case-manager.is-collapsed {
+  max-height: none;
+}
+@media (max-width: 620px) {
+  .case-manager {
+    left: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    max-height: min(58vh, 560px);
+  }
+}

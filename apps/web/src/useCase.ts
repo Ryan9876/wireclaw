@@ -144,6 +144,49 @@ export function useCase() {
     });
   }
 
+  async function addCaptures(files: File[]) {
+    const caseId = currentId.current;
+    if (!caseId || !files.length) return;
+    await mutate(async () => {
+      try {
+        for (const file of files.slice(0, 4)) {
+          const capture = await api.createCapture(caseId, file.name);
+          await api.uploadCaptureData(caseId, capture.id, file);
+        }
+        await api.investigate(caseId);
+      } finally {
+        await refresh(caseId);
+      }
+    });
+  }
+
+  async function updateCapture(
+    captureId: string,
+    changes: Parameters<typeof api.updateCapture>[2],
+  ) {
+    const caseId = currentId.current;
+    if (!caseId) return;
+    await mutate(async () => {
+      try {
+        await api.updateCapture(caseId, captureId, changes);
+      } finally {
+        await refresh(caseId);
+      }
+    });
+  }
+
+  async function removeCapture(captureId: string) {
+    const caseId = currentId.current;
+    if (!caseId) return;
+    await mutate(async () => {
+      try {
+        await api.removeCapture(caseId, captureId);
+      } finally {
+        await refresh(caseId);
+      }
+    });
+  }
+
   async function investigate() {
     const caseId = currentId.current;
     if (!caseId) return;
@@ -210,6 +253,9 @@ export function useCase() {
     refresh,
     start,
     resumeUpload,
+    addCaptures,
+    updateCapture,
+    removeCapture,
     investigate,
     remove,
     recover,

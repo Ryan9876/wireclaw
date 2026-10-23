@@ -91,3 +91,13 @@ Ruling: Task 5 recomputes a completed report after metadata relabel or source re
 - GREEN: `PATH=/Applications/Wireshark.app/Contents/MacOS:$PATH .venv/bin/pytest -q tests/unit/test_localization.py tests/unit/test_reasoning.py tests/integration/test_gate4_report.py tests/integration/test_gate7.py tests/integration/test_api.py` — 202 passed, 1 existing Starlette deprecation warning (91.61s).
 - Ruff check passed; Ruff format check passed (12 changed Python files); `git diff --check` passed.
 - Limitation: no physical packet loss or specific middlebox localization is inferred; this task localizes only the supported SYN/SYN-ACK timing patterns. Unknown vantage and unusable alignment remain unlocalized.
+
+Task 5: complete (commit `b0b63d8 feat: localize issues with cross-vantage evidence`; 202 passed in report/reasoning/API/Gate 7 suites; Ruff/format/diff passed).
+
+## Task 6 execution
+
+- RED: new API-client test failed because `api.createCapture` was absent; malformed response test proved arbitrary capture response fields were accepted. New component test failed module resolution because CaseManager did not exist. Updated composer attachment regression failed because the old flow staged a replacement case instead of adding to the active case.
+- Implemented typed plural capture create/upload/update/remove API methods with safe path IDs, bounded metadata validation, and strict response fields. Case parsing already validates `captures` against generated strict `CaseResponse` contract.
+- Added persistent lower-left Case Manager with 1–4 capture rows, size/status, Unknown/Client/Network/Server/Other vantage, network subtype, add/drop, max-4 UI boundary, remove confirmation, and in-session collapse. Mounted it outside the report feed. Composer attachments now upload into the active case. Metadata changes call only PATCH and refresh; they never upload the file.
+- Task 6 verification: `cd apps/web && npm test` — 129 passed (then a focused 5-test CaseManager rerun after adding the four-capture limit check). `npm run format:check`, `npm run lint`, and `npm run typecheck` all passed.
+- Limitation: adding a capture uses the existing investigate endpoint after intake to run deterministic analysis and refresh the report; the API remains authoritative for concurrent max-capture admission.

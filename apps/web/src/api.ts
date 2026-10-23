@@ -12,6 +12,9 @@ import type { Evidence } from './generated/evidence';
 
 export type { Report, Evidence };
 export type Case = components['schemas']['CaseResponse'];
+export type Capture = components['schemas']['CaptureResponse'];
+export type CaptureVantage = components['schemas']['CaptureVantage'];
+export type CaptureNetworkSubtype = components['schemas']['CaptureNetworkSubtype'];
 export type RecentCase = components['schemas']['RecentCaseResponse'];
 export type AIStatus = components['schemas']['AIStatusResponse'];
 export type Followup = components['schemas']['FollowupResponse'];
@@ -51,6 +54,16 @@ export const states = [
 ] as const;
 export const validCaseId = (id: string) => /^[a-f0-9]{32}$/.test(id);
 const validArtifactId = validCaseId;
+const captureVantages = ['unknown', 'client', 'network', 'server', 'other'] as const;
+const networkSubtypes = [
+  'Firewall',
+  'Router',
+  'Switch',
+  'Load balancer',
+  'Proxy',
+  'Wireless',
+  'Other network device',
+] as const;
 const validFindingId = (id: string) => /^[A-Za-z0-9_.-]{1,128}$/.test(id);
 const validSHA256 = (value: string) => /^[a-f0-9]{64}$/.test(value);
 const providerModes = [
@@ -197,6 +210,61 @@ async function getBridgeOrigin(signal?: AbortSignal): Promise<string> {
     throw new ApiError('contract_mismatch');
   return url.origin;
 }
+function capturePath(id: string): string {
+  if (!validCaseId(id)) throw new ApiError('invalid_capture_id');
+  return id;
+}
+function validCaptureResponse(
+  value: unknown,
+  caseId: string,
+  captureId?: string,
+): value is Capture {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<Capture>;
+  const captureFields = [
+    'id',
+    'case_id',
+    'capture_name',
+    'display_name',
+    'original_artifact_id',
+    'sha256',
+    'bytes',
+    'vantage_type',
+    'vantage_subtype',
+    'status',
+    'last_error',
+    'created',
+    'updated',
+  ];
+  if (
+    Object.keys(value).length !== captureFields.length ||
+    Object.keys(value).some((key) => !captureFields.includes(key))
+  )
+    return false;
+  return (
+    validCaseId(item.id ?? '') &&
+    (!captureId || item.id === captureId) &&
+    item.case_id === caseId &&
+    plainName(item.capture_name ?? '', 255) &&
+    (item.display_name === null || typeof item.display_name === 'string') &&
+    (item.original_artifact_id === null ||
+      (typeof item.original_artifact_id === 'string' &&
+        validArtifactId(item.original_artifact_id))) &&
+    (item.sha256 === null || (typeof item.sha256 === 'string' && validSHA256(item.sha256))) &&
+    (item.bytes === null ||
+      (typeof item.bytes === 'number' && Number.isSafeInteger(item.bytes) && item.bytes >= 0)) &&
+    captureVantages.includes(item.vantage_type as (typeof captureVantages)[number]) &&
+    (item.vantage_subtype === null ||
+      networkSubtypes.includes(item.vantage_subtype as (typeof networkSubtypes)[number])) &&
+    ['waiting', 'preparing', 'analyzing', 'analyzed', 'correlating', 'needs_attention'].includes(
+      item.status ?? '',
+    ) &&
+    (item.last_error === null || typeof item.last_error === 'string') &&
+    Number.isFinite(Date.parse(item.created ?? '')) &&
+    Number.isFinite(Date.parse(item.updated ?? ''))
+  );
+}
+
 export const api = {
   async limits(signal?: AbortSignal): Promise<number> {
     const data = (await request('config/capabilities', { signal })) as {
@@ -315,6 +383,74 @@ export const api = {
   },
   async get(id: string, signal?: AbortSignal): Promise<Case> {
     return checkCase(await request(casePath(id), { signal }), id);
+  },
+  async createCapture(
+    id: string,
+    captureName: string,
+    vantageType: CaptureVantage = 'unknown',
+    vantageSubtype?: CaptureNetworkSubtype | null,
+  ): Promise<Capture> {
+    if (!plainName(captureName, 255) || !captureVantages.includes(vantageType))
+      throw new ApiError('invalid_request');
+    if (vantageSubtype != null && !networkSubtypes.includes(vantageSubtype))
+      throw new ApiError('invalid_request');
+    const data = await request(`${casePath(id)}/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        capture_name: captureName.trim(),
+        vantage_type: vantageType,
+        ...(vantageSubtype ? { vantage_subtype: vantageSubtype } : {}),
+      }),
+    });
+    if (!validCaptureResponse(data, id)) throw new ApiError('contract_mismatch');
+    return data as Capture;
+  },
+  async uploadCaptureData(id: string, captureId: string, file: File): Promise<Capture> {
+    const data = await request(`${casePath(id)}/captures/${capturePath(captureId)}/data`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    if (!validCaptureResponse(data, id, captureId)) throw new ApiError('contract_mismatch');
+    return data as Capture;
+  },
+  async updateCapture(
+    id: string,
+    captureId: string,
+    changes: {
+      capture_name?: string;
+      vantage_type?: CaptureVantage;
+      vantage_subtype?: CaptureNetworkSubtype | null;
+    },
+  ): Promise<Capture> {
+    if (
+      !Object.keys(changes).length ||
+      Object.keys(changes).some(
+        (key) => !['capture_name', 'vantage_type', 'vantage_subtype'].includes(key),
+      )
+    )
+      throw new ApiError('invalid_request');
+    if (changes.capture_name !== undefined && !plainName(changes.capture_name, 255))
+      throw new ApiError('invalid_request');
+    if (changes.vantage_type !== undefined && !captureVantages.includes(changes.vantage_type))
+      throw new ApiError('invalid_request');
+    if (changes.vantage_subtype != null && !networkSubtypes.includes(changes.vantage_subtype))
+      throw new ApiError('invalid_request');
+    const data = await request(`${casePath(id)}/captures/${capturePath(captureId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(changes),
+    });
+    if (!validCaptureResponse(data, id, captureId)) throw new ApiError('contract_mismatch');
+    return data as Capture;
+  },
+  async removeCapture(id: string, captureId: string): Promise<Deletion> {
+    const data = await request(`${casePath(id)}/captures/${capturePath(captureId)}`, {
+      method: 'DELETE',
+    });
+    if (!validDeletion(data) || !data.deleted) throw new ApiError('contract_mismatch');
+    return data;
   },
   async upload(id: string, file: File): Promise<Case> {
     return checkCase(

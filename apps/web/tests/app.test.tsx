@@ -1021,16 +1021,26 @@ describe('follow-up recovery and case isolation', () => {
   });
 });
 
-it('uses_validated_file_intake_when_attaching_a_new_capture_from_a_report', async () => {
+it('adds an attached capture to the active case instead of starting a replacement case', async () => {
   openExisting();
+  const capture = {
+    ...supported.case.captures[0],
+    id: 'b'.repeat(32),
+    capture_name: 'next.pcapng',
+  };
+  const createCapture = vi.spyOn(api, 'createCapture').mockResolvedValue(capture);
+  const uploadCaptureData = vi.spyOn(api, 'uploadCaptureData').mockResolvedValue(capture);
+  vi.spyOn(api, 'investigate').mockResolvedValue(supported.case);
   await screen.findByRole('heading', { name: "Here's what I found" });
   await userEvent.upload(
     screen.getByLabelText('Select new capture'),
     new File(['new capture'], 'next.pcapng'),
   );
-  expect(screen.getByText('next.pcapng')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
-  expect(screen.queryByRole('heading', { name: "Here's what I found" })).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(uploadCaptureData).toHaveBeenCalledWith(supported.case.id, capture.id, expect.any(File)),
+  );
+  expect(createCapture).toHaveBeenCalledWith(supported.case.id, 'next.pcapng');
+  expect(window.location.hash).toBe(`#case=${supported.case.id}`);
   expect(api.create).not.toHaveBeenCalled();
 });
 
@@ -1318,5 +1328,48 @@ describe('recent captures', () => {
     expect(api.create).not.toHaveBeenCalled();
     expect(api.upload).not.toHaveBeenCalled();
     expect(api.investigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('persistent Case Manager', () => {
+  it('relabels without uploading and removes one capture while keeping the case', async () => {
+    const value = structuredClone(supported);
+    const second = {
+      ...value.case.captures[0],
+      id: 'b'.repeat(32),
+      capture_name: 'server.pcap',
+      original_artifact_id: 'c'.repeat(32),
+    };
+    value.case.captures.push(second);
+    openExisting(value);
+    const update = vi.spyOn(api, 'updateCapture').mockResolvedValue({
+      ...second,
+      vantage_type: 'server',
+    });
+    const remove = vi.spyOn(api, 'removeCapture').mockImplementation(async (_caseId, captureId) => {
+      current.captures = current.captures.filter((capture) => capture.id !== captureId);
+      return {
+        deleted: true,
+        original_deleted: true,
+        registered_artifacts_deleted: true,
+        cleanup_pending: false,
+      };
+    });
+    await screen.findByRole('heading', { name: "Here's what I found" });
+    await userEvent.selectOptions(screen.getByLabelText('Vantage for server.pcap'), 'server');
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(supported.case.id, second.id, {
+        vantage_type: 'server',
+        vantage_subtype: null,
+      }),
+    );
+    expect(api.upload).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove server.pcap' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Remove capture?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove capture' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(supported.case.id, second.id));
+    expect(await screen.findByRole('heading', { name: "Here's what I found" })).toBeVisible();
+    expect(screen.queryByText('server.pcap')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Capture aaaaaaaa').length).toBeGreaterThan(0);
   });
 });

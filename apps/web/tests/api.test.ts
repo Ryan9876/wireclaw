@@ -296,3 +296,55 @@ describe('recent capture metadata client', () => {
     });
   });
 });
+
+describe('multi-capture API contract', () => {
+  it('creates, uploads, updates, and removes a selected capture', async () => {
+    const capture = supported.case.captures[0];
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(response(capture))
+      .mockResolvedValueOnce(response({ ...capture, bytes: 17 }))
+      .mockResolvedValueOnce(response({ ...capture, vantage_type: 'server' }))
+      .mockResolvedValueOnce(
+        response({
+          deleted: true,
+          original_deleted: true,
+          registered_artifacts_deleted: true,
+          cleanup_pending: false,
+        }),
+      );
+    vi.stubGlobal('fetch', fetch);
+    const created = await api.createCapture(supported.case.id, 'server.pcap');
+    const file = new File(['packet bytes'], 'server.pcap');
+    await api.uploadCaptureData(supported.case.id, created.id, file);
+    await api.updateCapture(supported.case.id, created.id, { vantage_type: 'server' });
+    await api.removeCapture(supported.case.id, created.id);
+    expect(fetch.mock.calls.map((call) => call[0])).toEqual([
+      `/api/cases/${supported.case.id}/captures`,
+      `/api/cases/${supported.case.id}/captures/${created.id}/data`,
+      `/api/cases/${supported.case.id}/captures/${created.id}`,
+      `/api/cases/${supported.case.id}/captures/${created.id}`,
+    ]);
+    expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'PUT', body: file });
+    expect(fetch.mock.calls[2][1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ vantage_type: 'server' }),
+    });
+    expect(fetch.mock.calls[3][1].method).toBe('DELETE');
+  });
+
+  it('rejects unrecognized fields on capture responses', async () => {
+    const capture = { ...supported.case.captures[0], raw_path: '/private/capture' };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(capture)));
+    await expect(api.createCapture(supported.case.id, 'trace.pcap')).rejects.toThrow(
+      'contract_mismatch',
+    );
+  });
+
+  it('rejects cases with malformed capture rows', async () => {
+    const invalid = structuredClone(supported.case);
+    invalid.captures[0].vantage_type = 'invented';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(invalid)));
+    await expect(api.get(supported.case.id)).rejects.toThrow('contract_mismatch');
+  });
+});
