@@ -226,7 +226,7 @@ def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
         )
     db = Database(files)
     with db.connect() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
         captures = [dict(row) for row in conn.execute("SELECT * FROM captures")]
         assert len(captures) == 1
         assert (
@@ -333,6 +333,53 @@ def test_v3_capture_migration_preserves_source_and_safe_provenance(tmp_path):
         assert service.get(case_id)["original_id"] == original_id
     finally:
         service.close()
+
+
+def test_v4_evidence_migration_allows_same_evidence_id_per_capture(tmp_path):
+    files = Files(tmp_path / "v4")
+    case_id, capture_a, capture_b, run_id = "a" * 32, "b" * 32, "c" * 32, "d" * 32
+    with sqlite3.connect(files.path("cases.sqlite3")) as conn:
+        conn.executescript(LEGACY_V3_SCHEMA)
+        conn.execute(
+            "INSERT INTO cases(id,symptom,state,created,updated) VALUES(?,?,?,?,?)",
+            (case_id, "slow", "NEW", "2026-01-01", "2026-01-01"),
+        )
+        conn.commit()
+    Database(files)
+    with sqlite3.connect(files.path("cases.sqlite3")) as conn:
+        conn.execute(
+            "INSERT INTO captures(id,case_id,capture_name,vantage_type,status,created,updated) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (capture_a, case_id, "first.pcap", "client", "waiting", "2026-01-01", "2026-01-01"),
+        )
+        conn.execute(
+            "INSERT INTO captures(id,case_id,capture_name,vantage_type,status,created,updated) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (capture_b, case_id, "second.pcap", "server", "waiting", "2026-01-02", "2026-01-02"),
+        )
+        conn.execute(
+            "INSERT INTO runs(id,case_id,request_key,capability,parameters,status,created,capture_id) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (run_id, case_id, "key", "baseline", "{}", "complete", "2026-01-02", capture_a),
+        )
+        conn.execute(
+            "INSERT INTO evidence(case_id,id,record,run_id,capture_id) VALUES(?,?,?,?,?)",
+            (case_id, "ev_same", "{}", run_id, capture_a),
+        )
+        conn.commit()
+    db = Database(files)
+    with db.connect() as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        conn.execute(
+            "INSERT INTO evidence(case_id,id,record,run_id,capture_id) VALUES(?,?,?,?,?)",
+            (case_id, "ev_same", "{}", run_id, capture_b),
+        )
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM evidence WHERE case_id=? AND id='ev_same'", (case_id,)
+            ).fetchone()[0]
+            == 2
+        )
 
 
 def test_capture_models_bound_names_vantage_and_subtype():
@@ -1277,7 +1324,7 @@ def test_rules_only_report_exposes_mode_and_keeps_database_reasoning_table(tmp_p
             "embedded_failure_code": None,
         }
         with service.db.connect() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
             assert conn.execute("SELECT count(*) FROM reasoning_steps").fetchone()[0] == 0
     finally:
         service.close()

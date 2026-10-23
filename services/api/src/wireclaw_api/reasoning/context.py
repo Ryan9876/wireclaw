@@ -23,6 +23,7 @@ SYSTEM_INSTRUCTION = (
 
 _SCOPE_FIELDS = {
     "capture",
+    "capture_id",
     "src_ip",
     "dst_ip",
     "src_port",
@@ -159,8 +160,28 @@ def build_context(
     capture_quality = report.get("capture_quality", {})
     if not isinstance(capture_quality, dict):
         capture_quality = {}
+    capture_items = []
+    for capture in case.get("captures", [])[:4]:
+        if not isinstance(capture, dict):
+            continue
+        capture_items.append(
+            {
+                "id": _safe_text(str(capture.get("id", ""))[:64]),
+                "display_name": _safe_text(
+                    str(capture.get("display_name") or capture.get("capture_name") or "")[:120]
+                ),
+                "vantage_type": capture.get("vantage_type")
+                if capture.get("vantage_type")
+                in {"unknown", "client", "network", "server", "other"}
+                else "unknown",
+                "vantage_subtype": capture.get("vantage_subtype")
+                if capture.get("vantage_type") == "network"
+                else None,
+            }
+        )
     context = {
         "symptom": _safe_text(case["symptom"]),
+        "captures": capture_items,
         "capture_quality": {
             "state": capture_quality.get("state"),
             "evidence_ids": sorted(capture_quality.get("evidence_ids", []))[:200],

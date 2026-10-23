@@ -679,7 +679,16 @@ def test_case_metadata_migration_backfills_existing_cases(environment, version):
             for action in ("insert", "update"):
                 conn.execute(f"DROP TRIGGER {table}_capture_owner_{action}")
             conn.execute(f"DROP INDEX {table}_capture")
-            conn.execute(f"ALTER TABLE {table} DROP COLUMN capture_id")
+            if table != "evidence":
+                conn.execute(f"ALTER TABLE {table} DROP COLUMN capture_id")
+        evidence_rows = conn.execute("SELECT case_id,id,record,run_id FROM evidence").fetchall()
+        conn.execute("DROP TABLE evidence")
+        conn.execute(
+            "CREATE TABLE evidence(case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,"
+            "id TEXT NOT NULL,record TEXT NOT NULL,run_id TEXT NOT NULL REFERENCES runs(id),"
+            "PRIMARY KEY(case_id,id))"
+        )
+        conn.executemany("INSERT INTO evidence VALUES(?,?,?,?)", evidence_rows)
         conn.execute("DROP TABLE captures")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(cases)")}
         for column in ("capture_name", "display_name"):
@@ -701,7 +710,7 @@ def test_case_metadata_migration_backfills_existing_cases(environment, version):
             if key not in ("capture_name", "display_name", "name", "captures")
         }
         # Rebuilding a v1/v2 database intentionally drops capture identities;
-        # v4 migration recreates one row while preserving source provenance.
+        # v4/v5 migrations recreate one row while preserving source provenance.
         assert len(after["captures"]) == 1
         assert after["captures"][0]["original_artifact_id"] == before["original_id"]
         assert after["captures"][0]["sha256"] == before["capture_sha"]
@@ -709,7 +718,7 @@ def test_case_metadata_migration_backfills_existing_cases(environment, version):
         assert client.get(f"/api/cases/{case_id}/report").json() == report
         assert client.get("/api/cases").json()[0]["capture_bytes"] == len(captures["clean_tcp"])
         with client.app.state.service.db.connect() as conn:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
 
 
 def test_recent_cases_returns_bounded_metadata_without_sensitive_fields(environment):
@@ -918,6 +927,55 @@ def test_plural_capture_lifecycle_preserves_sources_and_metadata(environment):
         assert (
             put_capture(client, case_id, replacement["id"], fixtures["healthy"]).status_code == 200
         )
+
+
+def test_each_capture_analysis_persists_runs_artifacts_and_evidence_with_its_capture_id(
+    environment,
+):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        captures = [
+            add_capture(client, case_id, "same.pcap", vantage_type=role)
+            for role in ("client", "server")
+        ]
+        for capture in captures:
+            assert (
+                put_capture(client, case_id, capture["id"], fixtures["clean_tcp"]).status_code
+                == 200
+            )
+            service = client.app.state.service
+            service.execute_capture_analysis(case_id, capture["id"])
+        with client.app.state.service.db.connect() as conn:
+            for capture in captures:
+                assert (
+                    conn.execute(
+                        "SELECT count(*) FROM runs WHERE case_id=? AND capture_id=? AND capability='baseline'",
+                        (case_id, capture["id"]),
+                    ).fetchone()[0]
+                    == 1
+                )
+                assert (
+                    conn.execute(
+                        "SELECT count(*) FROM evidence WHERE case_id=? AND capture_id=?",
+                        (case_id, capture["id"]),
+                    ).fetchone()[0]
+                    > 0
+                )
+                assert (
+                    conn.execute(
+                        "SELECT count(*) FROM artifacts WHERE case_id=? AND capture_id=? AND kind='normalized'",
+                        (case_id, capture["id"]),
+                    ).fetchone()[0]
+                    > 0
+                )
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM runs WHERE case_id=? AND capture_id IS NULL AND capability='baseline'",
+                    (case_id,),
+                ).fetchone()[0]
+                == 0
+            )
 
 
 @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
@@ -1214,3 +1272,106 @@ def test_plural_capture_restart_restores_removal_interrupted_before_database_com
         assert original.read_bytes() == fixtures["clean_tcp"]
         assert client.get(f"/api/cases/{case_id}/report").json() == report
         assert not trash.exists()
+
+
+@pytest.mark.parametrize("secondary", [False, True])
+def test_capture_review_restart_cleans_failed_intake_after_failure_was_recorded(
+    environment, secondary
+):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        primary = add_capture(client, case_id)
+        target = primary
+        if secondary:
+            assert (
+                put_capture(client, case_id, primary["id"], fixtures["clean_tcp"]).status_code
+                == 200
+            )
+            assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+            target = add_capture(client, case_id)
+        service = client.app.state.service
+        before = client.get(f"/api/cases/{case_id}").json()
+        run_id, path = service.begin_capture_ingest(case_id, target["id"])
+        path.write_bytes(fixtures["healthy"])
+        analyzer = service.analyzer(case_id, target["id"])
+        sha = analyzer.ingest_capture(path.relative_to(analyzer.store.root))
+        unregistered_original = analyzer.store.verify(sha)
+        intake_root = analyzer.store.root
+        # Reproduce a crash after failure persistence, before route cleanup.
+        service.fail_capture_ingest(case_id, target["id"], run_id, "persistence_failure")
+        assert unregistered_original.read_bytes() == fixtures["healthy"]
+        assert service.get_capture(case_id, target["id"])["original_artifact_id"] is None
+    with client_for(root) as client:
+        after = client.get(f"/api/cases/{case_id}").json()
+        failed = next(item for item in after["captures"] if item["id"] == target["id"])
+        assert failed["status"] == "needs_attention"
+        assert failed["last_error"] == "persistence_failure"
+        assert not intake_root.exists()
+        assert not unregistered_original.exists()
+        if secondary:
+            assert after["state"] == "COMPLETE"
+            assert after["captures"][0] == before["captures"][0]
+            assert (
+                client.app.state.service.artifact(case_id, after["original_id"])[1].read_bytes()
+                == fixtures["clean_tcp"]
+            )
+        assert put_capture(client, case_id, target["id"], fixtures["healthy"]).status_code == 200
+
+
+@pytest.mark.parametrize("uploaded_primary", [False, True])
+def test_capture_review_legacy_upload_selects_sole_waiting_capture(environment, uploaded_primary):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        first, second = add_capture(client, case_id), add_capture(client, case_id)
+        uploaded, waiting = (first, second) if uploaded_primary else (second, first)
+        assert (
+            put_capture(client, case_id, uploaded["id"], fixtures["clean_tcp"]).status_code == 200
+        )
+        if uploaded_primary:
+            assert client.post(f"/api/cases/{case_id}/investigate").json()["state"] == "COMPLETE"
+        before = client.get(f"/api/cases/{case_id}").json()
+        response = upload(client, case_id, fixtures["healthy"])
+        assert response.status_code == 200, response.text
+        after = response.json()
+        assert len(after["captures"]) == 2
+        preserved = next(item for item in after["captures"] if item["id"] == uploaded["id"])
+        assert preserved == next(
+            item for item in before["captures"] if item["id"] == uploaded["id"]
+        )
+        ingested = next(item for item in after["captures"] if item["id"] == waiting["id"])
+        assert ingested["sha256"] == hashlib.sha256(fixtures["healthy"]).hexdigest()
+        assert upload(client, case_id, fixtures["healthy"]).status_code == 409
+        # Two waiting rows remain ambiguous even alongside registered sources.
+        add_capture(client, case_id, "third.pcap")
+        add_capture(client, case_id, "fourth.pcap")
+        before = client.get(f"/api/cases/{case_id}").json()
+        ambiguous = upload(client, case_id, fixtures["healthy"])
+        assert ambiguous.status_code == 409
+        assert ambiguous.json() == {"error": {"code": "capture_selection_required"}}
+        assert client.get(f"/api/cases/{case_id}").json() == before
+
+
+def test_capture_review_primary_becomes_analyzed_when_legacy_investigation_completes(environment):
+    root, fixtures = environment
+    with client_for(root) as client:
+        case_id = case(client)
+        assert upload(client, case_id, fixtures["clean_tcp"]).status_code == 200
+        secondary = add_capture(client, case_id)
+        assert put_capture(client, case_id, secondary["id"], fixtures["healthy"]).status_code == 200
+        before = client.get(f"/api/cases/{case_id}").json()
+        response = client.post(f"/api/cases/{case_id}/investigate")
+        assert response.status_code == 200, response.text
+        completed = response.json()
+        assert completed["state"] == "COMPLETE"
+        assert completed["captures"][0]["status"] == "analyzed"
+        assert completed["captures"][1] == before["captures"][1]
+        assert sorted(run["capability"] for run in completed["runs"]) == [
+            "baseline",
+            "diagnostics",
+            "ingest",
+            "ingest",
+        ]
+    with client_for(root) as client:
+        assert client.get(f"/api/cases/{case_id}").json() == completed

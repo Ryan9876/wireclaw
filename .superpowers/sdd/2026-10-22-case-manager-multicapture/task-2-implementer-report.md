@@ -13,7 +13,7 @@ The new endpoints are:
 - `PATCH /api/cases/{case_id}/captures/{capture_id}` -> `CaptureResponse`.
 - `DELETE /api/cases/{case_id}/captures/{capture_id}` -> the existing typed deletion result, including truthful cleanup status.
 
-`CaseResponse.captures` lists explicit capture rows in stable creation order. Legacy fields follow the first capture. The singular POST route creates a first capture or uses the sole waiting explicit capture; multiple explicit captures return `capture_selection_required` without mutation. Existing single-capture investigation remains available.
+`CaseResponse.captures` lists explicit capture rows in stable creation order. Legacy fields follow the first capture. The singular POST route creates a first capture or uses the sole unregistered explicit capture, including a failed retry; multiple unregistered candidates return `capture_selection_required` without mutation, while registered sources do not make the choice ambiguous. Existing single-capture investigation remains available.
 
 No automatic analysis scheduling, TCP correlation, clock alignment, UI flow, AI behavior, packaging behavior, push, or merge was added.
 
@@ -143,3 +143,36 @@ The Python warning is the existing Starlette TestClient/httpx deprecation warnin
 Reviewed route registration, strict model surfaces, upload bypass matching, owner lookup, transaction/admission limits, path confinement, duplicate-source isolation, removal rollback/journaling, interrupted upload recovery, legacy compatibility, and generated contract changes. Sensitive paths, request bytes, and exception text are not added to responses or logging.
 
 Task 3 remains responsible for plural analysis scheduling and general per-capture evidence scheduling/provenance. This task preserves the existing explicit primary investigation flow and cleans its existing deterministic dependencies on removal. Cross-capture report recomputation and correlation are not claimed here.
+
+
+## Review follow-up: three Important lifecycle findings
+
+Review base: `4dc6757112f8eba379cb93c6c08dc5ce9ea47091`. All three findings were accepted and reproduced with real service/API behavior before editing production code.
+
+### RED before fixes
+
+Added five variants in `tests/integration/test_api.py`, then ran:
+
+```sh
+PATH=/Applications/Wireshark.app/Contents/MacOS:$PATH .venv/bin/python -m pytest -q tests/integration/test_api.py -k capture_review
+```
+
+Result: **5 failed, 81 deselected, 1 warning** in 9.22s. At this point only tests were modified; the RED report was sent to the parent before production edits and the parent confirmed the ordering.
+
+- `test_capture_review_restart_cleans_failed_intake_after_failure_was_recorded[False]` and `[True]` create a real unregistered immutable original, persist intake failure, and simulate process exit before route cleanup. Both reproduced surviving raw intake data after restart. Primary and secondary variants establish that cleanup is capture-specific and that a registered primary source survives.
+- `test_capture_review_legacy_upload_selects_sole_waiting_capture[False]` and `[True]` reproduced HTTP 409 `capture_selection_required` with exactly one waiting capture and another registered source. They cover a waiting primary and a waiting secondary after the primary case completes.
+- `test_capture_review_primary_becomes_analyzed_when_legacy_investigation_completes` reproduced `analyzing` after successful COMPLETE. It also checks that the secondary row is unchanged, no extra analysis run is scheduled, and completion persists on restart.
+
+### Minimal production corrections
+
+Only the existing base service changed (19 diff lines across the three existing boundaries):
+
+1. Recovery still marks `preparing` intake interrupted, but cleanup now keys off missing `original_artifact_id` regardless of row status. Thus `needs_attention` recorded before a crash no longer hides unregistered raw data. Registered capture stores remain intact, and an existing failure code is preserved.
+2. The legacy wrapper selects the sole unregistered candidate. Two or more candidates fail safely as ambiguous; an entirely registered case still refuses immutable re-upload. The existing normal empty-case intake path and failed-upload retry behavior remain in place.
+3. The existing COMPLETE transition marks only the capture whose `original_artifact_id` matches the case's legacy `original_id` as `analyzed`, in the same SQLite transaction as the completed case/history checkpoint. It does not mark secondary captures analyzed or add analyzer/provider operations.
+
+No Task 3 orchestration, correlation, AI behavior, schema, generated browser code, or packaging changes were added.
+
+### GREEN and verification
+
+The exact five-variant selection passed **5 tests, 81 deselected, 1 warning** in 7.14s after the fixes. Ruff check, Ruff format (90 files), compileall, and diff checking passed. Complete API/Gate 7/boundary and full-suite results follow after the running commands finish.

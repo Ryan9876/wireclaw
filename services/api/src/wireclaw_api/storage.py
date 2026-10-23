@@ -143,7 +143,10 @@ class Database:
             if version == 3:
                 self._migrate_v4(conn)
                 version = 4
-            if version != 4:
+            if version == 4:
+                self._migrate_v5(conn)
+                version = 5
+            if version != 5:
                 raise ApiError("unsupported_schema_version", 500)
 
     @staticmethod
@@ -238,6 +241,39 @@ class Database:
                     (capture_id, case["id"], case["id"], capture_id),
                 )
             conn.execute("PRAGMA user_version=4")
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
+    @staticmethod
+    def _migrate_v5(conn):
+        try:
+            conn.executescript(
+                "BEGIN IMMEDIATE;"
+                "CREATE TABLE evidence_v5 ("
+                "case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,"
+                "id TEXT NOT NULL, record TEXT NOT NULL,"
+                "run_id TEXT NOT NULL REFERENCES runs(id),"
+                "capture_id TEXT REFERENCES captures(id),"
+                "PRIMARY KEY(case_id,id,capture_id));"
+                "INSERT INTO evidence_v5(case_id,id,record,run_id,capture_id) "
+                "SELECT case_id,id,record,run_id,capture_id FROM evidence;"
+                "DROP TABLE evidence;"
+                "ALTER TABLE evidence_v5 RENAME TO evidence;"
+                "CREATE INDEX evidence_capture ON evidence(case_id,capture_id);"
+                "CREATE UNIQUE INDEX evidence_case_level_id ON evidence(case_id,id) "
+                "WHERE capture_id IS NULL;"
+                "CREATE TRIGGER evidence_capture_owner_insert BEFORE INSERT ON evidence "
+                "WHEN NEW.capture_id IS NOT NULL AND NOT EXISTS ("
+                "SELECT 1 FROM captures WHERE id=NEW.capture_id AND case_id=NEW.case_id) "
+                "BEGIN SELECT RAISE(ABORT, 'capture_case_mismatch'); END;"
+                "CREATE TRIGGER evidence_capture_owner_update BEFORE UPDATE ON evidence "
+                "WHEN NEW.capture_id IS NOT NULL AND NOT EXISTS ("
+                "SELECT 1 FROM captures WHERE id=NEW.capture_id AND case_id=NEW.case_id) "
+                "BEGIN SELECT RAISE(ABORT, 'capture_case_mismatch'); END;"
+                "PRAGMA user_version=5; COMMIT;"
+            )
             conn.commit()
         except BaseException:
             conn.rollback()

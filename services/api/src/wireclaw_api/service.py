@@ -210,19 +210,36 @@ class Service:
                 (state, now(), error, case_id),
             )
             conn.execute("INSERT INTO history VALUES(?,?,?,?)", (case_id, seq, state, now()))
+            if state == State.COMPLETE:
+                # Only the primary source participated in the legacy report.
+                conn.execute(
+                    "UPDATE captures SET status='analyzed',last_error=NULL,updated=? "
+                    "WHERE case_id=? AND original_artifact_id=?",
+                    (now(), case_id, case["original_id"]),
+                )
 
-    def start(self, case_id, capability, parameters):
+    def start(self, case_id, capability, parameters, *, capture_id=None):
         policy_fingerprint = asdict(self.policy)
         policy_fingerprint.pop("provider_api_key", None)
-        key = hashlib.sha256(
-            encode({"capability": capability, "policy": policy_fingerprint, **parameters}).encode()
-        ).hexdigest()
         with self.db.connect() as conn:
             self.db.case(conn, case_id)
+            if capture_id is not None:
+                self.db.capture(conn, case_id, capture_id)
+            key = hashlib.sha256(
+                encode(
+                    {
+                        "capability": capability,
+                        "policy": policy_fingerprint,
+                        **parameters,
+                        "capture_id": capture_id,
+                    }
+                ).encode()
+            ).hexdigest()
             # Successful duplicate returns a snapshot and costs no additional rows or execution.
             previous = conn.execute(
-                "SELECT id FROM runs WHERE case_id=? AND request_key=? AND status='complete'",
-                (case_id, key),
+                "SELECT id FROM runs WHERE case_id=? AND request_key=? AND status='complete' "
+                "AND capture_id IS ?",
+                (case_id, key, capture_id),
             ).fetchone()
             if previous:
                 return previous["id"], True
@@ -233,9 +250,9 @@ class Service:
                 raise ApiError("run_count_limit", 429)
             run_id = identifier()
             conn.execute(
-                "INSERT INTO runs(id,case_id,request_key,capability,parameters,status,created) "
-                "VALUES(?,?,?,?,?,'running',?)",
-                (run_id, case_id, key, capability, encode(parameters), now()),
+                "INSERT INTO runs(id,case_id,request_key,capability,parameters,status,created,capture_id) "
+                "VALUES(?,?,?,?,?,'running',?,?)",
+                (run_id, case_id, key, capability, encode(parameters), now(), capture_id),
             )
             return run_id, False
 
@@ -402,11 +419,14 @@ class Service:
     def begin_ingest(self, case_id):
         case = self.get(case_id)
         captures = case["captures"]
-        if len(captures) > 1:
+        waiting = [capture for capture in captures if capture["original_artifact_id"] is None]
+        if len(waiting) > 1:
             raise ApiError("capture_selection_required")
-        if case["original_id"] or case["state"] not in (State.NEW, State.FAILED):
+        if captures and not waiting:
             raise ApiError("capture_already_registered")
         if not captures:
+            if case["original_id"] or case["state"] not in (State.NEW, State.FAILED):
+                raise ApiError("capture_already_registered")
             # Prepare before creating metadata, preserving the legacy resting
             # checkpoint if the filesystem cannot accept an upload.
             started = time.monotonic()
@@ -421,7 +441,7 @@ class Service:
                 raise ApiError("storage_failure", 503) from None
             capture = self.create_capture(case_id, case["capture_name"] or f"Capture {case_id[:8]}")
         else:
-            capture = captures[0]
+            capture = waiting[0]
         return self.begin_capture_ingest(case_id, capture["id"])
 
     def begin_capture_ingest(self, case_id, capture_id):
@@ -703,14 +723,34 @@ class Service:
                     stream.write(serialized)
                     stream.flush()
                     os.fsync(stream.fileno())
-                self.register(conn, case_id, path, "normalized", result["capture_sha256"])
-                for item in records:
+                run = conn.execute(
+                    "SELECT capture_id FROM runs WHERE id=? AND case_id=?", (run_id, case_id)
+                ).fetchone()
+                if run is None:
+                    raise ApiError("run_not_found", 404)
+                artifact_id = self.register(
+                    conn, case_id, path, "normalized", result["capture_sha256"]
+                )
+                if run["capture_id"] is not None:
                     conn.execute(
-                        "INSERT INTO evidence(case_id,id,record,run_id) VALUES(?,?,?,?) "
-                        "ON CONFLICT(case_id,id) "
-                        "DO UPDATE SET record=excluded.record,run_id=excluded.run_id",
-                        (case_id, item["id"], encode(item), run_id),
+                        "UPDATE artifacts SET capture_id=? WHERE id=?",
+                        (run["capture_id"], artifact_id),
                     )
+                for item in records:
+                    if run["capture_id"] is None:
+                        conn.execute(
+                            "INSERT INTO evidence(case_id,id,record,run_id,capture_id) VALUES(?,?,?,?,NULL) "
+                            "ON CONFLICT(case_id,id) WHERE capture_id IS NULL "
+                            "DO UPDATE SET record=excluded.record,run_id=excluded.run_id",
+                            (case_id, item["id"], encode(item), run_id),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT INTO evidence(case_id,id,record,run_id,capture_id) VALUES(?,?,?,?,?) "
+                            "ON CONFLICT(case_id,id,capture_id) "
+                            "DO UPDATE SET record=excluded.record,run_id=excluded.run_id",
+                            (case_id, item["id"], encode(item), run_id, run["capture_id"]),
+                        )
                 conn.execute(
                     "UPDATE runs SET status='complete',versions=?,configuration=?,evidence_ids=? WHERE id=?",
                     (
@@ -736,14 +776,32 @@ class Service:
             path.unlink(missing_ok=True)
             raise
 
-    def execute(self, case_id, capability, parameters, operation, *, fatal=False, versions=None):
+    def execute(
+        self,
+        case_id,
+        capability,
+        parameters,
+        operation,
+        *,
+        fatal=False,
+        versions=None,
+        capture_id=None,
+    ):
         parameters = {**parameters, "tool_versions": versions}
-        run_id, cached = self.start(case_id, capability, parameters)
+        run_id, cached = self.start(case_id, capability, parameters, capture_id=capture_id)
         if cached:
             return self.snapshot(case_id, run_id)
         started = time.monotonic()
         try:
             result = operation()
+            capture_ids = [capture["id"] for capture in Service.get(self, case_id)["captures"]]
+            if capture_id is not None and capture_ids and capture_id != capture_ids[0]:
+                result = {
+                    **result,
+                    "evidence": [
+                        {**item, "id": f"{item['id']}:{capture_id}"} for item in result["evidence"]
+                    ],
+                }
             self.save(case_id, run_id, result)
         except Exception as error:
             from wireclaw_analyzer import AnalyzerError
@@ -766,10 +824,26 @@ class Service:
         self.log(case_id, capability, started, "complete")
         return result
 
+    def execute_capture_analysis(self, case_id, capture_id):
+        capture = self.get_capture(case_id, capture_id)
+        if capture["original_artifact_id"] is None or capture["sha256"] is None:
+            raise ApiError("capture_required")
+        analyzer = self.analyzer(case_id, capture_id)
+        artifact_id = capture["original_artifact_id"]
+        return self.execute(
+            case_id,
+            "baseline",
+            {"artifact_id": artifact_id},
+            lambda: analyzer.analyze(capture["sha256"]),
+            versions=analyzer.versions,
+            capture_id=capture_id,
+        )
+
     def investigate(self, case_id):
         case = self.get(case_id)
         if not case["original_id"]:
             raise ApiError("capture_required")
+        capture_id = case["captures"][0]["id"] if case["captures"] else None
         self.artifact(case_id, case["original_id"])
         if case["state"] in (State.FAILED, State.COMPLETE):
             with self.db.connect() as conn:
@@ -789,6 +863,7 @@ class Service:
             lambda: analyzer.analyze(case["capture_sha"]),
             fatal=True,
             versions=analyzer.versions,
+            capture_id=capture_id,
         )
         self.execute(
             case_id,
@@ -797,6 +872,7 @@ class Service:
             lambda: analyzer.diagnose(case["capture_sha"], include_http_timing=True),
             fatal=True,
             versions=analyzer.versions,
+            capture_id=capture_id,
         )
         if self.get(case_id)["state"] == State.BASELINE_ANALYSIS:
             self.transition(case_id, State.INVESTIGATING)
@@ -812,7 +888,8 @@ class Service:
         # Capture quality must already exist, including when prior diagnostics failed.
         if case["quality"] is None:
             raise ApiError("baseline_required")
-        analyzer = self.analyzer(case_id)
+        capture_id = artifact.get("capture_id")
+        analyzer = self.analyzer(case_id, capture_id)
         parameters = {"artifact_id": request.artifact_id, "tcp_stream": request.tcp_stream}
         if request.capability in BASELINE:
 
@@ -838,7 +915,12 @@ class Service:
                 )
 
         return self.execute(
-            case_id, request.capability, parameters, operation, versions=analyzer.versions
+            case_id,
+            request.capability,
+            parameters,
+            operation,
+            versions=analyzer.versions,
+            capture_id=capture_id,
         )
 
     def evidence(self, case_id, *, offset=0, limit=100, evidence_id=None):
@@ -979,6 +1061,9 @@ class Service:
                             "last_error='service_interrupted',updated=? WHERE id=?",
                             (now(), capture["id"]),
                         )
+                # Failure persistence may precede a crash before route cleanup.
+                # Artifact registration, not status, determines intake ownership.
+                if capture["original_artifact_id"] is None:
                     self.cleanup_capture_ingest(case_id, capture["id"])
             incoming = directory / "analyzer" / "incoming"
             if incoming.exists():

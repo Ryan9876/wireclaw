@@ -1005,6 +1005,43 @@ def test_cloud_provider_sends_only_canonical_context_and_rejects_redirect(monkey
     assert request.url == "https://provider.example/v1/chat/completions"
 
 
+def test_reasoning_context_projects_bounded_capture_identity_and_vantage():
+    context, _ = build_context(
+        case={
+            "symptom": "slow",
+            "captures": [
+                {
+                    "id": "capture-1",
+                    "display_name": "Client",
+                    "vantage_type": "client",
+                    "vantage_subtype": None,
+                }
+            ],
+        },
+        evidence=[
+            {
+                "id": "ev_capture_fact",
+                "category": "analyze_rtt",
+                "epistemic_class": "derived",
+                "source": {"capability": "analyze_rtt", "tool": "tshark", "version": "4.2"},
+                "scope": {"capture": "capture-1", "tcp_stream": 3, "path": "/secret/path"},
+                "value": {"median_seconds": 1.2},
+                "limitations": [],
+            }
+        ],
+        report={"capture_quality": {}, "findings": [], "remaining_hypotheses": []},
+        capabilities=["analyze_rtt"],
+        max_items=20,
+        limits={"max_steps": 8},
+    )
+    assert (
+        '"captures":[{"display_name":"Client","id":"capture-1","vantage_subtype":null,"vantage_type":"client"}]'
+        in context
+    )
+    assert '"capture":"capture-1"' in context
+    assert "/secret/path" not in context
+
+
 def test_embedded_provider_uses_strict_action_schema_response_format(monkeypatch):
     captured = []
     OriginalClient = httpx.AsyncClient
